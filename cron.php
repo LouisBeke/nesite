@@ -12,4 +12,8 @@ if(setting('auto_suspend','1')==='1'){$grace=max(0,(int)setting('grace_days','3'
 // End-of-period cancellations: stop billing and suspend, but never delete a Pterodactyl server automatically.
 $cancelRows=db()->query("SELECT * FROM services WHERE cancel_at_period_end=1 AND cancel_at IS NOT NULL AND cancel_at<=NOW() AND status NOT IN ('cancelled','terminated')")->fetchAll();
 foreach($cancelRows as $s){try{if(!empty($s['ptero_server_id'])){try{app_ptero('/servers/'.(int)$s['ptero_server_id'].'/suspend','POST');}catch(Throwable $ignore){}}db()->prepare("UPDATE services SET status='cancelled',auto_renew=0 WHERE id=?")->execute([$s['id']]);db()->prepare("INSERT INTO service_lifecycle(service_id,actor_user_id,event,details) VALUES(?,NULL,'cancelled_at_period_end','Billing ended and service was suspended. Pterodactyl server was not deleted.')")->execute([$s['id']]);$out[]='Cancelled at period end: '.$s['name'];}catch(Throwable $e){$out[]='Cancellation error '.$s['id'].': '.$e->getMessage();}}
+
+// Stage 14 provisioning engine worker.
+try{$nodeCount=provisioning_refresh_node_cache(30);if($nodeCount)$out[]='Node cache refreshed: '.$nodeCount.' node(s).';}catch(Throwable $e){$out[]='Node cache refresh error: '.$e->getMessage();}
+try{$batch=max(1,(int)setting('provisioning_batch_size','5'));$w=provisioning_run_worker($batch);if(!empty($w['enabled']))$out[]='Provisioning worker: '.$w['processed'].' processed, '.$w['failed'].' failed, '.$w['queued'].' queued.';}catch(Throwable $e){$out[]='Provisioning worker error: '.$e->getMessage();}
 echo implode("\n",$out)?:'OK - nothing to do';

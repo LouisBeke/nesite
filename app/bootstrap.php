@@ -13,8 +13,10 @@ fox_v11_migrate();
 fox_v12_migrate();
 fox_v13_migrate();
 fox_v13a_migrate();
+fox_v14_migrate();
 function e($v):string{return htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');}
 require_once __DIR__.'/mail.php';
+require_once __DIR__.'/provisioning.php';
 function csrf():string{if(empty($_SESSION['csrf']))$_SESSION['csrf']=bin2hex(random_bytes(32));return $_SESSION['csrf'];}
 function verify_csrf():void{if(!hash_equals($_SESSION['csrf']??'',$_POST['csrf']??'')){http_response_code(419);die('Invalid request token');}}
 function user():?array{if(empty($_SESSION['uid']))return null;$s=db()->prepare('SELECT * FROM users WHERE id=?');$s->execute([$_SESSION['uid']]);return $s->fetch()?:null;}
@@ -83,7 +85,7 @@ function ensure_service_for_order(int $orderId): int {
 function provision_service(int $serviceId): void {
     $q=db()->prepare('SELECT s.*,u.email,u.name customer_name,u.ptero_user_id,p.* FROM services s JOIN users u ON u.id=s.user_id LEFT JOIN store_products p ON p.id=s.product_id WHERE s.id=?');$q->execute([$serviceId]);$r=$q->fetch();if(!$r)throw new RuntimeException('Service not found.');
     if(empty($r['ptero_egg_id']))throw new RuntimeException('Product has no Pterodactyl Egg ID configured.');
-    $puid=(int)($r['ptero_user_id']??0);if(!$puid){$users=app_ptero('/users?filter[email]='.rawurlencode($r['email']));$puid=(int)($users['data'][0]['attributes']['id']??0);if(!$puid)throw new RuntimeException('Customer does not exist in Pterodactyl. Create/link the Pterodactyl user first.');db()->prepare('UPDATE users SET ptero_user_id=? WHERE id=?')->execute([$puid,$r['user_id']]);}
+    $puid=(int)($r['ptero_user_id']??0);if(!$puid){$users=app_ptero('/users?filter[email]='.rawurlencode($r['email']));$puid=(int)($users['data'][0]['attributes']['id']??0);if(!$puid){$parts=preg_split('/\s+/',trim((string)$r['customer_name']))?:[];$first=(string)($parts[0]??'Fox');$last=(string)($parts[1]??'Customer');$base=strtolower(preg_replace('/[^a-z0-9]/','',explode('@',(string)$r['email'])[0]??'foxcustomer'));if($base==='')$base='foxcustomer';$username=substr($base,0,18).substr(bin2hex(random_bytes(3)),0,6);$create=app_ptero('/users','POST',['username'=>$username,'email'=>(string)$r['email'],'first_name'=>$first,'last_name'=>$last,'password'=>bin2hex(random_bytes(16)),'external_id'=>'foxnetwork-user-'.(int)$r['user_id']]);$puid=(int)($create['attributes']['id']??0);if(!$puid)throw new RuntimeException('Could not create a Pterodactyl user for the customer.');}db()->prepare('UPDATE users SET ptero_user_id=? WHERE id=?')->execute([$puid,$r['user_id']]);}
     $cfg=json_decode($r['config_json']?:'{}',true)?:[];$env=json_decode($r['ptero_environment']?:'{}',true)?:[];
     // v12: use the software/Egg selected by the customer for this order.
     $selectedEggId=(int)($cfg['egg_id']??0);
@@ -136,7 +138,7 @@ function provision_service(int $serviceId): void {
         $payload['deploy']=['locations'=>[(int)$r['ptero_location_id']],'dedicated_ip'=>false,'port_range'=>[]];
     } else throw new RuntimeException('Product has no Pterodactyl Location ID configured.');
     db()->prepare("UPDATE services SET status='provisioning',last_error=NULL WHERE id=?")->execute([$serviceId]);
-    try{$res=app_ptero('/servers','POST',$payload);$a=$res['attributes']??[];db()->prepare("UPDATE services SET status='active',ptero_server_id=?,ptero_identifier=?,last_error=NULL WHERE id=?")->execute([$a['id']??null,$a['identifier']??null,$serviceId]);if($r['order_id'])db()->prepare("UPDATE orders SET status='active' WHERE id=?")->execute([$r['order_id']]);}catch(Throwable $e){db()->prepare("UPDATE services SET status='failed',last_error=? WHERE id=?")->execute([$e->getMessage(),$serviceId]);throw $e;}
+    try{$res=app_ptero('/servers','POST',$payload);$a=$res['attributes']??[];$sid=(int)($a['id']??0);db()->prepare("UPDATE services SET status='active',ptero_server_id=?,ptero_identifier=?,last_error=NULL WHERE id=?")->execute([$sid?:null,$a['identifier']??null,$serviceId]);if($sid){try{app_ptero('/servers/'.$sid.'/startup','POST');}catch(Throwable $ignore){}}if($sid&&!provisioning_verify_online($sid,4,700))throw new RuntimeException('Pterodactyl server did not report online state after startup.');if($r['order_id'])db()->prepare("UPDATE orders SET status='active' WHERE id=?")->execute([$r['order_id']]);}catch(Throwable $e){db()->prepare("UPDATE services SET status='failed',last_error=? WHERE id=?")->execute([$e->getMessage(),$serviceId]);throw $e;}
 }
 
 function service_row(int $serviceId): array {

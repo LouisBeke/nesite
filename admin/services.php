@@ -4,7 +4,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
  verify_csrf();$sid=(int)($_POST['service_id']??0);$action=(string)($_POST['action']??'');
  try{
   switch($action){
-   case 'provision': provision_service($sid); service_log($sid,(int)$u['id'],'provision','Provisioning requested from Admin Center.'); $msg='Service provisioned.'; break;
+    case 'provision': $jid=provisioning_queue_service($sid,['source'=>'admin_services','admin_id'=>(int)$u['id']],85,true); service_log($sid,(int)$u['id'],'provision','Provisioning queued from Admin Center. Job #'.$jid); $msg='Provisioning queued (job #'.$jid.').'; break;
    case 'suspend': suspend_service($sid,(int)$u['id']);$msg='Service suspended.';break;
    case 'unsuspend': unsuspend_service($sid,(int)$u['id']);$msg='Service unsuspended.';break;
    case 'reinstall': reinstall_service($sid,(int)$u['id']);$msg='Reinstall requested.';break;
