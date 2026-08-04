@@ -39,6 +39,18 @@ function log_service_activity_by_identifier(string $identifier, string $action, 
     }
 }
 
+function service_id_by_identifier_for_user(string $identifier, int $userId): int {
+    $q = db()->prepare('SELECT id FROM services WHERE ptero_identifier=? AND user_id=? LIMIT 1');
+    $q->execute([$identifier, $userId]);
+    return (int)$q->fetchColumn();
+}
+
+function service_server_id_by_identifier_for_user(string $identifier, int $userId): int {
+    $q = db()->prepare('SELECT ptero_server_id FROM services WHERE ptero_identifier=? AND user_id=? LIMIT 1');
+    $q->execute([$identifier, $userId]);
+    return (int)$q->fetchColumn();
+}
+
 try {
     switch ($action) {
         case 'websocket': {
@@ -119,6 +131,84 @@ try {
         case 'network': {
             $r = ptero('/servers/' . $id . '/network/allocations');
             outm(true, $r['data'] ?? []);
+        }
+
+        case 'add-allocation': {
+            if (setting('hosting_allow_extra_allocations', '1') !== '1') {
+                throw new RuntimeException('Additional allocations are disabled.');
+            }
+            $ip = trim((string)($body['ip'] ?? ''));
+            $port = (int)($body['port'] ?? 0);
+            $alias = trim((string)($body['alias'] ?? ''));
+            if ($ip === '' || $port <= 0) throw new RuntimeException('IP and port are required.');
+            $payload = ['ip' => $ip, 'port' => $port];
+            if ($alias !== '') $payload['alias'] = $alias;
+            $r = ptero('/servers/' . $id . '/network/allocations', 'POST', $payload);
+            log_service_activity_by_identifier($id, 'allocation_add', 'Additional allocation assigned from customer portal.');
+            outm(true, $r['attributes'] ?? $r);
+        }
+
+        case 'set-primary-allocation': {
+            $allocation = (int)($body['allocation_id'] ?? 0);
+            if ($allocation <= 0) throw new RuntimeException('Invalid allocation.');
+            ptero('/servers/' . $id . '/network/allocations/' . $allocation . '/primary', 'POST', []);
+            log_service_activity_by_identifier($id, 'allocation_primary', 'Primary allocation changed from customer portal.');
+            outm(true, ['allocation_id' => $allocation]);
+        }
+
+        case 'startup': {
+            $r = ptero('/servers/' . $id . '/startup');
+            outm(true, [
+                'startup' => $r['data']['attributes'] ?? ($r['attributes'] ?? []),
+                'allow_variable_edit' => setting('hosting_allow_startup_variable_edit', '1') === '1',
+                'allow_custom_startup' => setting('hosting_allow_custom_startup_command', '1') === '1',
+                'allow_docker_image' => setting('hosting_allow_docker_image_selection', '0') === '1',
+            ]);
+        }
+
+        case 'set-startup-variable': {
+            if (setting('hosting_allow_startup_variable_edit', '1') !== '1') {
+                throw new RuntimeException('Startup variable editing is disabled.');
+            }
+            $key = trim((string)($body['key'] ?? ''));
+            $value = (string)($body['value'] ?? '');
+            if ($key === '') throw new RuntimeException('Variable key is required.');
+            ptero('/servers/' . $id . '/startup/variable', 'PUT', ['key' => $key, 'value' => $value]);
+            log_service_activity_by_identifier($id, 'startup_variable', 'Startup variable ' . $key . ' updated from customer portal.');
+            outm(true, ['key' => $key]);
+        }
+
+        case 'set-startup': {
+            $allowStartup = setting('hosting_allow_custom_startup_command', '1') === '1';
+            $allowImage = setting('hosting_allow_docker_image_selection', '0') === '1';
+            if (!$allowStartup && !$allowImage) {
+                throw new RuntimeException('Startup configuration changes are disabled.');
+            }
+            $serverId = service_server_id_by_identifier_for_user($id, (int)$u['id']);
+            if ($serverId <= 0) throw new RuntimeException('Could not resolve this service mapping.');
+
+            $payload = [];
+            if ($allowStartup) {
+                $startup = trim((string)($body['startup'] ?? ''));
+                if ($startup !== '') $payload['startup'] = $startup;
+            }
+            if ($allowImage) {
+                $image = trim((string)($body['image'] ?? ''));
+                if ($image !== '') $payload['image'] = $image;
+            }
+            if (!$payload) throw new RuntimeException('Nothing to update.');
+
+            app_ptero('/servers/' . $serverId . '/startup', 'PATCH', $payload);
+            $serviceId = service_id_by_identifier_for_user($id, (int)$u['id']);
+            if ($serviceId > 0) {
+                $s = service_row($serviceId);
+                $cfg = json_decode((string)($s['config_json'] ?? ''), true) ?: [];
+                if (isset($payload['startup'])) $cfg['custom_startup'] = $payload['startup'];
+                if (isset($payload['image'])) $cfg['custom_docker_image'] = $payload['image'];
+                db()->prepare('UPDATE services SET config_json=? WHERE id=?')->execute([json_encode($cfg), $serviceId]);
+            }
+            log_service_activity_by_identifier($id, 'startup_update', 'Startup command/image updated from customer portal.');
+            outm(true, ['updated' => true]);
         }
 
         case 'schedules': {

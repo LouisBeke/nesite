@@ -7,8 +7,28 @@ $days=max(1,(int)setting('renewal_days_before','7'));$q=db()->prepare("SELECT s.
 foreach($q as $s){try{$exists=db()->prepare("SELECT id FROM invoices WHERE user_id=? AND status IN ('unpaid','overdue') AND order_id IS NULL AND due_at>=DATE_SUB(?,INTERVAL 1 DAY) LIMIT 1");$exists->execute([$s['user_id'],$s['next_due_at']]);if($exists->fetchColumn())continue;$num=(string)setting('invoice_prefix','INV').'-'.date('ymd').'-'.strtoupper(bin2hex(random_bytes(3)));$due=$s['next_due_at'];$ins=db()->prepare("INSERT INTO invoices(user_id,order_id,service_id,invoice_number,status,subtotal,total,currency,due_at) VALUES(?,NULL,?,?,'unpaid',?,?,?,?)");$ins->execute([$s['user_id'],$s['id'],$num,$s['price_monthly'],$s['price_monthly'],$s['currency'],$due]);$iid=(int)db()->lastInsertId();db()->prepare('INSERT INTO invoice_items(invoice_id,description,amount,quantity) VALUES(?,?,?,1)')->execute([$iid,$s['name'].' — monthly renewal',$s['price_monthly']]);send_template('renewal_due',$s,['service_name'=>$s['name'],'invoice_number'=>$num,'total'=>number_format((float)$s['price_monthly'],2),'currency'=>$s['currency'],'due_date'=>date('d M Y',strtotime($due))]);$out[]='Renewal invoice '.$num.' created.';}catch(Throwable $e){$out[]='Renewal error service '.$s['id'].': '.$e->getMessage();}}
 // Mark overdue and email once.
 $rows=db()->query("SELECT i.*,u.name,u.email,u.email_notifications FROM invoices i JOIN users u ON u.id=i.user_id WHERE i.status='unpaid' AND i.due_at<NOW()")->fetchAll();foreach($rows as $i){db()->prepare("UPDATE invoices SET status='overdue',overdue_sent_at=COALESCE(overdue_sent_at,NOW()) WHERE id=?")->execute([$i['id']]);if(empty($i['overdue_sent_at']))send_template('invoice_overdue',$i,['invoice_number'=>$i['invoice_number'],'total'=>number_format((float)$i['total'],2),'currency'=>$i['currency'],'due_date'=>date('d M Y',strtotime($i['due_at']))]);}
-// Suspend services after grace period if their user has an overdue renewal invoice.
-if(setting('auto_suspend','1')==='1'){$grace=max(0,(int)setting('grace_days','3'));$sql="SELECT DISTINCT s.*,u.name,u.email,u.email_notifications FROM services s JOIN users u ON u.id=s.user_id JOIN invoices i ON i.user_id=s.user_id WHERE s.status='active' AND s.next_due_at<NOW() AND i.status='overdue' AND i.due_at<DATE_SUB(NOW(),INTERVAL $grace DAY)";foreach(db()->query($sql) as $s){try{if(!empty($s['ptero_server_id']))app_ptero('/servers/'.(int)$s['ptero_server_id'].'/suspend','POST');db()->prepare("UPDATE services SET status='suspended' WHERE id=?")->execute([$s['id']]);send_template('service_suspended',$s,['service_name'=>$s['name']]);$out[]='Suspended '.$s['name'];}catch(Throwable $e){$out[]='Suspend error '.$s['id'].': '.$e->getMessage();}}}
+// Suspend services after grace period when that exact service has an overdue renewal invoice.
+if(setting('auto_suspend','1')==='1'){
+	$grace=max(0,(int)setting('grace_days','3'));
+	$sql="SELECT DISTINCT s.*,u.name,u.email,u.email_notifications
+		  FROM services s
+		  JOIN users u ON u.id=s.user_id
+		  JOIN invoices i ON i.service_id=s.id
+		  WHERE s.status='active'
+			AND s.next_due_at<NOW()
+			AND i.status='overdue'
+			AND i.due_at<DATE_SUB(NOW(),INTERVAL $grace DAY)";
+	foreach(db()->query($sql) as $s){
+		try{
+			if(!empty($s['ptero_server_id']))app_ptero('/servers/'.(int)$s['ptero_server_id'].'/suspend','POST');
+			db()->prepare("UPDATE services SET status='suspended' WHERE id=?")->execute([$s['id']]);
+			send_template('service_suspended',$s,['service_name'=>$s['name']]);
+			$out[]='Suspended '.$s['name'];
+		}catch(Throwable $e){
+			$out[]='Suspend error '.$s['id'].': '.$e->getMessage();
+		}
+	}
+}
 // End-of-period cancellations: stop billing and suspend, but never delete a Pterodactyl server automatically.
 $cancelRows=db()->query("SELECT * FROM services WHERE cancel_at_period_end=1 AND cancel_at IS NOT NULL AND cancel_at<=NOW() AND status NOT IN ('cancelled','terminated')")->fetchAll();
 foreach($cancelRows as $s){try{if(!empty($s['ptero_server_id'])){try{app_ptero('/servers/'.(int)$s['ptero_server_id'].'/suspend','POST');}catch(Throwable $ignore){}}db()->prepare("UPDATE services SET status='cancelled',auto_renew=0 WHERE id=?")->execute([$s['id']]);db()->prepare("INSERT INTO service_lifecycle(service_id,actor_user_id,event,details) VALUES(?,NULL,'cancelled_at_period_end','Billing ended and service was suspended. Pterodactyl server was not deleted.')")->execute([$s['id']]);$out[]='Cancelled at period end: '.$s['name'];}catch(Throwable $e){$out[]='Cancellation error '.$s['id'].': '.$e->getMessage();}}

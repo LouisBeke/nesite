@@ -14,6 +14,8 @@ fox_v12_migrate();
 fox_v13_migrate();
 fox_v13a_migrate();
 fox_v14_migrate();
+fox_v14b_migrate();
+fox_v15_migrate();
 function e($v):string{return htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');}
 require_once __DIR__.'/mail.php';
 require_once __DIR__.'/provisioning.php';
@@ -82,10 +84,15 @@ function ensure_service_for_order(int $orderId): int {
     $q=db()->prepare('SELECT o.user_id,oi.product_id,oi.product_name,oi.unit_price,oi.config_json FROM orders o JOIN order_items oi ON oi.order_id=o.id WHERE o.id=? ORDER BY oi.id LIMIT 1');$q->execute([$orderId]);$r=$q->fetch();if(!$r)throw new RuntimeException('Order item not found.');
     $cfg=json_decode($r['config_json']?:'{}',true)?:[];$name=$cfg['server_name']??$r['product_name'];$q=db()->prepare("INSERT INTO services(user_id,order_id,product_id,name,status,price_monthly,next_due_at,config_json) VALUES(?,?,?,?, 'pending',?,DATE_ADD(NOW(),INTERVAL 1 MONTH),?)");$q->execute([$r['user_id'],$orderId,$r['product_id'],$name,$r['unit_price'],$r['config_json']]);return (int)db()->lastInsertId();
 }
-function provision_service(int $serviceId): void {
+function provision_service(int $serviceId, array &$runtime=[]): array {
     $q=db()->prepare('SELECT s.*,u.email,u.name customer_name,u.ptero_user_id,p.* FROM services s JOIN users u ON u.id=s.user_id LEFT JOIN store_products p ON p.id=s.product_id WHERE s.id=?');$q->execute([$serviceId]);$r=$q->fetch();if(!$r)throw new RuntimeException('Service not found.');
     if(empty($r['ptero_egg_id']))throw new RuntimeException('Product has no Pterodactyl Egg ID configured.');
-    $puid=(int)($r['ptero_user_id']??0);if(!$puid){$users=app_ptero('/users?filter[email]='.rawurlencode($r['email']));$puid=(int)($users['data'][0]['attributes']['id']??0);if(!$puid){$parts=preg_split('/\s+/',trim((string)$r['customer_name']))?:[];$first=(string)($parts[0]??'Fox');$last=(string)($parts[1]??'Customer');$base=strtolower(preg_replace('/[^a-z0-9]/','',explode('@',(string)$r['email'])[0]??'foxcustomer'));if($base==='')$base='foxcustomer';$username=substr($base,0,18).substr(bin2hex(random_bytes(3)),0,6);$create=app_ptero('/users','POST',['username'=>$username,'email'=>(string)$r['email'],'first_name'=>$first,'last_name'=>$last,'password'=>bin2hex(random_bytes(16)),'external_id'=>'foxnetwork-user-'.(int)$r['user_id']]);$puid=(int)($create['attributes']['id']??0);if(!$puid)throw new RuntimeException('Could not create a Pterodactyl user for the customer.');}db()->prepare('UPDATE users SET ptero_user_id=? WHERE id=?')->execute([$puid,$r['user_id']]);}
+    $forcedNodeId=(int)($runtime['node_id']??0);
+    $forcedAllocationId=(int)($runtime['allocation_id']??0);
+    $createdPteroUser=false;
+    $puid=(int)($r['ptero_user_id']??0);if(!$puid){$users=app_ptero('/users?filter[email]='.rawurlencode($r['email']));$puid=(int)($users['data'][0]['attributes']['id']??0);if(!$puid){$parts=preg_split('/\s+/',trim((string)$r['customer_name']))?:[];$first=(string)($parts[0]??'Fox');$last=(string)($parts[1]??'Customer');$base=strtolower(preg_replace('/[^a-z0-9]/','',explode('@',(string)$r['email'])[0]??'foxcustomer'));if($base==='')$base='foxcustomer';$username=substr($base,0,18).substr(bin2hex(random_bytes(3)),0,6);$create=app_ptero('/users','POST',['username'=>$username,'email'=>(string)$r['email'],'first_name'=>$first,'last_name'=>$last,'password'=>bin2hex(random_bytes(16)),'external_id'=>'foxnetwork-user-'.(int)$r['user_id']]);$puid=(int)($create['attributes']['id']??0);if(!$puid)throw new RuntimeException('Could not create a Pterodactyl user for the customer.');$createdPteroUser=true;}db()->prepare('UPDATE users SET ptero_user_id=? WHERE id=?')->execute([$puid,$r['user_id']]);}
+    $runtime['ptero_user_id']=$puid;
+    $runtime['created_ptero_user']=$createdPteroUser?1:0;
     $cfg=json_decode($r['config_json']?:'{}',true)?:[];$env=json_decode($r['ptero_environment']?:'{}',true)?:[];
     // v12: use the software/Egg selected by the customer for this order.
     $selectedEggId=(int)($cfg['egg_id']??0);
@@ -127,18 +134,33 @@ function provision_service(int $serviceId): void {
         }
     } catch(RuntimeException $e){ if(str_starts_with($e->getMessage(),'Missing required Egg variables:')) throw $e; }
     $payload=['name'=>$r['name'],'user'=>$puid,'egg'=>(int)$r['ptero_egg_id'],'docker_image'=>$r['ptero_docker_image']?:'ghcr.io/pterodactyl/yolks:java_21','startup'=>$r['ptero_startup']?:'java -Xms128M -Xmx{{SERVER_MEMORY}}M -jar {{SERVER_JARFILE}}','environment'=>$env,'limits'=>['memory'=>(int)($cfg['ram_mb']??$r['ram_mb']),'swap'=>0,'disk'=>(int)($cfg['disk_mb']??$r['disk_mb']),'io'=>500,'cpu'=>(int)($cfg['cpu_percent']??$r['cpu_percent'])],'feature_limits'=>['databases'=>(int)$r['database_limit'],'allocations'=>(int)$r['allocation_limit'],'backups'=>(int)$r['backups']]];
-    if(!empty($r['ptero_node_id'])){
+    if($forcedAllocationId>0){
+        $payload['allocation']=['default'=>$forcedAllocationId];
+        $runtime['allocation_id']=$forcedAllocationId;
+        if($forcedNodeId>0)$runtime['node_id']=$forcedNodeId;
+    } elseif($forcedNodeId>0){
+        $ar=app_ptero('/nodes/'.$forcedNodeId.'/allocations?per_page=100');
+        $allocationId=0;
+        foreach(($ar['data']??[]) as $row){$aa=$row['attributes']??[];if(empty($aa['assigned'])){$allocationId=(int)($aa['id']??0);if($allocationId)break;}}
+        if(!$allocationId)throw new RuntimeException('Selected smart node has no free allocations.');
+        $payload['allocation']=['default'=>$allocationId];
+        $runtime['node_id']=$forcedNodeId;
+        $runtime['allocation_id']=$allocationId;
+    } elseif(!empty($r['ptero_node_id'])){
         // Exact-node provisioning requires a free allocation on that node.
         $ar=app_ptero('/nodes/'.(int)$r['ptero_node_id'].'/allocations?per_page=100');
         $allocationId=0;
         foreach(($ar['data']??[]) as $row){$aa=$row['attributes']??[];if(empty($aa['assigned'])){$allocationId=(int)($aa['id']??0);if($allocationId)break;}}
         if(!$allocationId)throw new RuntimeException('Selected Pterodactyl node has no free allocations.');
         $payload['allocation']=['default'=>$allocationId];
+        $runtime['node_id']=(int)$r['ptero_node_id'];
+        $runtime['allocation_id']=$allocationId;
     } elseif(!empty($r['ptero_location_id'])){
         $payload['deploy']=['locations'=>[(int)$r['ptero_location_id']],'dedicated_ip'=>false,'port_range'=>[]];
     } else throw new RuntimeException('Product has no Pterodactyl Location ID configured.');
     db()->prepare("UPDATE services SET status='provisioning',last_error=NULL WHERE id=?")->execute([$serviceId]);
-    try{$res=app_ptero('/servers','POST',$payload);$a=$res['attributes']??[];$sid=(int)($a['id']??0);db()->prepare("UPDATE services SET status='active',ptero_server_id=?,ptero_identifier=?,last_error=NULL WHERE id=?")->execute([$sid?:null,$a['identifier']??null,$serviceId]);if($sid){try{app_ptero('/servers/'.$sid.'/startup','POST');}catch(Throwable $ignore){}}if($sid&&!provisioning_verify_online($sid,4,700))throw new RuntimeException('Pterodactyl server did not report online state after startup.');if($r['order_id'])db()->prepare("UPDATE orders SET status='active' WHERE id=?")->execute([$r['order_id']]);}catch(Throwable $e){db()->prepare("UPDATE services SET status='failed',last_error=? WHERE id=?")->execute([$e->getMessage(),$serviceId]);throw $e;}
+    try{$res=app_ptero('/servers','POST',$payload);$a=$res['attributes']??[];$sid=(int)($a['id']??0);$runtime['server_id']=$sid;db()->prepare("UPDATE services SET status='active',ptero_server_id=?,ptero_identifier=?,last_error=NULL WHERE id=?")->execute([$sid?:null,$a['identifier']??null,$serviceId]);if($sid){try{app_ptero('/servers/'.$sid.'/startup','POST');}catch(Throwable $ignore){}}if($sid&&!provisioning_verify_online($sid,4,700))throw new RuntimeException('Pterodactyl server did not report online state after startup.');if($r['order_id'])db()->prepare("UPDATE orders SET status='active' WHERE id=?")->execute([$r['order_id']]);}catch(Throwable $e){db()->prepare("UPDATE services SET status='failed',last_error=? WHERE id=?")->execute([$e->getMessage(),$serviceId]);throw $e;}
+    return ['server_id'=>(int)($runtime['server_id']??0),'ptero_user_id'=>$puid,'created_ptero_user'=>$createdPteroUser?1:0,'node_id'=>(int)($runtime['node_id']??0),'allocation_id'=>(int)($runtime['allocation_id']??0)];
 }
 
 function service_row(int $serviceId): array {

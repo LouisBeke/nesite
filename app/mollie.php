@@ -40,7 +40,18 @@ function process_mollie_payment(string $paymentId): void {
         send_template('payment_received',$iv,['invoice_number'=>$iv['invoice_number'],'total'=>number_format((float)$iv['total'],2),'currency'=>$iv['currency']]);
         apply_pending_service_change_for_invoice($iid);
         if($oid){$sid=ensure_service_for_order($oid);$sv=service_row($sid);if(empty($sv['ptero_server_id']) && !in_array($sv['status'],['provisioning','active','terminated'],true)){provisioning_dispatch_order($oid,['source'=>'mollie','invoice_id'=>$iid,'payment_id'=>$paymentId]);}elseif($sv['status']==='suspended'){unsuspend_service($sid,0);send_template('service_unsuspended',$iv,['service_name'=>$sv['name']]);}}
-        elseif($sid){$sv=service_row($sid);db()->prepare('UPDATE services SET next_due_at=DATE_ADD(next_due_at,INTERVAL 1 MONTH) WHERE id=?')->execute([$sid]);if($sv['status']==='suspended' && setting('auto_unsuspend','1')==='1'){unsuspend_service($sid,0);send_template('service_unsuspended',$iv,['service_name'=>$sv['name']]);}}
+                elseif($sid){
+                        $sv=service_row($sid);
+                        db()->prepare("UPDATE services SET next_due_at=
+                                CASE
+                                    WHEN COALESCE(renewal_unit,'month')='day' THEN DATE_ADD(COALESCE(next_due_at,NOW()), INTERVAL GREATEST(1,COALESCE(renewal_interval,1)) DAY)
+                                    WHEN COALESCE(renewal_unit,'month')='week' THEN DATE_ADD(COALESCE(next_due_at,NOW()), INTERVAL GREATEST(1,COALESCE(renewal_interval,1)) WEEK)
+                                    WHEN COALESCE(renewal_unit,'month')='year' THEN DATE_ADD(COALESCE(next_due_at,NOW()), INTERVAL GREATEST(1,COALESCE(renewal_interval,1)) YEAR)
+                                    ELSE DATE_ADD(COALESCE(next_due_at,NOW()), INTERVAL GREATEST(1,COALESCE(renewal_interval,1)) MONTH)
+                                END
+                                WHERE id=?")->execute([$sid]);
+                        if($sv['status']==='suspended' && setting('auto_unsuspend','1')==='1'){unsuspend_service($sid,0);send_template('service_unsuspended',$iv,['service_name'=>$sv['name']]);}
+                }
     } else {
         $map=['failed'=>'failed','canceled'=>'cancelled','expired'=>'expired','pending'=>'pending','open'=>'pending','authorized'=>'pending'];$local=$map[$status]??'pending';
         db()->prepare("UPDATE payments SET status=? WHERE provider='mollie' AND provider_reference=?")->execute([$local,$paymentId]);

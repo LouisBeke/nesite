@@ -274,3 +274,66 @@ function fox_v14_migrate(): void {
 
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v14-provisioning-engine']);
 }
+
+function fox_v14b_migrate(): void {
+    static $ran=false; if($ran)return; $ran=true; $pdo=db();
+
+    if (fox_table_exists($pdo,'node_cache')) {
+        $cols=[
+            'cpu_usage_percent'=>"DECIMAL(6,2) NOT NULL DEFAULT 0",
+            'ram_usage_percent'=>"DECIMAL(6,2) NOT NULL DEFAULT 0",
+            'disk_usage_percent'=>"DECIMAL(6,2) NOT NULL DEFAULT 0",
+            'servers_count'=>"INT UNSIGNED NOT NULL DEFAULT 0",
+            'is_maintenance'=>"TINYINT(1) NOT NULL DEFAULT 0"
+        ];
+        foreach($cols as $c=>$d) if(!fox_column_exists($pdo,'node_cache',$c)) $pdo->exec("ALTER TABLE `node_cache` ADD COLUMN `$c` $d");
+        try{$pdo->exec("ALTER TABLE `node_cache` ADD KEY idx_node_cache_health(is_maintenance,free_allocations,cpu_usage_percent,ram_usage_percent,disk_usage_percent)");}catch(Throwable $e){}
+    }
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS provisioning_allocation_locks (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        queue_id BIGINT UNSIGNED NOT NULL,
+        node_id BIGINT UNSIGNED NOT NULL,
+        allocation_id BIGINT UNSIGNED NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'locked',
+        release_reason VARCHAR(120) NULL,
+        locked_at DATETIME NOT NULL,
+        released_at DATETIME NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_prov_alloc_lock_allocation(allocation_id),
+        KEY idx_prov_alloc_lock_queue(queue_id),
+        KEY idx_prov_alloc_lock_node(node_id),
+        KEY idx_prov_alloc_lock_status(status,locked_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $defaults=[
+        ['provisioning_smart_node_enabled','1'],
+        ['provisioning_node_cache_max_age_seconds','300'],
+        ['provisioning_allocation_lock_timeout_seconds','900'],
+        ['provisioning_weight_cpu','35'],
+        ['provisioning_weight_ram','30'],
+        ['provisioning_weight_disk','20'],
+        ['provisioning_weight_servers','15'],
+        ['provisioning_remove_failed_queue_item','1']
+    ];
+    $ins=$pdo->prepare('INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES(?,?)');
+    foreach($defaults as $row)$ins->execute($row);
+
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v14b-smart-infrastructure']);
+}
+
+function fox_v15_migrate(): void {
+    static $ran=false; if($ran)return; $ran=true; $pdo=db();
+
+    $defaults=[
+        ['hosting_allow_startup_variable_edit','1'],
+        ['hosting_allow_custom_startup_command','1'],
+        ['hosting_allow_docker_image_selection','0'],
+        ['hosting_allow_extra_allocations','1']
+    ];
+    $ins=$pdo->prepare('INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES(?,?)');
+    foreach($defaults as $row)$ins->execute($row);
+
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15-advanced-hosting']);
+}

@@ -66,6 +66,7 @@ try{
 <button class="tab" data-tab="backups">Backups</button>
 <button class="tab" data-tab="schedules">Schedules</button>
 <button class="tab" data-tab="network">Network</button>
+<button class="tab" data-tab="startup">Startup</button>
 <button class="tab" data-tab="activity">Activity Log</button>
 </div>
 
@@ -98,7 +99,8 @@ try{
 <section class="pane" id="databases"><div class="manage-card"><div class="cardhead"><b>DATABASES</b></div><div id="dblist" class="listbox"></div></div></section>
 <section class="pane" id="backups"><div class="manage-card"><div class="cardhead"><b>BACKUPS</b><button class="btn primary" id="createbackup">Create Backup</button></div><div id="backuplist" class="listbox"></div></div></section>
 <section class="pane" id="schedules"><div class="manage-card"><div class="cardhead"><b>SCHEDULES</b></div><div id="schedulelist" class="listbox"></div></div></section>
-<section class="pane" id="network"><div class="manage-card"><div class="cardhead"><b>NETWORK</b></div><div id="netlist" class="listbox"></div></div></section>
+<section class="pane" id="network"><div class="manage-card"><div class="cardhead"><b>NETWORK</b></div><div id="netlist" class="listbox"></div><div style="padding:16px;border-top:1px solid #252a31"><h3 style="margin:0 0 10px;font-size:14px">Assign additional allocation</h3><div style="display:flex;gap:10px;flex-wrap:wrap"><input id="allocip" placeholder="IP" style="height:40px;padding:0 10px;background:#0b0e12;color:#fff;border:1px solid #303640;border-radius:8px"><input id="allocport" type="number" min="1" placeholder="Port" style="width:120px;height:40px;padding:0 10px;background:#0b0e12;color:#fff;border:1px solid #303640;border-radius:8px"><input id="allocalias" placeholder="Alias (optional)" style="height:40px;padding:0 10px;background:#0b0e12;color:#fff;border:1px solid #303640;border-radius:8px"><button class="btn" id="addalloc">Add allocation</button></div><div class="muted small" style="margin-top:8px">Only available when enabled by the host.</div></div></div></section>
+<section class="pane" id="startup"><div class="manage-card"><div class="cardhead"><b>STARTUP & VARIABLES</b></div><div id="startupbox" style="padding:16px" class="muted">Loading startup configuration…</div></div></section>
 <section class="pane" id="activity"><div class="manage-card"><div class="cardhead"><b>ACTIVITY LOG</b></div><div id="activitylog" class="activity-log"></div></div></section>
 </div>
 </main>
@@ -156,6 +158,7 @@ document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
   if(b.dataset.tab==='backups') loadBackups();
   if(b.dataset.tab==='schedules') loadSchedules();
   if(b.dataset.tab==='network') loadNetwork();
+  if(b.dataset.tab==='startup') loadStartup();
   if(b.dataset.tab==='activity') loadActivity();
 });
 
@@ -207,8 +210,59 @@ async function loadSchedules(){
 }
 
 async function loadNetwork(){
-  try{const d=await api('network'); q('#netlist').innerHTML=(d||[]).map(x=>{const a=x.attributes||{};return `<div class="listrow"><div><b>${em(a.ip_alias||a.ip)}:${em(a.port)}</b><div class="muted small">${a.is_default?'Primary allocation':'Additional allocation'}</div></div></div>`;}).join('')||'<div class="empty muted">No network allocations.</div>';}
+  try{const d=await api('network'); q('#netlist').innerHTML=(d||[]).map(x=>{const a=x.attributes||{};const id=a.id||0;return `<div class="listrow"><div><b>${em(a.ip_alias||a.ip)}:${em(a.port)}</b><div class="muted small">${a.is_default?'Primary allocation':'Additional allocation'}</div></div><div>${a.is_default?'<span class="muted small">Primary</span>':`<button class="btn" onclick="setPrimaryAllocation(${Number(id)||0})">Set primary</button>`}</div></div>`;}).join('')||'<div class="empty muted">No network allocations.</div>';}
   catch(e){q('#netlist').innerHTML='<div class="error">'+em(e.message)+'</div>';}
+}
+
+async function setPrimaryAllocation(allocationId){
+  if(!allocationId) return;
+  try{await api('set-primary-allocation',{body:{allocation_id:allocationId}});loadNetwork();loadActivity();}
+  catch(e){alert(e.message);}
+}
+
+q('#addalloc').onclick=async()=>{
+  const ip=q('#allocip').value.trim();
+  const port=Number(q('#allocport').value||0);
+  const alias=q('#allocalias').value.trim();
+  if(!ip||!port){alert('IP and port are required.');return;}
+  try{await api('add-allocation',{body:{ip,port,alias}});q('#allocport').value='';q('#allocalias').value='';loadNetwork();loadActivity();}
+  catch(e){alert(e.message);}
+};
+
+async function loadStartup(){
+  try{
+    const d=await api('startup');
+    const s=d.startup||{};
+    const vars=(s.relationships?.variables?.data)||[];
+    const startup=s.startup_command||s.startup||'';
+    const image=s.docker_image||s.image||'';
+    let html='';
+    if(d.allow_custom_startup||d.allow_docker_image){
+      html+='<div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:14px">';
+      html+='<label class="muted small">Custom startup command</label><input id="startupcmd" value="'+em(startup)+'" style="height:40px;padding:0 10px;background:#0b0e12;color:#fff;border:1px solid #303640;border-radius:8px" '+(d.allow_custom_startup?'':'disabled')+'>';
+      html+='<label class="muted small">Docker image</label><input id="startupimage" value="'+em(image)+'" style="height:40px;padding:0 10px;background:#0b0e12;color:#fff;border:1px solid #303640;border-radius:8px" '+(d.allow_docker_image?'':'disabled')+'>';
+      html+='<div><button class="btn" id="savestartup">Save startup settings</button></div>';
+      html+='</div>';
+    }
+    html+='<div class="muted small" style="margin-bottom:8px">Startup variables</div>';
+    html+='<div class="listbox">';
+    html+=(vars||[]).map(v=>{const a=v.attributes||{};const key=a.env_variable||'';const val=a.server_value??a.default_value??'';const editable=Boolean(d.allow_variable_edit);const sid='var_'+String(key).replace(/[^a-zA-Z0-9_-]/g,'_');return `<div class="listrow"><div><b>${em(a.name||key)}</b><div class="muted small">${em(key)}</div></div><div style="display:flex;gap:8px;align-items:center"><input id="${sid}" value="${em(val)}" style="height:36px;padding:0 10px;background:#0b0e12;color:#fff;border:1px solid #303640;border-radius:8px" ${editable?'':'disabled'}><button class="btn" ${editable?'':'disabled'} onclick="saveStartupVar('${em(key)}','${sid}')">Save</button></div></div>`;}).join('');
+    html+='</div>';
+    if(!vars.length) html+='<div class="empty muted" style="margin-top:10px">No startup variables exposed by this egg.</div>';
+    q('#startupbox').innerHTML=html;
+    const saveBtn=q('#savestartup');
+    if(saveBtn){
+      saveBtn.onclick=async()=>{
+        try{await api('set-startup',{body:{startup:(q('#startupcmd')?.value||''),image:(q('#startupimage')?.value||'')}});alert('Startup settings updated.');loadStartup();loadActivity();}
+        catch(e){alert(e.message);}
+      };
+    }
+  }catch(e){q('#startupbox').innerHTML='<div class="error">'+em(e.message)+'</div>';}
+}
+
+async function saveStartupVar(key, domId){
+  try{const val=document.getElementById(domId)?.value??'';await api('set-startup-variable',{body:{key:key,value:val}});loadActivity();}
+  catch(e){alert(e.message);}
 }
 
 async function loadActivity(){
