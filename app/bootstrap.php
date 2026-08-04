@@ -179,6 +179,47 @@ function app_ptero(string $path,string $method='GET',?array $body=null){
     if($cacheKey)ptero_cache_set($cacheKey,$json,$cacheTtl);
     return $json;
 }
+
+function ensure_ptero_user_for_local_user(string $email, string $name = '', bool $createIfMissing = true): ?int {
+    $email = strtolower(trim($email));
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        throw new RuntimeException('Invalid email address for Pterodactyl lookup.');
+    }
+
+    $users = app_ptero('/users?filter[email]=' . rawurlencode($email) . '&per_page=1');
+    $match = $users['data'][0]['attributes'] ?? null;
+    if (is_array($match) && !empty($match['id'])) {
+        return (int)$match['id'];
+    }
+
+    if (!$createIfMissing) {
+        return null;
+    }
+
+    $cleanName = trim($name);
+    $parts = $cleanName !== '' ? preg_split('/\s+/', $cleanName) : [];
+    $first = (string)($parts[0] ?? 'Fox');
+    $last = (string)($parts[1] ?? 'Customer');
+    $base = strtolower(preg_replace('/[^a-z0-9]/', '', explode('@', $email)[0] ?? 'foxcustomer'));
+    if ($base === '') $base = 'foxcustomer';
+    $username = substr($base, 0, 18) . substr(bin2hex(random_bytes(3)), 0, 6);
+
+    $create = app_ptero('/users', 'POST', [
+        'username' => $username,
+        'email' => $email,
+        'first_name' => $first,
+        'last_name' => $last,
+        'password' => bin2hex(random_bytes(16)),
+        'external_id' => 'foxnetwork-user-' . sha1($email),
+    ]);
+
+    $id = (int)($create['attributes']['id'] ?? 0);
+    if ($id <= 0) {
+        throw new RuntimeException('Could not create the matching Pterodactyl account.');
+    }
+    return $id;
+}
+
 function invoice_for_order(int $orderId): int {
     $q=db()->prepare('SELECT id FROM invoices WHERE order_id=? LIMIT 1');$q->execute([$orderId]);$id=$q->fetchColumn();if($id)return (int)$id;
     $q=db()->prepare('SELECT * FROM orders WHERE id=?');$q->execute([$orderId]);$o=$q->fetch();if(!$o)throw new RuntimeException('Order not found.');

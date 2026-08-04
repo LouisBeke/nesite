@@ -142,121 +142,136 @@ $counts = [
     'completed' => 0,
     'cancelled' => 0,
 ];
-
-$counts['total'] = (int)db()->query('SELECT COUNT(*) FROM provisioning_queue')->fetchColumn();
-$counts['running'] = (int)db()->query("SELECT COUNT(*) FROM provisioning_queue WHERE status='running'")->fetchColumn();
-$counts['waiting'] = (int)db()->query("SELECT COUNT(*) FROM provisioning_queue WHERE status IN ('pending','retry_wait')")->fetchColumn();
-$counts['failed'] = (int)db()->query("SELECT COUNT(*) FROM provisioning_queue WHERE status='failed'")->fetchColumn();
-$counts['paused'] = (int)db()->query("SELECT COUNT(*) FROM provisioning_queue WHERE status='paused'")->fetchColumn();
-$counts['completed'] = (int)db()->query("SELECT COUNT(*) FROM provisioning_queue WHERE status='completed'")->fetchColumn();
-$counts['cancelled'] = (int)db()->query("SELECT COUNT(*) FROM provisioning_queue WHERE status='cancelled'")->fetchColumn();
-
-$workers = db()->query("SELECT *,TIMESTAMPDIFF(SECOND,last_heartbeat,NOW()) AS heartbeat_age FROM provisioning_workers ORDER BY updated_at DESC LIMIT 25")->fetchAll();
-
-$nodeCandidates = db()->query("SELECT node_id,node_name,location_id,free_allocations,total_allocations,cpu_usage_percent,ram_usage_percent,disk_usage_percent,servers_count,is_maintenance,last_sync_at
-    FROM node_cache
-    ORDER BY is_maintenance ASC, free_allocations DESC, cpu_usage_percent ASC, ram_usage_percent ASC, disk_usage_percent ASC
-    LIMIT 12")->fetchAll();
-
-$runningJobs = db()->query("SELECT q.*,
-    JSON_UNQUOTE(JSON_EXTRACT(q.payload,'$.service_id')) AS payload_service_id,
-    s.name AS service_name
-    FROM provisioning_queue q
-    LEFT JOIN services s ON s.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(q.payload,'$.service_id')) AS UNSIGNED)
-    WHERE q.status='running'
-    ORDER BY q.started_at ASC,q.id ASC
-    LIMIT 30")->fetchAll();
-
-$waitingJobs = db()->query("SELECT q.*,
-    JSON_UNQUOTE(JSON_EXTRACT(q.payload,'$.service_id')) AS payload_service_id,
-    s.name AS service_name
-    FROM provisioning_queue q
-    LEFT JOIN services s ON s.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(q.payload,'$.service_id')) AS UNSIGNED)
-    WHERE q.status IN ('pending','retry_wait','paused')
-    ORDER BY q.priority DESC,q.run_at ASC,q.id ASC
-    LIMIT 50")->fetchAll();
-
-$failedJobs = db()->query("SELECT q.*,
-    JSON_UNQUOTE(JSON_EXTRACT(q.payload,'$.service_id')) AS payload_service_id,
-    s.name AS service_name
-    FROM provisioning_queue q
-    LEFT JOIN services s ON s.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(q.payload,'$.service_id')) AS UNSIGNED)
-    WHERE q.status='failed'
-    ORDER BY q.finished_at DESC,q.id DESC
-    LIMIT 50")->fetchAll();
-
-$servicesForFilter = db()->query("SELECT s.id,s.name FROM services s
-    WHERE EXISTS (
-        SELECT 1
-        FROM provisioning_queue q
-        WHERE CAST(JSON_UNQUOTE(JSON_EXTRACT(q.payload,'$.service_id')) AS UNSIGNED)=s.id
-    )
-    ORDER BY s.name ASC
-    LIMIT 300")->fetchAll();
-
-$countStmt = db()->prepare("SELECT COUNT(*)
-    FROM provisioning_queue q
-    LEFT JOIN services s ON s.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(q.payload,'$.service_id')) AS UNSIGNED)
-    WHERE 1=1" . $filterWhere);
-$countStmt->execute($filterParams);
-$filteredTotal = (int)$countStmt->fetchColumn();
-$totalPages = max(1, (int)ceil($filteredTotal / $perPage));
-if ($page > $totalPages) {
-    $page = $totalPages;
-}
-$offset = ($page - 1) * $perPage;
-
-$dataStmt = db()->prepare("SELECT q.*,
-    JSON_UNQUOTE(JSON_EXTRACT(q.payload,'$.service_id')) AS payload_service_id,
-    s.name AS service_name
-    FROM provisioning_queue q
-    LEFT JOIN services s ON s.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(q.payload,'$.service_id')) AS UNSIGNED)
-    WHERE 1=1" . $filterWhere . "
-    ORDER BY q.id DESC
-    LIMIT ? OFFSET ?");
-$dataParams = $filterParams;
-$dataParams[] = $perPage;
-$dataParams[] = $offset;
-$dataStmt->execute($dataParams);
-$filteredJobs = $dataStmt->fetchAll();
-
+$workers = [];
+$nodeCandidates = [];
+$runningJobs = [];
+$waitingJobs = [];
+$failedJobs = [];
+$servicesForFilter = [];
+$filteredJobs = [];
+$filteredTotal = 0;
+$totalPages = 1;
+$offset = 0;
 $stats = [
     'avg_time_seconds' => 0,
     'success_rate' => 0.0,
-    'failed_jobs' => $counts['failed'],
+    'failed_jobs' => 0,
     'node_usage_percent' => 0.0,
     'queue_load_percent' => 0.0,
     'queue_load_text' => 'idle',
 ];
+$totalAlloc = 0;
+$freeAlloc = 0;
+$usedAlloc = 0;
 
-$stats['avg_time_seconds'] = (int)db()->query("SELECT COALESCE(ROUND(AVG(TIMESTAMPDIFF(SECOND,started_at,finished_at))),0)
-FROM provisioning_queue
-WHERE status='completed' AND started_at IS NOT NULL AND finished_at IS NOT NULL")->fetchColumn();
+try {
+    $counts['total'] = (int)db()->query('SELECT COUNT(*) FROM provisioning_queue')->fetchColumn();
+    $counts['running'] = (int)db()->query("SELECT COUNT(*) FROM provisioning_queue WHERE status='running'")->fetchColumn();
+    $counts['waiting'] = (int)db()->query("SELECT COUNT(*) FROM provisioning_queue WHERE status IN ('pending','retry_wait')")->fetchColumn();
+    $counts['failed'] = (int)db()->query("SELECT COUNT(*) FROM provisioning_queue WHERE status='failed'")->fetchColumn();
+    $counts['paused'] = (int)db()->query("SELECT COUNT(*) FROM provisioning_queue WHERE status='paused'")->fetchColumn();
+    $counts['completed'] = (int)db()->query("SELECT COUNT(*) FROM provisioning_queue WHERE status='completed'")->fetchColumn();
+    $counts['cancelled'] = (int)db()->query("SELECT COUNT(*) FROM provisioning_queue WHERE status='cancelled'")->fetchColumn();
 
-$terminalJobs = (int)db()->query("SELECT COUNT(*) FROM provisioning_queue WHERE status IN ('completed','failed','cancelled')")->fetchColumn();
-$okJobs = (int)db()->query("SELECT COUNT(*) FROM provisioning_queue WHERE status='completed'")->fetchColumn();
-$stats['success_rate'] = $terminalJobs > 0 ? round(($okJobs / $terminalJobs) * 100, 2) : 0.0;
+    $workers = db()->query("SELECT *,TIMESTAMPDIFF(SECOND,last_heartbeat,NOW()) AS heartbeat_age FROM provisioning_workers ORDER BY updated_at DESC LIMIT 25")->fetchAll();
 
-$nodeTotals = db()->query('SELECT COALESCE(SUM(total_allocations),0) AS total_alloc,COALESCE(SUM(free_allocations),0) AS free_alloc FROM node_cache')->fetch();
-$totalAlloc = (int)($nodeTotals['total_alloc'] ?? 0);
-$freeAlloc = (int)($nodeTotals['free_alloc'] ?? 0);
-$usedAlloc = max(0, $totalAlloc - $freeAlloc);
-$stats['node_usage_percent'] = $totalAlloc > 0 ? round(($usedAlloc / $totalAlloc) * 100, 2) : 0.0;
+    $nodeCandidates = db()->query("SELECT node_id,node_name,location_id,free_allocations,total_allocations,cpu_usage_percent,ram_usage_percent,disk_usage_percent,servers_count,is_maintenance,last_sync_at
+        FROM node_cache
+        ORDER BY is_maintenance ASC, free_allocations DESC, cpu_usage_percent ASC, ram_usage_percent ASC, disk_usage_percent ASC
+        LIMIT 12")->fetchAll();
 
-$workerActive = 0;
-foreach ($workers as $w) {
-    if ((int)$w['heartbeat_age'] <= 120) {
-        $workerActive++;
+    $runningJobs = db()->query("SELECT q.*,
+        JSON_UNQUOTE(JSON_EXTRACT(q.payload,'$.service_id')) AS payload_service_id,
+        s.name AS service_name
+        FROM provisioning_queue q
+        LEFT JOIN services s ON s.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(q.payload,'$.service_id')) AS UNSIGNED)
+        WHERE q.status='running'
+        ORDER BY q.started_at ASC,q.id ASC
+        LIMIT 30")->fetchAll();
+
+    $waitingJobs = db()->query("SELECT q.*,
+        JSON_UNQUOTE(JSON_EXTRACT(q.payload,'$.service_id')) AS payload_service_id,
+        s.name AS service_name
+        FROM provisioning_queue q
+        LEFT JOIN services s ON s.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(q.payload,'$.service_id')) AS UNSIGNED)
+        WHERE q.status IN ('pending','retry_wait','paused')
+        ORDER BY q.priority DESC,q.run_at ASC,q.id ASC
+        LIMIT 50")->fetchAll();
+
+    $failedJobs = db()->query("SELECT q.*,
+        JSON_UNQUOTE(JSON_EXTRACT(q.payload,'$.service_id')) AS payload_service_id,
+        s.name AS service_name
+        FROM provisioning_queue q
+        LEFT JOIN services s ON s.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(q.payload,'$.service_id')) AS UNSIGNED)
+        WHERE q.status='failed'
+        ORDER BY q.finished_at DESC,q.id DESC
+        LIMIT 50")->fetchAll();
+
+    $servicesForFilter = db()->query("SELECT s.id,s.name FROM services s
+        WHERE EXISTS (
+            SELECT 1
+            FROM provisioning_queue q
+            WHERE CAST(JSON_UNQUOTE(JSON_EXTRACT(q.payload,'$.service_id')) AS UNSIGNED)=s.id
+        )
+        ORDER BY s.name ASC
+        LIMIT 300")->fetchAll();
+
+    $countStmt = db()->prepare("SELECT COUNT(*)
+        FROM provisioning_queue q
+        LEFT JOIN services s ON s.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(q.payload,'$.service_id')) AS UNSIGNED)
+        WHERE 1=1" . $filterWhere);
+    $countStmt->execute($filterParams);
+    $filteredTotal = (int)$countStmt->fetchColumn();
+    $totalPages = max(1, (int)ceil($filteredTotal / $perPage));
+    if ($page > $totalPages) {
+        $page = $totalPages;
     }
-}
-$loadDen = max(1, $workerActive);
-$stats['queue_load_percent'] = round((($counts['waiting'] + $counts['running']) / $loadDen) * 100, 2);
-if ($stats['queue_load_percent'] < 80) {
-    $stats['queue_load_text'] = 'low';
-} elseif ($stats['queue_load_percent'] < 180) {
-    $stats['queue_load_text'] = 'normal';
-} else {
-    $stats['queue_load_text'] = 'high';
+    $offset = ($page - 1) * $perPage;
+
+    $dataSql = "SELECT q.*,
+        JSON_UNQUOTE(JSON_EXTRACT(q.payload,'$.service_id')) AS payload_service_id,
+        s.name AS service_name
+        FROM provisioning_queue q
+        LEFT JOIN services s ON s.id = CAST(JSON_UNQUOTE(JSON_EXTRACT(q.payload,'$.service_id')) AS UNSIGNED)
+        WHERE 1=1" . $filterWhere . "
+        ORDER BY q.id DESC
+        LIMIT " . (int)$perPage . " OFFSET " . (int)$offset;
+    $dataStmt = db()->prepare($dataSql);
+    $dataStmt->execute($filterParams);
+    $filteredJobs = $dataStmt->fetchAll();
+
+    $stats['avg_time_seconds'] = (int)db()->query("SELECT COALESCE(ROUND(AVG(TIMESTAMPDIFF(SECOND,started_at,finished_at))),0)
+    FROM provisioning_queue
+    WHERE status='completed' AND started_at IS NOT NULL AND finished_at IS NOT NULL")->fetchColumn();
+
+    $terminalJobs = (int)db()->query("SELECT COUNT(*) FROM provisioning_queue WHERE status IN ('completed','failed','cancelled')")->fetchColumn();
+    $okJobs = (int)db()->query("SELECT COUNT(*) FROM provisioning_queue WHERE status='completed'")->fetchColumn();
+    $stats['success_rate'] = $terminalJobs > 0 ? round(($okJobs / $terminalJobs) * 100, 2) : 0.0;
+
+    $nodeTotals = db()->query('SELECT COALESCE(SUM(total_allocations),0) AS total_alloc,COALESCE(SUM(free_allocations),0) AS free_alloc FROM node_cache')->fetch();
+    $totalAlloc = (int)($nodeTotals['total_alloc'] ?? 0);
+    $freeAlloc = (int)($nodeTotals['free_alloc'] ?? 0);
+    $usedAlloc = max(0, $totalAlloc - $freeAlloc);
+    $stats['node_usage_percent'] = $totalAlloc > 0 ? round(($usedAlloc / $totalAlloc) * 100, 2) : 0.0;
+
+    $workerActive = 0;
+    foreach ($workers as $w) {
+        if ((int)$w['heartbeat_age'] <= 120) {
+            $workerActive++;
+        }
+    }
+    $loadDen = max(1, $workerActive);
+    $stats['queue_load_percent'] = round((($counts['waiting'] + $counts['running']) / $loadDen) * 100, 2);
+    if ($stats['queue_load_percent'] < 80) {
+        $stats['queue_load_text'] = 'low';
+    } elseif ($stats['queue_load_percent'] < 180) {
+        $stats['queue_load_text'] = 'normal';
+    } else {
+        $stats['queue_load_text'] = 'high';
+    }
+    $stats['failed_jobs'] = $counts['failed'];
+} catch (Throwable $e) {
+    $err = $err !== '' ? $err : 'Queue data could not be loaded: ' . $e->getMessage();
 }
 
 function queue_job_link(array $job): string {
