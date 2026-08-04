@@ -1,0 +1,1 @@
+<?php require __DIR__.'/../app/bootstrap.php';require_user();header('Content-Type: application/json');$id=preg_replace('/[^a-zA-Z0-9_-]/','',$_GET['id']??'');if(!$id){http_response_code(422);exit;}try{echo json_encode(['ok'=>true,'data'=>ptero('/servers/'.$id.'/resources')]);}catch(Throwable $e){http_response_code(502);echo json_encode(['ok'=>false,'error'=>$e->getMessage()]);}
