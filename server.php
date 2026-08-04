@@ -35,6 +35,17 @@ try{
 .activity-log{max-height:420px;overflow:auto}
 .activity-row{padding:11px 14px;border-top:1px solid #252a31}
 .activity-row .meta{font-size:12px;color:#9ca4b0}
+.file-toolbar{display:flex;gap:10px;flex-wrap:wrap;padding:14px;border-bottom:1px solid #2a2e35;background:#101318}
+.file-toolbar input{height:40px;padding:0 10px;background:#0b0e12;color:#fff;border:1px solid #303640;border-radius:8px;min-width:260px}
+.file-layout{display:grid;grid-template-columns:320px 1fr;min-height:520px}
+.file-list{border-right:1px solid #252a31;overflow:auto;max-height:520px}
+.file-entry{display:block;width:100%;text-align:left;background:none;border:0;color:#dbe1ea;padding:10px 14px;border-top:1px solid #252a31;cursor:pointer}
+.file-entry:hover,.file-entry.active{background:#1a1f27}
+.file-editor{display:flex;flex-direction:column;min-height:520px}
+.file-meta{padding:12px 14px;border-bottom:1px solid #252a31;color:#9ca4b0;font-size:12px}
+.file-editor textarea{flex:1;min-height:360px;border:0;resize:vertical;background:#0b0e12;color:#dce2ea;font:13px/1.5 Consolas,monospace;padding:14px}
+.file-actions{display:flex;justify-content:flex-end;gap:10px;padding:12px 14px;border-top:1px solid #252a31;background:#101318}
+@media (max-width:980px){.file-layout{grid-template-columns:1fr}.file-list{border-right:0;border-bottom:1px solid #252a31;max-height:260px}}
 .status-pill{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.6px}
 .status-dot{width:8px;height:8px;border-radius:50%;background:#9aa1ad}
 .status-pill.connected .status-dot{background:#35d07f}
@@ -62,6 +73,7 @@ try{
 <div class="server-tabs">
 <button class="tab active" data-tab="overview">Overview</button>
 <button class="tab" data-tab="console">Console</button>
+<button class="tab" data-tab="files">Files</button>
 <button class="tab" data-tab="databases">Databases</button>
 <button class="tab" data-tab="backups">Backups</button>
 <button class="tab" data-tab="schedules">Schedules</button>
@@ -96,6 +108,28 @@ try{
 </div>
 </section>
 
+<section class="pane" id="files">
+<div class="manage-card">
+<div class="cardhead"><b>FILES</b></div>
+<div class="file-toolbar">
+  <input id="filepath" value="/" placeholder="Directory path, e.g. / or /plugins">
+  <button class="btn" id="loadfiles">Load folder</button>
+  <button class="btn" id="goup">Go up</button>
+</div>
+<div class="file-layout">
+  <div id="filelist" class="file-list"></div>
+  <div class="file-editor">
+    <div class="file-meta" id="filemeta">Select a file to view or edit.</div>
+    <textarea id="filecontent" placeholder="File content will appear here" spellcheck="false"></textarea>
+    <div class="file-actions">
+      <button class="btn" id="reloadfile">Reload file</button>
+      <button class="btn primary" id="savefile">Save file</button>
+    </div>
+  </div>
+</div>
+</div>
+</section>
+
 <section class="pane" id="databases"><div class="manage-card"><div class="cardhead"><b>DATABASES</b></div><div id="dblist" class="listbox"></div></div></section>
 <section class="pane" id="backups"><div class="manage-card"><div class="cardhead"><b>BACKUPS</b><button class="btn primary" id="createbackup">Create Backup</button></div><div id="backuplist" class="listbox"></div></div></section>
 <section class="pane" id="schedules"><div class="manage-card"><div class="cardhead"><b>SCHEDULES</b></div><div id="schedulelist" class="listbox"></div></div></section>
@@ -111,6 +145,7 @@ const ID=<?=json_encode($id)?>,CSRF=<?=json_encode(csrf())?>;
 const q=s=>document.querySelector(s);
 function em(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function mb(n){return (n/1024/1024).toFixed(1)+' MB'}
+function stripAnsi(text){return String(text??'').replace(/\x1b\[[0-9;]*[A-Za-z]/g,'');}
 
 async function api(action,opt={}){
   let url='/api/manage.php?action='+encodeURIComponent(action)+'&id='+encodeURIComponent(ID);
@@ -154,6 +189,7 @@ document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
   b.classList.add('active');
   q('#'+b.dataset.tab).classList.add('active');
   if(b.dataset.tab==='console') connectConsole();
+  if(b.dataset.tab==='files') loadFiles();
   if(b.dataset.tab==='databases') loadDB();
   if(b.dataset.tab==='backups') loadBackups();
   if(b.dataset.tab==='schedules') loadSchedules();
@@ -164,7 +200,7 @@ document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
 
 let ws=null;
 function setWsState(text,type=''){const el=q('#wsstate');el.className='status-pill '+type;el.querySelector('.status-text').textContent=text;}
-function appendConsole(line){const el=q('#terminal');el.textContent+=(line||'')+'\n';if(el.textContent.length>180000)el.textContent=el.textContent.slice(-120000);el.scrollTop=el.scrollHeight;}
+function appendConsole(line){const el=q('#terminal');const clean=stripAnsi(line);el.textContent+=(clean||'')+'\n';if(el.textContent.length>180000)el.textContent=el.textContent.slice(-120000);el.scrollTop=el.scrollHeight;}
 
 async function connectConsole(){
   if(ws&&(ws.readyState===WebSocket.OPEN||ws.readyState===WebSocket.CONNECTING)) return;
@@ -192,6 +228,94 @@ q('#sendcmd').onclick=async()=>{
   catch(e){alert(e.message);}
 };
 q('#command').addEventListener('keydown',e=>{if(e.key==='Enter') q('#sendcmd').click();});
+
+let currentDir='/';
+let currentFilePath='';
+
+function normalizePath(path){
+  let p=String(path||'/').trim();
+  if(!p.startsWith('/')) p='/'+p;
+  p=p.replace(/\\+/g,'/').replace(/\/+/g,'/');
+  return p || '/';
+}
+
+function dirname(path){
+  const p=normalizePath(path);
+  if(p==='/'||!p.includes('/')) return '/';
+  const i=p.lastIndexOf('/');
+  return i<=0?'/':p.slice(0,i);
+}
+
+function joinPath(dir,name){
+  const d=normalizePath(dir);
+  if(d==='/') return '/'+name;
+  return d.replace(/\/$/,'')+'/'+name;
+}
+
+function basename(path){
+  const p=normalizePath(path);
+  if(p==='/') return '/';
+  const i=p.lastIndexOf('/');
+  return i===-1?p:p.slice(i+1);
+}
+
+async function loadFiles(path){
+  const target=normalizePath(path||q('#filepath')?.value||currentDir||'/');
+  currentDir=target;
+  if(q('#filepath')) q('#filepath').value=target;
+  try{
+    const d=await api('files',{path:target});
+    const rows=(d||[]).map(x=>x.attributes||{});
+    const dirs=[]; const files=[];
+    for(const r of rows){ if(r.is_file) files.push(r); else dirs.push(r); }
+    dirs.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
+    files.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
+    const html=[];
+    html.push('<button class="file-entry" data-type="dir" data-path="'+em(dirname(target))+'">.. (parent)</button>');
+    for(const r of dirs){const p=joinPath(target,String(r.name||''));html.push('<button class="file-entry" data-type="dir" data-path="'+em(p)+'">[DIR] '+em(String(r.name||''))+'</button>');}
+    for(const r of files){const p=joinPath(target,String(r.name||''));html.push('<button class="file-entry" data-type="file" data-path="'+em(p)+'">[FILE] '+em(String(r.name||''))+'</button>');}
+    q('#filelist').innerHTML=html.join('')||'<div class="muted" style="padding:14px">No files found.</div>';
+    if(!files.length) q('#filemeta').textContent='Folder loaded. No files in this directory.';
+  }catch(e){
+    q('#filelist').innerHTML='<div class="error" style="margin:12px">'+em(e.message||String(e))+'</div>';
+  }
+}
+
+async function openFile(path){
+  currentFilePath=normalizePath(path);
+  try{
+    const content=await api('file-content',{path:currentFilePath});
+    q('#filecontent').value=String(content||'');
+    q('#filemeta').textContent='Editing '+currentFilePath;
+    document.querySelectorAll('.file-entry').forEach(el=>el.classList.remove('active'));
+    document.querySelectorAll('.file-entry[data-type="file"]').forEach(el=>{if((el.getAttribute('data-path')||'')===currentFilePath)el.classList.add('active');});
+  }catch(e){
+    q('#filemeta').textContent='Could not open file: '+(e.message||String(e));
+  }
+}
+
+document.addEventListener('click',e=>{
+  const btn=e.target.closest('.file-entry');
+  if(!btn) return;
+  const type=btn.getAttribute('data-type')||'';
+  const path=btn.getAttribute('data-path')||'/';
+  if(type==='dir') loadFiles(path);
+  if(type==='file') openFile(path);
+});
+
+q('#loadfiles').onclick=()=>loadFiles();
+q('#goup').onclick=()=>loadFiles(dirname(currentDir));
+q('#reloadfile').onclick=()=>{ if(currentFilePath) openFile(currentFilePath); };
+q('#savefile').onclick=async()=>{
+  if(!currentFilePath){alert('Select a file first.');return;}
+  try{
+    await api('save-file',{body:{path:currentFilePath,content:q('#filecontent').value}});
+    q('#filemeta').textContent='Saved '+basename(currentFilePath)+' at '+new Date().toLocaleTimeString();
+    loadActivity();
+  }catch(e){
+    alert(e.message||String(e));
+  }
+};
 
 async function loadDB(){
   try{const d=await api('databases'); q('#dblist').innerHTML=(d||[]).map(x=>{const a=x.attributes||{};return `<div class="listrow"><div><b>${em(a.name)}</b><div class="muted small">${em(a.host?.address||'')} : ${em(a.host?.port||'')}</div></div><span>${em(a.username||'')}</span></div>`;}).join('')||'<div class="empty muted">No databases.</div>';}
@@ -275,6 +399,7 @@ async function loadActivity(){
 resources();
 setInterval(resources,10000);
 loadActivity();
+loadFiles('/');
 </script>
 </body>
 </html>

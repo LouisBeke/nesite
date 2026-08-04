@@ -16,7 +16,7 @@ $u = require_user();
 $q = db()->prepare("SELECT s.id,s.name,s.status,s.ptero_server_id,s.ptero_identifier,s.last_error,s.updated_at,o.order_number
                     FROM services s
                     LEFT JOIN orders o ON o.id=s.order_id
-                    WHERE s.user_id=? AND s.status IN ('pending','provisioning','failed','active','suspended')
+                    WHERE s.user_id=? AND s.status IN ('pending','provisioning')
                     ORDER BY s.updated_at DESC, s.id DESC");
 $q->execute([(int)$u['id']]);
 $services = $q->fetchAll();
@@ -53,13 +53,7 @@ foreach ($services as $s) {
     $step = 'Queued';
     $eta = null;
 
-    if ((string)$s['status'] === 'active' && !empty($s['ptero_server_id'])) {
-        $progress = 100;
-        $step = 'Completed';
-    } elseif ((string)$s['status'] === 'failed') {
-        $progress = 100;
-        $step = 'Failed';
-    } elseif ($logs) {
+    if ($logs) {
         $latestEvent = (string)($logs[0]['event_name'] ?? '');
         if (isset($stageMap[$latestEvent])) {
             $progress = (int)$stageMap[$latestEvent]['progress'];

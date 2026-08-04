@@ -80,7 +80,7 @@ if ($u['ptero_client_key']) {
 <?php if(!$u['ptero_client_key']):?><div class="notice">Connect your Pterodactyl account in <a class="link" href="/settings.php">Account Settings</a> to load your servers.</div><?php endif?>
 <?php if($error):?><div class="error"><?=e($error)?></div><?php endif?>
 
-<section class="card">
+<section class="card" id="prov-section" style="display:none">
 <div class="cardhead"><b>LIVE PROVISIONING STATUS</b><span class="muted" id="prov-summary">Loading…</span></div>
 <div id="prov-grid" class="prov-grid">
 <div class="muted">Checking provisioning queue…</div>
@@ -149,13 +149,16 @@ async function power(card,signal){
 }
 
 function renderProvisioning(items){
+  const section=document.getElementById('prov-section');
   const box=document.getElementById('prov-grid');
   const summary=document.getElementById('prov-summary');
   if(!Array.isArray(items)||!items.length){
-    box.innerHTML='<div class="muted">No active provisioning jobs right now.</div>';
+    if(section) section.style.display='none';
+    box.innerHTML='';
     summary.textContent='0 jobs';
     return;
   }
+  if(section) section.style.display='block';
   let active=0;
   const html=[];
   for(const it of items){
@@ -183,6 +186,8 @@ async function refreshProvisioning(){
     if(!j.ok) throw Error(j.error||'Provisioning status unavailable');
     renderProvisioning(j.items||[]);
   }catch(e){
+    const section=document.getElementById('prov-section');
+    if(section) section.style.display='block';
     document.getElementById('prov-grid').innerHTML='<div class="error">'+em(e.message||String(e))+'</div>';
     document.getElementById('prov-summary').textContent='Unavailable';
   }
