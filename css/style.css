@@ -53,6 +53,15 @@ a, input[type=submit] {
     transition: all 0.3s ease;
 }
 
+::selection {
+    background: rgba(255, 116, 23, 0.28);
+    color: #ffffff;
+}
+
+img {
+    max-width: 100%;
+}
+
 .rtl-cols {
     -moz-flex-direction: row-reverse;
     -webkit-flex-direction: row-reverse;

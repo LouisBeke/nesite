@@ -17,6 +17,19 @@ function fox_table_exists(PDO $pdo, string $table): bool {
     return (int)$q->fetchColumn() > 0;
 }
 
+function fox_migration_applied(PDO $pdo, string $version): bool {
+    static $cache = [];
+    if (array_key_exists($version, $cache)) {
+        return $cache[$version];
+    }
+    if (!fox_table_exists($pdo, 'fox_schema_migrations')) {
+        return $cache[$version] = false;
+    }
+    $q = $pdo->prepare('SELECT 1 FROM fox_schema_migrations WHERE version = ? LIMIT 1');
+    $q->execute([$version]);
+    return $cache[$version] = (bool)$q->fetchColumn();
+}
+
 function fox_auto_migrate(): void {
     static $ran = false;
     if ($ran) return;
@@ -32,6 +45,9 @@ function fox_auto_migrate(): void {
             version VARCHAR(40) NOT NULL PRIMARY KEY,
             applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        if (fox_migration_applied($pdo, 'v10a-auto')) {
+            return;
+        }
 
         // Stage 9 columns are included here too so older installs can self-heal.
         if (fox_table_exists($pdo, 'users')) {
@@ -105,6 +121,7 @@ function fox_auto_migrate(): void {
 // v11 helpers are intentionally defined outside fox_auto_migrate; bootstrap calls the function above.
 function fox_v11_migrate(): void {
     static $ran=false; if($ran)return; $ran=true; $pdo=db();
+    if (fox_migration_applied($pdo, 'v11c-stock')) return;
     if (fox_table_exists($pdo,'services')) {
         $cols=[
             'cancel_at_period_end'=>'TINYINT(1) NOT NULL DEFAULT 0',
@@ -126,9 +143,70 @@ function fox_v11_migrate(): void {
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v11c-stock']);
 }
 
+function fox_v9c_migrate(): void {
+    static $ran = false;
+    if ($ran) return;
+    $ran = true;
+
+    $pdo = db();
+    if (fox_migration_applied($pdo, 'v9c-security-tables')) return;
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS admin_audit_log (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        admin_user_id BIGINT UNSIGNED NULL,
+        action VARCHAR(100) NOT NULL,
+        target_type VARCHAR(60) NULL,
+        target_id VARCHAR(100) NULL,
+        ip_address VARCHAR(64) NULL,
+        details TEXT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_audit_created(created_at),
+        INDEX idx_audit_action(action),
+        CONSTRAINT fk_audit_admin FOREIGN KEY (admin_user_id) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS login_history (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        user_id BIGINT UNSIGNED NULL,
+        email VARCHAR(190) NULL,
+        ip_address VARCHAR(45) NULL,
+        user_agent VARCHAR(500) NULL,
+        success TINYINT(1) NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX(user_id),
+        INDEX(created_at),
+        CONSTRAINT fk_login_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        user_id BIGINT UNSIGNED NOT NULL,
+        token_hash CHAR(64) NOT NULL UNIQUE,
+        expires_at DATETIME NOT NULL,
+        used_at DATETIME NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX(user_id),
+        CONSTRAINT fk_reset_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS user_sessions (
+        session_id VARCHAR(128) PRIMARY KEY,
+        user_id BIGINT UNSIGNED NOT NULL,
+        ip_address VARCHAR(45) NULL,
+        user_agent VARCHAR(500) NULL,
+        last_seen_at DATETIME NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX(user_id),
+        CONSTRAINT fk_session_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v9c-security-tables']);
+}
+
 
 function fox_v12_migrate(): void {
     static $ran=false; if($ran)return; $ran=true; $pdo=db();
+    if (fox_migration_applied($pdo, 'v12-multi-egg')) return;
     $pdo->exec("CREATE TABLE IF NOT EXISTS product_eggs (
         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
         product_id BIGINT UNSIGNED NOT NULL,
@@ -156,6 +234,7 @@ function fox_v12_migrate(): void {
 
 function fox_v13_migrate(): void {
     static $ran=false; if($ran)return; $ran=true; $pdo=db();
+    if (fox_migration_applied($pdo, 'v13-configurator')) return;
     $pdo->exec("CREATE TABLE IF NOT EXISTS product_egg_variables (
         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
         product_id BIGINT UNSIGNED NOT NULL,
@@ -180,6 +259,7 @@ function fox_v13_migrate(): void {
 
 function fox_v13a_migrate(): void {
     static $ran=false; if($ran)return; $ran=true; $pdo=db();
+    if (fox_migration_applied($pdo, 'v13a-client-billing')) return;
     if (fox_table_exists($pdo,'services')) {
         $cols=[
             'cancellation_reason'=>'TEXT NULL',
@@ -196,6 +276,13 @@ function fox_v13a_migrate(): void {
 
 function fox_v14_migrate(): void {
     static $ran=false; if($ran)return; $ran=true; $pdo=db();
+    $v14Ready = fox_migration_applied($pdo, 'v14-provisioning-engine')
+        && fox_table_exists($pdo, 'provisioning_queue')
+        && fox_table_exists($pdo, 'provisioning_logs')
+        && fox_table_exists($pdo, 'provisioning_workers')
+        && fox_table_exists($pdo, 'node_cache')
+        && fox_table_exists($pdo, 'provisioning_allocation_locks');
+    if ($v14Ready) return;
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS provisioning_queue (
         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -277,6 +364,10 @@ function fox_v14_migrate(): void {
 
 function fox_v14b_migrate(): void {
     static $ran=false; if($ran)return; $ran=true; $pdo=db();
+    $v14bReady = fox_migration_applied($pdo, 'v14b-smart-infrastructure')
+        && fox_table_exists($pdo, 'node_cache')
+        && fox_table_exists($pdo, 'provisioning_allocation_locks');
+    if ($v14bReady) return;
 
     if (fox_table_exists($pdo,'node_cache')) {
         $cols=[
@@ -325,6 +416,7 @@ function fox_v14b_migrate(): void {
 
 function fox_v15_migrate(): void {
     static $ran=false; if($ran)return; $ran=true; $pdo=db();
+    if (fox_migration_applied($pdo, 'v15-advanced-hosting')) return;
 
     $defaults=[
         ['hosting_allow_startup_variable_edit','1'],

@@ -65,6 +65,7 @@ if ($u['ptero_client_key']) {
 <a href="/support.php">Support</a>
 </nav>
 <nav class="nav bottom">
+<?php if(($u['role'] ?? '') === 'admin'): ?><a href="/admin/"><span>Admin</span></a><?php endif?>
 <a href="/settings.php">Account Settings</a>
 <a href="/logout.php">Sign out</a>
 </nav>

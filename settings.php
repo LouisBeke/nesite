@@ -1,3 +1,45 @@
+<?php
+require __DIR__.'/app/bootstrap.php';
+$u=require_user();security_touch_session((int)$u['id']);$ok='';$err='';$newRecovery=[];
+if (!empty($u['email'])) {
+  try {
+    $lookup = app_ptero('/users?filter[email]=' . rawurlencode((string)$u['email']) . '&per_page=1');
+    $match = $lookup['data'][0]['attributes'] ?? null;
+    if (is_array($match) && !empty($match['id'])) {
+      $pteroLookup = [
+                'username' => (string)($match['username'] ?? ''),
+                'email' => (string)($match['email'] ?? $u['email']),
+                'name' => trim((string)($match['first_name'] ?? '') . ' ' . (string)($match['last_name'] ?? '')),
+      ];
+    }
+  } catch (Throwable $e) {
+    $pteroLookupError = $e->getMessage();
+  }
+}
+    } elseif ($a === 'ptero') {
+      $key = trim($_POST['ptero_key'] ?? '');
+      if ($key !== '') {
+                db()->prepare('UPDATE users SET ptero_client_key=? WHERE id=?')->execute([enc($key), $u['id']]);
+                ptero('/account');
+                $ok = 'Pterodactyl connected successfully.';
+        db()->prepare('UPDATE users SET ptero_client_key=NULL WHERE id=?')->execute([$u['id']]);
+        $ok = 'Pterodactyl connection removed.';
+      }
+  <section class="security-card">
+    <h2>Pterodactyl connection</h2>
+    <?php if ($pteroLookup): ?>
+      <div class="notice">We found a Pterodactyl account for your email: <b><?= e($pteroLookup['username'] ?: $pteroLookup['email']) ?></b>.</div>
+      <div class="muted small">This helps match the right account before you save your client API key.</div>
+    <?php elseif ($pteroLookupError): ?>
+      <div class="error">Email lookup failed: <?= e($pteroLookupError) ?></div>
+    <?php else: ?>
+      <div class="notice">No Pterodactyl account matched your email yet.</div>
+      <form method="post" style="margin-top:12px">
+        <input type="hidden" name="csrf" value="<?= csrf() ?>">
+        <input type="hidden" name="action" value="ptero">
+        <div class="field"><label>Client API key</label><input type="password" name="ptero_key" placeholder="ptlc_..."></div>
+        <button class="btn">Save & test</button>
+      </form>
 <?php require __DIR__.'/app/bootstrap.php';$u=require_user();security_touch_session((int)$u['id']);$ok='';$err='';$newRecovery=[];if($_SERVER['REQUEST_METHOD']==='POST'){verify_csrf();try{$a=$_POST['action']??'profile';if($a==='profile'){db()->prepare('UPDATE users SET name=?,email_notifications=? WHERE id=?')->execute([trim($_POST['name']??$u['name']),isset($_POST['email_notifications'])?1:0,$u['id']]);$ok='Account settings saved.';}elseif($a==='password'){if(!password_verify($_POST['current_password']??'',$u['password_hash']))throw new RuntimeException('Current password is incorrect.');$p=$_POST['new_password']??'';if(strlen($p)<10)throw new RuntimeException('New password must be at least 10 characters.');if($p!==($_POST['confirm_password']??''))throw new RuntimeException('New passwords do not match.');db()->prepare('UPDATE users SET password_hash=? WHERE id=?')->execute([password_hash($p,PASSWORD_DEFAULT),$u['id']]);db()->prepare('DELETE FROM user_sessions WHERE user_id=? AND session_id<>?')->execute([$u['id'],session_id()]);$ok='Password changed and other sessions signed out.';}elseif($a==='ptero'){$key=trim($_POST['ptero_key']??'');if($key!==''){db()->prepare('UPDATE users SET ptero_client_key=? WHERE id=?')->execute([enc($key),$u['id']]);ptero('/account');$ok='Pterodactyl connected successfully.';}else{db()->prepare('UPDATE users SET ptero_client_key=NULL WHERE id=?')->execute([$u['id']]);$ok='Pterodactyl connection removed.';}}elseif($a==='2fa_begin'){$secret=b32encode(random_bytes(20));$_SESSION['2fa_setup_secret']=$secret;$ok='Secret generated. Add it to your authenticator app, then verify a code below.';}elseif($a==='2fa_enable'){$secret=$_SESSION['2fa_setup_secret']??'';if(!$secret||!totp_verify($secret,$_POST['code']??''))throw new RuntimeException('Invalid authenticator code.');for($i=0;$i<8;$i++)$newRecovery[]=strtoupper(bin2hex(random_bytes(4)));db()->prepare('UPDATE users SET two_factor_secret=?,two_factor_enabled=1,two_factor_recovery_codes=? WHERE id=?')->execute([enc($secret),enc(json_encode($newRecovery)),$u['id']]);unset($_SESSION['2fa_setup_secret']);$ok='Two-factor authentication enabled. Save your recovery codes now.';}elseif($a==='2fa_disable'){if(!password_verify($_POST['current_password']??'',$u['password_hash']))throw new RuntimeException('Current password is incorrect.');db()->prepare('UPDATE users SET two_factor_secret=NULL,two_factor_enabled=0,two_factor_recovery_codes=NULL WHERE id=?')->execute([$u['id']]);$ok='Two-factor authentication disabled.';}elseif($a==='sessions'){db()->prepare('DELETE FROM user_sessions WHERE user_id=? AND session_id<>?')->execute([$u['id'],session_id()]);$ok='Other sessions signed out.';}}catch(Throwable $e){$err=$e->getMessage();}$u=user();}$sessions=[];$history=[];
 try{$q=db()->prepare('SELECT * FROM user_sessions WHERE user_id=? ORDER BY last_seen_at DESC');$q->execute([$u['id']]);$sessions=$q->fetchAll();}catch(Throwable $e){}
 try{$q=db()->prepare('SELECT * FROM login_history WHERE user_id=? ORDER BY id DESC LIMIT 15');$q->execute([$u['id']]);$history=$q->fetchAll();}catch(Throwable $e){}

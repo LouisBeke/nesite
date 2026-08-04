@@ -39,8 +39,11 @@ try{
 .file-toolbar input{height:40px;padding:0 10px;background:#0b0e12;color:#fff;border:1px solid #303640;border-radius:8px;min-width:260px}
 .file-layout{display:grid;grid-template-columns:320px 1fr;min-height:520px}
 .file-list{border-right:1px solid #252a31;overflow:auto;max-height:520px}
-.file-entry{display:block;width:100%;text-align:left;background:none;border:0;color:#dbe1ea;padding:10px 14px;border-top:1px solid #252a31;cursor:pointer}
+.file-entry{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:0;color:#dbe1ea;padding:10px 14px;border-top:1px solid #252a31;cursor:pointer}
 .file-entry:hover,.file-entry.active{background:#1a1f27}
+.file-entry .entry-icon{width:18px;text-align:center;color:#ff7417;flex:0 0 18px}
+.file-entry .entry-icon svg{display:block;width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.file-entry .entry-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .file-editor{display:flex;flex-direction:column;min-height:520px}
 .file-meta{padding:12px 14px;border-bottom:1px solid #252a31;color:#9ca4b0;font-size:12px}
 .file-editor textarea{flex:1;min-height:360px;border:0;resize:vertical;background:#0b0e12;color:#dce2ea;font:13px/1.5 Consolas,monospace;padding:14px}
@@ -60,7 +63,7 @@ try{
 <a href="/">My Servers</a>
 <a class="active" href="#">Manage Service</a>
 </nav>
-<nav class="nav bottom"><a href="/settings.php">Account Settings</a><a href="/logout.php">Sign out</a></nav>
+<nav class="nav bottom"><?php if(($u['role'] ?? '') === 'admin'): ?><a href="/admin/"><span>Admin</span></a><?php endif?><a href="/settings.php">Account Settings</a><a href="/logout.php">Sign out</a></nav>
 </aside>
 <main class="main">
 <header><div class="profile"><div><b><?=e($u['name'])?></b><div class="muted" style="font-size:12px"><?=e(ucfirst($u['role']))?></div></div><div class="avatar"><?=e(strtoupper(substr($u['name'],0,1)))?></div></div></header>
@@ -200,7 +203,47 @@ document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
 
 let ws=null;
 function setWsState(text,type=''){const el=q('#wsstate');el.className='status-pill '+type;el.querySelector('.status-text').textContent=text;}
-function appendConsole(line){const el=q('#terminal');const clean=stripAnsi(line);el.textContent+=(clean||'')+'\n';if(el.textContent.length>180000)el.textContent=el.textContent.slice(-120000);el.scrollTop=el.scrollHeight;}
+
+function escapeHtml(text){return String(text??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+
+function ansiToHtml(text){
+  const colors=['#000000','#cd3131','#0dbc79','#e5e510','#2472c8','#bc3fbc','#11a8cd','#e5e5e5'];
+  const bright=['#666666','#f14c4c','#23d18b','#f5f543','#3b8eea','#d670d6','#29b8db','#ffffff'];
+  let html='';
+  let open=false;
+  let fg='';
+  let bg='';
+  let bold=false;
+  const closeSpan=()=>{if(open){html+='</span>';open=false;}};
+  const openSpan=()=>{closeSpan(); const styles=[]; if(fg) styles.push('color:'+fg); if(bg) styles.push('background-color:'+bg); if(bold) styles.push('font-weight:700'); if(styles.length){html+='<span style="'+styles.join(';')+'">'; open=true;}};
+  const applyCode=(code)=>{
+    if(code===0){fg='';bg='';bold=false;openSpan();return;}
+    if(code===1){bold=true;openSpan();return;}
+    if(code===22){bold=false;openSpan();return;}
+    if(code===39){fg='';openSpan();return;}
+    if(code===49){bg='';openSpan();return;}
+    if(code>=30&&code<=37){fg=colors[code-30];openSpan();return;}
+    if(code>=90&&code<=97){fg=bright[code-90];openSpan();return;}
+    if(code>=40&&code<=47){bg=colors[code-40];openSpan();return;}
+    if(code>=100&&code<=107){bg=bright[code-100];openSpan();return;}
+  };
+  const parts=String(text??'').split(/(\x1b\[[0-9;]*m)/g);
+  for(const part of parts){
+    if(!part) continue;
+    const match=/^\x1b\[([0-9;]*)m$/.exec(part);
+    if(match){
+      const codes=(match[1]||'0').split(';').filter(Boolean).map(n=>parseInt(n,10));
+      if(!codes.length) applyCode(0);
+      else for(const code of codes) applyCode(Number.isFinite(code)?code:0);
+      continue;
+    }
+    html+=escapeHtml(part).replace(/\n/g,'<br>');
+  }
+  closeSpan();
+  return html;
+}
+
+function appendConsole(line){const el=q('#terminal');el.insertAdjacentHTML('beforeend',ansiToHtml(line)+'<br>');if(el.innerHTML.length>180000)el.innerHTML=el.innerHTML.slice(-120000);el.scrollTop=el.scrollHeight;}
 
 async function connectConsole(){
   if(ws&&(ws.readyState===WebSocket.OPEN||ws.readyState===WebSocket.CONNECTING)) return;
@@ -259,6 +302,12 @@ function basename(path){
   return i===-1?p:p.slice(i+1);
 }
 
+function fileEntryIcon(type){
+  if(type==='up') return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V6"></path><path d="M6.5 11.5 12 6l5.5 5.5"></path></svg>';
+  if(type==='dir') return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5h6l2 2H20.5v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-7.5a2 2 0 0 1 2-2Z"></path></svg>';
+  return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h7l4 4V20a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 20V5A1.5 1.5 0 0 1 7.5 3.5Z"></path><path d="M14 3.5V8h4"></path></svg>';
+}
+
 async function loadFiles(path){
   const target=normalizePath(path||q('#filepath')?.value||currentDir||'/');
   currentDir=target;
@@ -271,9 +320,9 @@ async function loadFiles(path){
     dirs.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
     files.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
     const html=[];
-    html.push('<button class="file-entry" data-type="dir" data-path="'+em(dirname(target))+'">.. (parent)</button>');
-    for(const r of dirs){const p=joinPath(target,String(r.name||''));html.push('<button class="file-entry" data-type="dir" data-path="'+em(p)+'">[DIR] '+em(String(r.name||''))+'</button>');}
-    for(const r of files){const p=joinPath(target,String(r.name||''));html.push('<button class="file-entry" data-type="file" data-path="'+em(p)+'">[FILE] '+em(String(r.name||''))+'</button>');}
+    html.push('<button class="file-entry" data-type="dir" data-path="'+em(dirname(target))+'"><span class="entry-icon">'+fileEntryIcon('up')+'</span><span class="entry-name">(parent)</span></button>');
+    for(const r of dirs){const p=joinPath(target,String(r.name||''));html.push('<button class="file-entry" data-type="dir" data-path="'+em(p)+'"><span class="entry-icon">'+fileEntryIcon('dir')+'</span><span class="entry-name">'+em(String(r.name||''))+'</span></button>');}
+    for(const r of files){const p=joinPath(target,String(r.name||''));html.push('<button class="file-entry" data-type="file" data-path="'+em(p)+'"><span class="entry-icon">'+fileEntryIcon('file')+'</span><span class="entry-name">'+em(String(r.name||''))+'</span></button>');}
     q('#filelist').innerHTML=html.join('')||'<div class="muted" style="padding:14px">No files found.</div>';
     if(!files.length) q('#filemeta').textContent='Folder loaded. No files in this directory.';
   }catch(e){

@@ -1,14 +1,58 @@
 <?php
 declare(strict_types=1);
 session_start();
+
+function is_suspicious_request_path(?string $path): bool {
+    if ($path === null || $path === '') return false;
+    $decoded = rawurldecode($path);
+    $decoded = str_replace('\\', '/', $decoded);
+    $decoded = strtolower($decoded);
+    if ($decoded === '/' || $decoded === '') return false;
+    if (str_contains($decoded, '/..') || str_contains($decoded, '..')) return true;
+    $badSegments = ['.env', '.git', '.htpasswd', '.well-known', 'phpinfo', 'wp-config', 'config.php', 'composer.json', 'package.json', 'docker-compose.yml'];
+    foreach ($badSegments as $segment) {
+        if (str_contains($decoded, $segment)) return true;
+    }
+    return preg_match('#(^|/)(\.env|\.git|\.htpasswd|\.svn|\.gitignore|\.gitmodules|config\.php|wp-config|phpinfo)(/|$)#', $decoded) === 1;
+}
+
+if (is_suspicious_request_path($_SERVER['REQUEST_URI'] ?? '')) {
+    http_response_code(404);
+    header('Content-Type: text/plain; charset=utf-8');
+    die('Not Found');
+}
+
 $configFile=__DIR__.'/../config.php';
 if(!file_exists($configFile)){http_response_code(500);die('Copy config.example.php to config.php and configure it.');}
 $config=require $configFile;
 function cfg(string $key=null){global $config;if($key===null)return $config;$v=$config;foreach(explode('.',$key) as $p){$v=$v[$p]??null;}return $v;}
+function site_url(string $path='/'): string {
+    $base=(string)cfg('app_url');
+    if($base==='')return $path;
+    $base=rtrim($base,'/');
+    $path=$path==='/'?'/':('/'.ltrim($path,'/'));
+    return $base.$path;
+}
+function enforce_https_redirect(): void {
+    if(PHP_SAPI==='cli')return;
+    if(isset($_SERVER['HTTPS']) && in_array((string)$_SERVER['HTTPS'],['on','1'],true))return;
+    if(!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string)$_SERVER['HTTP_X_FORWARDED_PROTO'])==='https')return;
+    $base=(string)cfg('app_url');
+    if($base==='' || !str_starts_with($base,'https://'))return;
+    $uri=$_SERVER['REQUEST_URI']??'/';
+    $qs='';
+    if(($pos=strpos($uri,'?'))!==false){$qs=substr($uri,$pos);$uri=substr($uri,0,$pos);} 
+    $target=rtrim($base,'/').'/'.ltrim($uri,'/');
+    if($qs!=='')$target.=$qs;
+    header('Location: '.$target, true, 301);
+    exit;
+}
+enforce_https_redirect();
 require_once __DIR__.'/mollie.php';
 function db(): PDO {static $pdo;if(!$pdo){$d=cfg('db');$pdo=new PDO("mysql:host={$d['host']};port={$d['port']};dbname={$d['name']};charset=utf8mb4",$d['user'],$d['pass'],[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);}return $pdo;}
 require_once __DIR__.'/migrations.php';
 fox_auto_migrate();
+fox_v9c_migrate();
 fox_v11_migrate();
 fox_v12_migrate();
 fox_v13_migrate();
@@ -21,11 +65,26 @@ require_once __DIR__.'/mail.php';
 require_once __DIR__.'/provisioning.php';
 function csrf():string{if(empty($_SESSION['csrf']))$_SESSION['csrf']=bin2hex(random_bytes(32));return $_SESSION['csrf'];}
 function verify_csrf():void{if(!hash_equals($_SESSION['csrf']??'',$_POST['csrf']??'')){http_response_code(419);die('Invalid request token');}}
-function user():?array{if(empty($_SESSION['uid']))return null;$s=db()->prepare('SELECT * FROM users WHERE id=?');$s->execute([$_SESSION['uid']]);return $s->fetch()?:null;}
-function require_user():array{$u=user();if(!$u){header('Location: /login.php');exit;}if(($u['account_status']??'active')==='disabled'){session_destroy();http_response_code(403);die('This FoxNetwork account has been disabled. Please contact support.');}return $u;}
+function user():?array{
+    static $cache=[];
+    if (empty($_SESSION['uid'])) return null;
+    $uid=(int)$_SESSION['uid'];
+    $key='user:'.$uid;
+    if (!array_key_exists($key, $cache)) {
+        $s=db()->prepare('SELECT * FROM users WHERE id=?');
+        $s->execute([$uid]);
+        $cache[$key]=$s->fetch() ?: null;
+    }
+    return $cache[$key];
+}
+function require_user():array{$u=user();if(!$u){header('Location: '.site_url('/login.php'));exit;}if(($u['account_status']??'active')==='disabled'){session_destroy();http_response_code(403);die('This FoxNetwork account has been disabled. Please contact support.');}return $u;}
 function enc(string $plain):string{$key=hash('sha256',cfg('db.pass'),true);$iv=random_bytes(12);$tag='';$ct=openssl_encrypt($plain,'aes-256-gcm',$key,OPENSSL_RAW_DATA,$iv,$tag);return base64_encode($iv.$tag.$ct);}
 function dec(?string $blob):?string{if(!$blob)return null;$raw=base64_decode($blob,true);if($raw===false||strlen($raw)<28)return null;$key=hash('sha256',cfg('db.pass'),true);$iv=substr($raw,0,12);$tag=substr($raw,12,16);$pt=openssl_decrypt(substr($raw,28),'aes-256-gcm',$key,OPENSSL_RAW_DATA,$iv,$tag);return $pt===false?null:$pt;}
-function ptero(string $path,string $method='GET',?array $body=null){$u=user();$token=dec($u['ptero_client_key']??null);if(!$token)throw new RuntimeException('Pterodactyl API key not configured.');$ch=curl_init(rtrim(cfg('pterodactyl.url'),'/').'/api/client'.$path);$headers=['Authorization: Bearer '.$token,'Accept: Application/vnd.pterodactyl.v1+json','Content-Type: application/json'];curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_HTTPHEADER=>$headers,CURLOPT_TIMEOUT=>12,CURLOPT_CUSTOMREQUEST=>$method]);if($body!==null)curl_setopt($ch,CURLOPT_POSTFIELDS,json_encode($body));$raw=curl_exec($ch);$code=curl_getinfo($ch,CURLINFO_HTTP_CODE);if($raw===false)throw new RuntimeException(curl_error($ch));curl_close($ch);$json=json_decode($raw,true);if($code<200||$code>=300)throw new RuntimeException($json['errors'][0]['detail']??('Pterodactyl HTTP '.$code));return $json;}
+function ptero_cache_dir(): string { $dir=rtrim(sys_get_temp_dir(),'\\/').DIRECTORY_SEPARATOR.'foxnetwork-ptero-cache'; if(!is_dir($dir)) @mkdir($dir,0777,true); return $dir; }
+function ptero_cache_key(string $scope,string $token,string $path,string $method,?array $body): string { return sha1($scope.'|'.$token.'|'.$method.'|'.$path.'|'.($body===null?'':json_encode($body,JSON_UNESCAPED_SLASHES))); }
+function ptero_cache_get(string $key,int $ttl): mixed { $file=ptero_cache_dir().DIRECTORY_SEPARATOR.$key.'.json'; if(!is_file($file)) return null; $raw=@file_get_contents($file); if($raw===false||$raw==='') return null; $data=json_decode($raw,true); if(!is_array($data)||($data['expires_at']??0)<time()) return null; return $data['value'] ?? null; }
+function ptero_cache_set(string $key,mixed $value,int $ttl): void { $file=ptero_cache_dir().DIRECTORY_SEPARATOR.$key.'.json'; @file_put_contents($file,json_encode(['expires_at'=>time()+$ttl,'value'=>$value],JSON_UNESCAPED_SLASHES),LOCK_EX); }
+function ptero(string $path,string $method='GET',?array $body=null){$u=user();$token=dec($u['ptero_client_key']??null);if(!$token)throw new RuntimeException('Pterodactyl API key not configured.');$method=strtoupper($method);$cacheTtl=$method==='GET'?3:0;$cacheKey=$cacheTtl>0?ptero_cache_key('client',$token,$path,$method,$body):null;if($cacheKey){$cached=ptero_cache_get($cacheKey,$cacheTtl);if($cached!==null)return $cached;}$ch=curl_init(rtrim(cfg('pterodactyl.url'),'/').'/api/client'.$path);$headers=['Authorization: Bearer '.$token,'Accept: Application/vnd.pterodactyl.v1+json','Content-Type: application/json'];curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_HTTPHEADER=>$headers,CURLOPT_TIMEOUT=>12,CURLOPT_CUSTOMREQUEST=>$method]);if($body!==null)curl_setopt($ch,CURLOPT_POSTFIELDS,json_encode($body));$raw=curl_exec($ch);$code=curl_getinfo($ch,CURLINFO_HTTP_CODE);if($raw===false)throw new RuntimeException(curl_error($ch));curl_close($ch);$json=json_decode($raw,true);if($code<200||$code>=300)throw new RuntimeException($json['errors'][0]['detail']??('Pterodactyl HTTP '.$code));if($cacheKey)ptero_cache_set($cacheKey,$json,$cacheTtl);return $json;}
 function greeting():string{$h=(int)date('G');return $h<12?'Good morning':($h<18?'Good afternoon':'Good evening');}
 
 function require_admin(): array {
@@ -37,9 +96,58 @@ function require_admin(): array {
     return $u;
 }
 
-function app_setting(string $key, ?string $default=null): ?string {
-    try {$q=db()->prepare('SELECT setting_value FROM app_settings WHERE setting_key=?');$q->execute([$key]);$v=$q->fetchColumn();return $v===false?$default:(string)$v;} catch(Throwable $e){return $default;}
+function fox_setting_cache_dir(): string {
+    $dir = rtrim(sys_get_temp_dir(), '\\/') . DIRECTORY_SEPARATOR . 'foxnetwork-setting-cache';
+    if (!is_dir($dir)) @mkdir($dir, 0777, true);
+    return $dir;
 }
+
+function fox_setting_cache_key(string $key): string {
+    return sha1($key);
+}
+
+function fox_setting_cache_get(string $key, int $ttl = 30): mixed {
+    $file = fox_setting_cache_dir() . DIRECTORY_SEPARATOR . fox_setting_cache_key($key) . '.json';
+    if (!is_file($file)) return null;
+    $raw = @file_get_contents($file);
+    if ($raw === false || $raw === '') return null;
+    $data = json_decode($raw, true);
+    if (!is_array($data) || ($data['expires_at'] ?? 0) < time()) return null;
+    return $data['value'] ?? null;
+}
+
+function fox_setting_cache_set(string $key, mixed $value, int $ttl = 30): void {
+    $file = fox_setting_cache_dir() . DIRECTORY_SEPARATOR . fox_setting_cache_key($key) . '.json';
+    @file_put_contents($file, json_encode(['expires_at' => time() + $ttl, 'value' => $value], JSON_UNESCAPED_SLASHES), LOCK_EX);
+}
+
+function fox_setting_cache_delete(string $key): void {
+    $file = fox_setting_cache_dir() . DIRECTORY_SEPARATOR . fox_setting_cache_key($key) . '.json';
+    if (is_file($file)) @unlink($file);
+}
+
+function app_setting(string $key, ?string $default=null): ?string {
+    static $cache=[];
+    $cacheKey='setting:'.$key;
+    if (!array_key_exists($cacheKey, $cache)) {
+        $cached = fox_setting_cache_get($cacheKey, 30);
+        if ($cached !== null) {
+            $cache[$cacheKey] = $cached === '__NULL__' ? $default : (string)$cached;
+            return $cache[$cacheKey];
+        }
+        try {
+            $q=db()->prepare('SELECT setting_value FROM app_settings WHERE setting_key=?');
+            $q->execute([$key]);
+            $v=$q->fetchColumn();
+            $cache[$cacheKey]=$v===false?$default:(string)$v;
+            fox_setting_cache_set($cacheKey, $cache[$cacheKey] === null ? '__NULL__' : $cache[$cacheKey], 30);
+        } catch (Throwable $e) {
+            $cache[$cacheKey]=$default;
+        }
+    }
+    return $cache[$cacheKey];
+}
+
 function audit_log(string $action, ?string $targetType=null, $targetId=null, string $details=''): void {
     try {$u=user();$q=db()->prepare('INSERT INTO admin_audit_log(admin_user_id,action,target_type,target_id,ip_address,details) VALUES(?,?,?,?,?,?)');$q->execute([$u['id']??null,$action,$targetType,$targetId===null?null:(string)$targetId,$_SERVER['REMOTE_ADDR']??null,$details]);} catch(Throwable $e){}
 }
@@ -56,6 +164,10 @@ maintenance_guard();
 function app_ptero(string $path,string $method='GET',?array $body=null){
     $key=(string)(cfg('pterodactyl.application_key')??'');
     if($key==='') throw new RuntimeException('Pterodactyl Application API key is not configured.');
+    $method=strtoupper($method);
+    $cacheTtl=$method==='GET'?3:0;
+    $cacheKey=$cacheTtl>0?ptero_cache_key('application',$key,$path,$method,$body):null;
+    if($cacheKey){$cached=ptero_cache_get($cacheKey,$cacheTtl);if($cached!==null)return $cached;}
     $ch=curl_init(rtrim((string)cfg('pterodactyl.url'),'/').'/api/application'.$path);
     $headers=['Authorization: Bearer '.$key,'Accept: Application/vnd.pterodactyl.v1+json','Content-Type: application/json'];
     curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_HTTPHEADER=>$headers,CURLOPT_TIMEOUT=>20,CURLOPT_CUSTOMREQUEST=>$method]);
@@ -64,6 +176,7 @@ function app_ptero(string $path,string $method='GET',?array $body=null){
     if($raw===false){$x=curl_error($ch);curl_close($ch);throw new RuntimeException($x);} curl_close($ch);
     $json=$raw!==''?json_decode($raw,true):[];
     if($code<200||$code>=300)throw new RuntimeException($json['errors'][0]['detail']??('Pterodactyl Application API HTTP '.$code));
+    if($cacheKey)ptero_cache_set($cacheKey,$json,$cacheTtl);
     return $json;
 }
 function invoice_for_order(int $orderId): int {
