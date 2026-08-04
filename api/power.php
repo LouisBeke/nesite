@@ -73,6 +73,16 @@ if ($raw === false || $errno !== 0) {
 }
 
 if ($code >= 200 && $code < 300) {
+    try {
+        $q = db()->prepare('SELECT id FROM services WHERE ptero_identifier=? LIMIT 1');
+        $q->execute([$id]);
+        $sid = (int)$q->fetchColumn();
+        if ($sid > 0) {
+            db()->prepare('INSERT INTO service_activity(service_id,admin_user_id,action,details) VALUES(?,?,?,?)')
+                ->execute([$sid, null, 'power_'.$signal, 'Power action from customer portal']);
+        }
+    } catch (Throwable $e) {
+    }
     out(['ok'=>true,'signal'=>$signal,'http'=>$code]);
 }
 

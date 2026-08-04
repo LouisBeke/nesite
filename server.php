@@ -1,15 +1,226 @@
-<?php require __DIR__.'/app/bootstrap.php';$u=require_user();$id=preg_replace('/[^a-zA-Z0-9_-]/','',$_GET['id']??'');if(!$id){header('Location:/');exit;}try{$srv=ptero('/servers/'.$id)['attributes']??[];}catch(Throwable $e){$err=$e->getMessage();$srv=['name'=>'Server'];} ?><!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title><?=e($srv['name']??'Server')?> | FoxNetwork</title><link rel="stylesheet" href="/css/fontawesome-all.min.css"><link rel="stylesheet" href="/assets/portal.css?v=4.2"><style>
-/* FoxNetwork server manager v3.1 — intentionally inline so container/browser CSS caches cannot break this page */
-.server-manager{max-width:1500px}.server-hero{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:24px}.server-title h1{margin:7px 0 5px}.server-tabs{display:flex!important;gap:8px!important;flex-wrap:wrap!important;margin:24px 0!important;padding:6px!important;background:#111419!important;border:1px solid #2a2e35!important;border-radius:13px!important;width:max-content!important;max-width:100%!important}.server-tabs .tab{appearance:none!important;border:0!important;background:transparent!important;color:#aeb5c0!important;padding:11px 17px!important;border-radius:9px!important;cursor:pointer!important;font:700 14px Arial,sans-serif!important}.server-tabs .tab:hover{background:#1b1f25!important;color:#fff!important}.server-tabs .tab.active{background:#ff7417!important;color:#111!important;box-shadow:0 5px 18px rgba(255,116,23,.18)!important}.pane{display:none!important}.pane.active{display:block!important}.manage-card{background:#15181d;border:1px solid #2a2e35;border-radius:15px;overflow:hidden;margin-bottom:18px}.manage-card .cardhead{min-height:68px}.manage-card .cardhead b{letter-spacing:.35px}.status-pill{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.6px}.status-dot{width:8px;height:8px;border-radius:50%;background:#9aa1ad}.status-pill.connected .status-dot{background:#35d07f;box-shadow:0 0 0 4px rgba(53,208,127,.12)}.status-pill.error .status-dot{background:#ff5f62}.control-grid{display:flex;gap:10px;flex-wrap:wrap;padding:22px 28px}.control-grid .btn{min-width:110px;text-align:center}.terminal-wrap{background:#080a0d;position:relative}.console-tools{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#0d1014;border-bottom:1px solid #252a31}.console-tools .spacer{flex:1}.console-tools button{appearance:none;border:1px solid #303640;background:#15191f;color:#cfd5de;border-radius:7px;padding:7px 11px;font:700 12px Arial;cursor:pointer}.console-tools button:hover{border-color:#ff7417;color:#fff}.console-tools label{display:flex;align-items:center;gap:7px;color:#9aa1ad;font:12px Arial}.console-line{display:block;min-height:1.55em}.ansi-black{color:#555}.ansi-red{color:#ff6b6b}.ansi-green{color:#69db7c}.ansi-yellow{color:#ffd43b}.ansi-blue{color:#74c0fc}.ansi-magenta{color:#da77f2}.ansi-cyan{color:#66d9e8}.ansi-white{color:#f1f3f5}.ansi-bright{font-weight:700}.ansi-underline{text-decoration:underline}.terminal{height:470px!important;margin:0!important;border:0!important;border-radius:0!important;padding:20px 22px!important;color:#d6dce5!important;font:13px/1.55 Consolas,'Courier New',monospace!important;white-space:pre-wrap!important;overflow:auto!important}.terminal:empty:before{content:'Console output will appear here when connected.';color:#626a76}.commandbar{display:flex!important;gap:10px!important;padding:16px 18px!important;background:#101318!important;border-top:1px solid #2a2e35!important}.commandbar input{min-width:0!important;flex:1!important;height:44px!important;padding:0 14px!important;background:#0b0e12!important;color:#fff!important;border:1px solid #303640!important;border-radius:9px!important;outline:none!important;font-size:14px!important}.commandbar input:focus{border-color:#ff7417!important;box-shadow:0 0 0 3px rgba(255,116,23,.1)!important}.commandbar .btn{min-width:92px}.filetools{display:flex!important;justify-content:flex-start!important;gap:9px!important;padding:14px 18px!important;background:#111419!important;border-bottom:1px solid #2a2e35!important}.listbox{padding:0!important}.listrow{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:18px!important;padding:15px 20px!important;border-bottom:1px solid #252a31!important;min-height:70px}.listrow:hover{background:#181c21}.listrow:last-child{border-bottom:0!important}.listrow i{width:22px;color:#ff7417}.listrow .btn{min-width:82px;text-align:center}.empty{padding:46px 20px!important}.editorhead{padding:15px 18px!important;background:#111419!important}.editor{width:calc(100% - 36px)!important;margin:18px!important;height:520px!important;resize:vertical!important;background:#080a0d!important}.section-help{padding:18px 20px;color:#9aa1ad}.loading-row{padding:34px 20px;text-align:center;color:#9aa1ad}.loading-row i{margin-right:8px;color:#ff7417}.stats .stat{min-height:112px}.stats .stat strong{font-size:26px}.toast{position:fixed;right:24px;bottom:24px;z-index:9999;max-width:420px;padding:14px 18px;border-radius:10px;background:#20242a;border:1px solid #353a43;color:#fff;box-shadow:0 12px 35px rgba(0,0,0,.35);opacity:0;transform:translateY(10px);pointer-events:none;transition:.2s}.toast.show{opacity:1;transform:none}.toast.error{background:#2a1719;border-color:#633034}.toast.ok{background:#15251d;border-color:#315032}@media(max-width:760px){.server-tabs{width:100%!important}.server-tabs .tab{flex:1 1 42%!important}.commandbar{flex-wrap:wrap!important}.commandbar .btn{width:100%}.control-grid{padding:18px}.listrow{align-items:flex-start!important}.terminal{height:390px!important}}
-</style></head><body><div class="app"><aside class="side"><div class="brand"><img src="/images/logo.png"><span>FOX<b>NETWORK</b></span></div><nav class="nav"><a href="/"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6M9 12h10"/></svg></span><span>My Servers</span></a><a class="active" href="#overview"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7.5 7h9a5 5 0 0 1 4.8 6.4l-1.2 4A2.2 2.2 0 0 1 16.3 18l-1.1-1.5H8.8L7.7 18a2.2 2.2 0 0 1-3.8-.6l-1.2-4A5 5 0 0 1 7.5 7Z"/><path d="M7 10v4M5 12h4M16.5 10.8h.01M18.5 13.2h.01"/></svg></span><span>Manage Server</span></a></nav><nav class="nav bottom"><a href="/settings.php"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg></span><span>Account Settings</span></a><a href="/logout.php"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 5H5v14h5M14 8l4 4-4 4M18 12H9"/></svg></span><span>Sign out</span></a></nav></aside><main class="main"><header><div class="profile"><div><b><?=e($u['name'])?></b><div class="muted" style="font-size:12px"><?=e(ucfirst($u['role']))?></div></div><div class="avatar"><?=e(strtoupper(substr($u['name'],0,1)))?></div></div></header><div class="content server-manager"><div class="eyebrow">Game Server</div><h1><?=e($srv['name']??'Server')?></h1><div class="muted"><?=e($srv['description']??'FoxNetwork game server')?></div><?php if(!empty($err)):?><div class="error"><?=e($err)?></div><?php endif?><div class="server-tabs"><button class="tab active" data-tab="overview">Overview</button><button class="tab" data-tab="console">Console</button><button class="tab" data-tab="files">Files</button><button class="tab" data-tab="backups">Backups</button><button class="tab" data-tab="databases">Databases</button><button class="tab" data-tab="network">Network</button></div>
-<section class="pane active" id="overview"><div class="stats"><div class="stat"><span class="muted">Status</span><strong id="status">Loading…</strong></div><div class="stat"><span class="muted">CPU</span><strong id="cpu">—</strong></div><div class="stat"><span class="muted">Memory</span><strong id="memory">—</strong></div></div><div class="manage-card"><div class="cardhead"><b>SERVER CONTROLS</b></div><div class="control-grid"><button class="btn primary" data-power="start">▶ Start</button><button class="btn" data-power="restart">↻ Restart</button><button class="btn" data-power="stop">■ Stop</button><a class="btn" target="_blank" href="<?=e(rtrim(cfg('pterodactyl.url'),'/').'/server/'.$id)?>">Advanced Panel ↗</a></div></div></section>
-<section class="pane" id="console"><div class="manage-card"><div class="cardhead"><b>LIVE CONSOLE</b><span id="wsstate" class="status-pill"><span class="status-dot"></span><span class="status-text">Not connected</span></span></div><div class="terminal-wrap"><div class="console-tools"><button type="button" id="clearconsole">Clear</button><button type="button" id="reconnectconsole">Reconnect</button><span class="spacer"></span><label><input type="checkbox" id="autoscroll" checked> Auto-scroll</label></div><div id="terminal" class="terminal"></div></div><div class="commandbar"><input id="command" placeholder="Type a server command…"><button class="btn primary" id="sendcmd">Send</button></div></div></section>
-<section class="pane" id="files"><div class="manage-card"><div class="cardhead"><b>FILE MANAGER</b><span id="path" class="muted">/</span></div><div class="filetools"><button class="btn" id="updir">← Up</button><button class="btn" id="refreshfiles">Refresh</button></div><div id="filelist" class="listbox"><div class="muted">Open this tab to load files.</div></div></div></section>
-<section class="pane" id="backups"><div class="manage-card"><div class="cardhead"><b>BACKUPS</b><button class="btn primary" id="createbackup">+ Create Backup</button></div><div id="backuplist" class="listbox"></div></div></section>
+<?php
+require __DIR__.'/app/bootstrap.php';
+$u = require_user();
+$id = preg_replace('/[^a-zA-Z0-9_-]/','',$_GET['id'] ?? '');
+if(!$id){header('Location:/');exit;}
+
+try{
+  $srv = ptero('/servers/'.$id)['attributes'] ?? [];
+}catch(Throwable $e){
+  $err = $e->getMessage();
+  $srv = ['name'=>'Server'];
+}
+?>
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title><?=e($srv['name']??'Server')?> | FoxNetwork</title>
+<link rel="stylesheet" href="/css/fontawesome-all.min.css">
+<link rel="stylesheet" href="/assets/portal.css?v=14.0">
+<style>
+.server-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0;padding:6px;background:#111419;border:1px solid #2a2e35;border-radius:13px;width:max-content;max-width:100%}
+.server-tabs .tab{appearance:none;border:0;background:transparent;color:#aeb5c0;padding:11px 17px;border-radius:9px;cursor:pointer;font:700 14px Arial,sans-serif}
+.server-tabs .tab:hover{background:#1b1f25;color:#fff}
+.server-tabs .tab.active{background:#ff7417;color:#111}
+.pane{display:none}.pane.active{display:block}
+.manage-card{background:#15181d;border:1px solid #2a2e35;border-radius:15px;overflow:hidden;margin-bottom:18px}
+.control-grid{display:flex;gap:10px;flex-wrap:wrap;padding:20px}
+.control-grid .btn{min-width:100px}
+.terminal{height:430px;background:#0a0d11;color:#dce2ea;padding:14px;font:13px/1.5 Consolas,monospace;overflow:auto;white-space:pre-wrap}
+.commandbar{display:flex;gap:10px;padding:14px;background:#101318;border-top:1px solid #2a2e35}
+.commandbar input{flex:1;min-width:0;height:42px;padding:0 12px;background:#0b0e12;color:#fff;border:1px solid #303640;border-radius:9px}
+.listbox .listrow{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:12px 16px;border-top:1px solid #252a31}
+.activity-log{max-height:420px;overflow:auto}
+.activity-row{padding:11px 14px;border-top:1px solid #252a31}
+.activity-row .meta{font-size:12px;color:#9ca4b0}
+.status-pill{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.6px}
+.status-dot{width:8px;height:8px;border-radius:50%;background:#9aa1ad}
+.status-pill.connected .status-dot{background:#35d07f}
+.status-pill.error .status-dot{background:#ff5f62}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="side">
+<div class="brand"><img src="/images/logo.png"><span>FOX<b>NETWORK</b></span></div>
+<nav class="nav">
+<a href="/">My Servers</a>
+<a class="active" href="#">Manage Service</a>
+</nav>
+<nav class="nav bottom"><a href="/settings.php">Account Settings</a><a href="/logout.php">Sign out</a></nav>
+</aside>
+<main class="main">
+<header><div class="profile"><div><b><?=e($u['name'])?></b><div class="muted" style="font-size:12px"><?=e(ucfirst($u['role']))?></div></div><div class="avatar"><?=e(strtoupper(substr($u['name'],0,1)))?></div></div></header>
+<div class="content server-manager">
+<div class="eyebrow">Game Server</div>
+<h1><?=e($srv['name']??'Server')?></h1>
+<div class="muted"><?=e($srv['description']??'FoxNetwork game server')?></div>
+<?php if(!empty($err)):?><div class="error"><?=e($err)?></div><?php endif?>
+
+<div class="server-tabs">
+<button class="tab active" data-tab="overview">Overview</button>
+<button class="tab" data-tab="console">Console</button>
+<button class="tab" data-tab="databases">Databases</button>
+<button class="tab" data-tab="backups">Backups</button>
+<button class="tab" data-tab="schedules">Schedules</button>
+<button class="tab" data-tab="network">Network</button>
+<button class="tab" data-tab="activity">Activity Log</button>
+</div>
+
+<section class="pane active" id="overview">
+<div class="stats">
+<div class="stat"><span class="muted">Status</span><strong id="status">Loading…</strong></div>
+<div class="stat"><span class="muted">CPU</span><strong id="cpu">—</strong></div>
+<div class="stat"><span class="muted">Memory</span><strong id="memory">—</strong></div>
+</div>
+<div class="manage-card">
+<div class="cardhead"><b>SERVICE CONTROLS</b></div>
+<div class="control-grid">
+<button class="btn primary" data-power="start">Start</button>
+<button class="btn" data-power="restart">Restart</button>
+<button class="btn" data-power="stop">Stop</button>
+<button class="btn warning" id="reinstall">Reinstall</button>
+<a class="btn" href="<?=e(rtrim(cfg('pterodactyl.url'),'/').'/server/'.$id)?>" target="_blank">Advanced Panel</a>
+</div>
+</div>
+</section>
+
+<section class="pane" id="console">
+<div class="manage-card">
+<div class="cardhead"><b>LIVE CONSOLE</b><span id="wsstate" class="status-pill"><span class="status-dot"></span><span class="status-text">Not connected</span></span></div>
+<div id="terminal" class="terminal"></div>
+<div class="commandbar"><input id="command" placeholder="Type a command"><button class="btn primary" id="sendcmd">Send</button></div>
+</div>
+</section>
+
 <section class="pane" id="databases"><div class="manage-card"><div class="cardhead"><b>DATABASES</b></div><div id="dblist" class="listbox"></div></div></section>
-<section class="pane" id="network"><div class="manage-card"><div class="cardhead"><b>NETWORK & ALLOCATIONS</b></div><div id="netlist" class="listbox"></div></div></section>
-</div></main></div><div id="toast" class="toast"></div><script>const ID=<?=json_encode($id)?>,CSRF=<?=json_encode(csrf())?>;let currentPath='/';const q=s=>document.querySelector(s);function toast(msg,type='ok'){const t=q('#toast');t.textContent=msg;t.className='toast '+type+' show';clearTimeout(window.__toast);window.__toast=setTimeout(()=>t.classList.remove('show'),3500)}function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}async function api(action,opt={}){let url='/api/manage.php?action='+encodeURIComponent(action)+'&id='+encodeURIComponent(ID);if(opt.path)url+='&path='+encodeURIComponent(opt.path);let init={headers:{'X-CSRF-Token':CSRF}};if(opt.body!==undefined){init.method='POST';init.headers['Content-Type']='application/json';init.body=JSON.stringify(opt.body)}const r=await fetch(url,init),t=await r.text();let j;try{j=JSON.parse(t)}catch(e){throw Error('Invalid portal response (HTTP '+r.status+')')}if(!j.ok)throw Error(j.error||'Request failed');return j.data}async function resources(){try{const j=await fetch('/api/resources.php?id='+ID).then(r=>r.json()),a=j.data.attributes;q('#status').textContent=a.current_state.toUpperCase();q('#cpu').textContent=(a.resources.cpu_absolute||0).toFixed(1)+'%';q('#memory').textContent=((a.resources.memory_bytes||0)/1048576).toFixed(0)+' MB'}catch(e){q('#status').textContent='UNAVAILABLE'}}async function power(signal){try{const r=await fetch('/api/power.php',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF},body:JSON.stringify({id:ID,signal})}),j=await r.json();if(!j.ok)throw Error(j.error);setTimeout(resources,1000)}catch(e){toast(e.message,'error')}}document.querySelectorAll('[data-power]').forEach(b=>b.onclick=()=>power(b.dataset.power));document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab,.pane').forEach(x=>x.classList.remove('active'));b.classList.add('active');q('#'+b.dataset.tab).classList.add('active');if(b.dataset.tab==='console')connectConsole();if(b.dataset.tab==='files')loadFiles();if(b.dataset.tab==='backups')loadBackups();if(b.dataset.tab==='databases')loadDB();if(b.dataset.tab==='network')loadNetwork()});
-let ws=null,wsRetry=null,wsGeneration=0;function setWsState(text,type=''){const el=q('#wsstate');el.className='status-pill '+type;const st=el.querySelector('.status-text');if(st)st.textContent=text}function ansiToHtml(input){let text=String(input??''),out='',pos=0,classes=[];const re=/\x1b\[([0-9;]*)m/g;function addText(x){out+=esc(x)}function cls(){return classes.length?' class="'+classes.join(' ')+'"':''}let m;while((m=re.exec(text))){addText(text.slice(pos,m.index));const codes=(m[1]||'0').split(';').map(Number);for(const c of codes){if(c===0)classes=[];else if(c===1&&!classes.includes('ansi-bright'))classes.push('ansi-bright');else if(c===4&&!classes.includes('ansi-underline'))classes.push('ansi-underline');else if(c===22)classes=classes.filter(x=>x!=='ansi-bright');else if(c===24)classes=classes.filter(x=>x!=='ansi-underline');else if(c===39)classes=classes.filter(x=>!x.startsWith('ansi-')||x==='ansi-bright'||x==='ansi-underline');else if(c>=30&&c<=37){classes=classes.filter(x=>!['ansi-black','ansi-red','ansi-green','ansi-yellow','ansi-blue','ansi-magenta','ansi-cyan','ansi-white'].includes(x));classes.push(['ansi-black','ansi-red','ansi-green','ansi-yellow','ansi-blue','ansi-magenta','ansi-cyan','ansi-white'][c-30])}}pos=re.lastIndex;if(pos<text.length){const next=re.exec(text);re.lastIndex=pos;if(next){out+='<span'+cls()+'>';addText(text.slice(pos,next.index));out+='</span>';pos=next.index}else break}}if(pos<text.length){out+='<span'+cls()+'>';addText(text.slice(pos));out+='</span>'}return out||'&nbsp;'}function appendConsole(line){const t=q('#terminal');const parts=String(line??'').replace(/\r/g,'').split('\n');for(const part of parts){const row=document.createElement('div');row.className='console-line';row.innerHTML=ansiToHtml(part);t.appendChild(row)}while(t.childNodes.length>2500)t.removeChild(t.firstChild);if(q('#autoscroll')?.checked)t.scrollTop=t.scrollHeight}function scheduleWsReconnect(delay=3000){clearTimeout(wsRetry);if(q('#console').classList.contains('active'))wsRetry=setTimeout(connectConsole,delay)}async function freshSocketCredentials(){const d=await api('websocket');if(!d||typeof d.socket!=='string'||typeof d.token!=='string'||!d.socket||!d.token)throw Error('Pterodactyl did not return valid console credentials.');return d}async function connectConsole(){if(ws&&(ws.readyState===WebSocket.OPEN||ws.readyState===WebSocket.CONNECTING))return;clearTimeout(wsRetry);const generation=++wsGeneration;setWsState('Getting console token…');try{const d=await freshSocketCredentials();if(generation!==wsGeneration)return;let socketUrl=d.socket.trim();if(location.protocol==='https:'&&socketUrl.startsWith('ws://'))socketUrl='wss://'+socketUrl.slice(5);setWsState('Connecting…');const sock=new WebSocket(socketUrl);ws=sock;let authenticated=false;const authTimer=setTimeout(()=>{if(sock===ws&&!authenticated){setWsState('Authentication timed out','error');try{sock.close(4000,'Authentication timeout')}catch(_){}}},10000);sock.onopen=()=>{if(sock!==ws)return;setWsState('Authenticating…');sock.send(JSON.stringify({event:'auth',args:[d.token]}))};sock.onmessage=async e=>{if(sock!==ws)return;let m;try{m=JSON.parse(e.data)}catch(_){appendConsole(e.data);return}const event=String(m.event||'');if(event==='auth success'){authenticated=true;clearTimeout(authTimer);setWsState('Connected','connected');sock.send(JSON.stringify({event:'send logs',args:[null]}));sock.send(JSON.stringify({event:'send stats',args:[null]}));return}if(event==='console output'){appendConsole(m.args?.[0]??'');return}if(event==='status'){setWsState('Server: '+(m.args?.[0]??'unknown'),'connected');return}if(event==='daemon error'||event==='jwt error'){appendConsole('[WebSocket] '+(m.args?.[0]??event));setWsState(m.args?.[0]??event,'error');return}if(event==='token expiring'){try{const n=await freshSocketCredentials();if(sock===ws&&sock.readyState===WebSocket.OPEN)sock.send(JSON.stringify({event:'auth',args:[n.token]}))}catch(err){appendConsole('[WebSocket] Token refresh failed: '+err.message)}return}if(event==='token expired'){appendConsole('[WebSocket] Token expired; reconnecting…');try{sock.close(4001,'Token expired')}catch(_){ }return}};sock.onerror=()=>{if(sock===ws){setWsState('WebSocket connection failed','error');appendConsole('[WebSocket] Connection error. Check the Wings URL/TLS and allowed_origins.')}};sock.onclose=e=>{clearTimeout(authTimer);if(sock!==ws)return;ws=null;const reason=e.reason?(' — '+e.reason):'';setWsState('Disconnected ('+e.code+')'+reason,'error');appendConsole('[WebSocket] Closed with code '+e.code+reason);scheduleWsReconnect(e.code===1000?5000:3000)}}catch(e){if(generation!==wsGeneration)return;ws=null;setWsState(e.message,'error');appendConsole('[WebSocket] '+e.message);scheduleWsReconnect(5000)}}q('#sendcmd').onclick=async()=>{const v=q('#command').value.trim();if(!v)return;try{await api('command',{body:{command:v}});q('#command').value=''}catch(e){toast(e.message,'error')}};q('#command').onkeydown=e=>{if(e.key==='Enter')q('#sendcmd').click()};q('#clearconsole').onclick=()=>{q('#terminal').innerHTML=''};q('#reconnectconsole').onclick=()=>{clearTimeout(wsRetry);wsGeneration++;if(ws){try{ws.close(1000,'Manual reconnect')}catch(_){ }ws=null}setTimeout(connectConsole,250)};let commandHistory=[],historyIndex=0;q('#command').addEventListener('keydown',e=>{if(e.key==='Enter'){const v=q('#command').value.trim();if(v){commandHistory.push(v);if(commandHistory.length>100)commandHistory.shift();historyIndex=commandHistory.length}}else if(e.key==='ArrowUp'){if(commandHistory.length){e.preventDefault();historyIndex=Math.max(0,historyIndex-1);q('#command').value=commandHistory[historyIndex]||''}}else if(e.key==='ArrowDown'){if(commandHistory.length){e.preventDefault();historyIndex=Math.min(commandHistory.length,historyIndex+1);q('#command').value=historyIndex===commandHistory.length?'':commandHistory[historyIndex]||''}}});
-async function loadFiles(){try{const d=await api('files',{path:currentPath});q('#path').textContent=currentPath;const rows=d.map(x=>x.attributes);q('#filelist').innerHTML=rows.length?rows.map(a=>`<div class="listrow"><div><i class="fas ${a.is_file?'fa-file':'fa-folder'}"></i> <b>${esc(a.name)}</b><div class="muted small">${a.is_file?Math.round((a.size||0)/1024)+' KB':'Folder'}</div></div><button class="btn openfile" data-name="${esc(a.name)}" data-dir="${a.is_file?'0':'1'}">${a.is_file?'View':'Open'}</button></div>`).join(''):'<div class="empty muted">Folder is empty.</div>';document.querySelectorAll('.openfile').forEach(b=>b.onclick=async()=>{const p=(currentPath==='/'?'':currentPath)+'/'+b.dataset.name;if(b.dataset.dir==='1'){currentPath=p;loadFiles()}else{try{const c=await api('file-content',{path:p});showFile(p,c)}catch(e){toast(e.message,'error')}}})}catch(e){q('#filelist').innerHTML='<div class="error">'+esc(e.message)+'</div>'}}function showFile(path,c){q('#filelist').innerHTML=`<div class="editorhead"><b>${esc(path)}</b><button class="btn" id="backfiles">← Back</button></div><textarea id="editor" class="editor">${esc(c)}</textarea><div class="buttons"><button class="btn primary" id="savefile">Save File</button></div>`;q('#backfiles').onclick=loadFiles;q('#savefile').onclick=async()=>{try{await api('save-file',{body:{path,content:q('#editor').value}});toast('File saved.')}catch(e){toast(e.message,'error')}}}q('#updir').onclick=()=>{if(currentPath==='/')return;currentPath=currentPath.split('/').slice(0,-1).join('/')||'/';loadFiles()};q('#refreshfiles').onclick=loadFiles;
-async function loadBackups(){try{const d=await api('backups');q('#backuplist').innerHTML=(d||[]).map(x=>{const a=x.attributes;return `<div class="listrow"><div><b>${esc(a.name)}</b><div class="muted small">${a.is_successful?'Ready':'Processing'} · ${a.bytes?Math.round(a.bytes/1048576)+' MB':'—'}</div></div></div>`}).join('')||'<div class="empty muted">No backups yet.</div>'}catch(e){q('#backuplist').innerHTML='<div class="error">'+esc(e.message)+'</div>'}}q('#createbackup').onclick=async()=>{try{await api('create-backup',{body:{name:'FoxNetwork Backup '+new Date().toLocaleString()}});setTimeout(loadBackups,1000)}catch(e){toast(e.message,'error')}};
-async function loadDB(){try{const d=await api('databases');q('#dblist').innerHTML=(d||[]).map(x=>{const a=x.attributes;return `<div class="listrow"><div><b>${esc(a.name)}</b><div class="muted small">${esc(a.host?.address||'')} : ${esc(a.host?.port||'')}</div></div><span class="muted">${esc(a.username||'')}</span></div>`}).join('')||'<div class="empty muted">No databases.</div>'}catch(e){q('#dblist').innerHTML='<div class="error">'+esc(e.message)+'</div>'}}async function loadNetwork(){try{const d=await api('network');q('#netlist').innerHTML=(d||[]).map(x=>{const a=x.attributes;return `<div class="listrow"><div><b>${esc(a.ip_alias||a.ip)}:${esc(a.port)}</b><div class="muted small">${a.is_default?'Primary allocation':'Additional allocation'}</div></div></div>`}).join('')||'<div class="empty muted">No allocations.</div>'}catch(e){q('#netlist').innerHTML='<div class="error">'+esc(e.message)+'</div>'}}resources();setInterval(resources,10000);</script></body></html>
+<section class="pane" id="backups"><div class="manage-card"><div class="cardhead"><b>BACKUPS</b><button class="btn primary" id="createbackup">Create Backup</button></div><div id="backuplist" class="listbox"></div></div></section>
+<section class="pane" id="schedules"><div class="manage-card"><div class="cardhead"><b>SCHEDULES</b></div><div id="schedulelist" class="listbox"></div></div></section>
+<section class="pane" id="network"><div class="manage-card"><div class="cardhead"><b>NETWORK</b></div><div id="netlist" class="listbox"></div></div></section>
+<section class="pane" id="activity"><div class="manage-card"><div class="cardhead"><b>ACTIVITY LOG</b></div><div id="activitylog" class="activity-log"></div></div></section>
+</div>
+</main>
+</div>
+
+<script>
+const ID=<?=json_encode($id)?>,CSRF=<?=json_encode(csrf())?>;
+const q=s=>document.querySelector(s);
+function em(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function mb(n){return (n/1024/1024).toFixed(1)+' MB'}
+
+async function api(action,opt={}){
+  let url='/api/manage.php?action='+encodeURIComponent(action)+'&id='+encodeURIComponent(ID);
+  if(opt.path) url+='&path='+encodeURIComponent(opt.path);
+  const init={headers:{'X-CSRF-Token':CSRF}};
+  if(opt.body!==undefined){init.method='POST';init.headers['Content-Type']='application/json';init.body=JSON.stringify(opt.body)}
+  const r=await fetch(url,init); const t=await r.text();
+  let j; try{j=JSON.parse(t)}catch(e){throw Error('Invalid response');}
+  if(!j.ok) throw Error(j.error||'Request failed');
+  return j.data;
+}
+
+async function resources(){
+  try{
+    const r=await fetch('/api/resources.php?id='+encodeURIComponent(ID));
+    const j=await r.json();
+    const a=j.data.attributes;
+    q('#status').textContent=(a.current_state||'unknown').toUpperCase();
+    q('#cpu').textContent=(a.resources.cpu_absolute||0).toFixed(1)+'%';
+    q('#memory').textContent=mb(a.resources.memory_bytes||0);
+  }catch(e){q('#status').textContent='UNAVAILABLE';}
+}
+
+async function power(signal){
+  const r=await fetch('/api/power.php',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF},body:JSON.stringify({id:ID,signal})});
+  const j=await r.json();
+  if(!j.ok) throw Error(j.error||'Power action failed');
+  setTimeout(resources,900);
+  setTimeout(loadActivity,1200);
+}
+
+document.querySelectorAll('[data-power]').forEach(b=>b.onclick=()=>power(b.dataset.power).catch(e=>alert(e.message)));
+q('#reinstall').onclick=async()=>{
+  if(!confirm('Reinstall this server now?')) return;
+  try{await api('reinstall',{body:{confirm:true}}); alert('Reinstall requested.'); loadActivity();}
+  catch(e){alert(e.message);}
+};
+
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.tab,.pane').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');
+  q('#'+b.dataset.tab).classList.add('active');
+  if(b.dataset.tab==='console') connectConsole();
+  if(b.dataset.tab==='databases') loadDB();
+  if(b.dataset.tab==='backups') loadBackups();
+  if(b.dataset.tab==='schedules') loadSchedules();
+  if(b.dataset.tab==='network') loadNetwork();
+  if(b.dataset.tab==='activity') loadActivity();
+});
+
+let ws=null;
+function setWsState(text,type=''){const el=q('#wsstate');el.className='status-pill '+type;el.querySelector('.status-text').textContent=text;}
+function appendConsole(line){const el=q('#terminal');el.textContent+=(line||'')+'\n';if(el.textContent.length>180000)el.textContent=el.textContent.slice(-120000);el.scrollTop=el.scrollHeight;}
+
+async function connectConsole(){
+  if(ws&&(ws.readyState===WebSocket.OPEN||ws.readyState===WebSocket.CONNECTING)) return;
+  try{
+    const d=await api('websocket');
+    let socketUrl=(d.socket||'').trim();
+    if(location.protocol==='https:'&&socketUrl.startsWith('ws://')) socketUrl='wss://'+socketUrl.slice(5);
+    ws=new WebSocket(socketUrl);
+    ws.onopen=()=>{setWsState('Authenticating…');ws.send(JSON.stringify({event:'auth',args:[d.token]}));};
+    ws.onmessage=e=>{
+      let m; try{m=JSON.parse(e.data);}catch(_){appendConsole(e.data);return;}
+      if(m.event==='auth success'){setWsState('Connected','connected');ws.send(JSON.stringify({event:'send logs',args:[null]}));return;}
+      if(m.event==='console output'){appendConsole(m.args?.[0]||'');return;}
+      if(m.event==='status'){setWsState('Server: '+(m.args?.[0]||'unknown'),'connected');}
+    };
+    ws.onerror=()=>setWsState('Connection error','error');
+    ws.onclose=()=>{setWsState('Disconnected','error');ws=null;};
+  }catch(e){setWsState(e.message,'error');}
+}
+
+q('#sendcmd').onclick=async()=>{
+  const cmd=q('#command').value.trim();
+  if(!cmd) return;
+  try{await api('command',{body:{command:cmd}}); q('#command').value='';}
+  catch(e){alert(e.message);}
+};
+q('#command').addEventListener('keydown',e=>{if(e.key==='Enter') q('#sendcmd').click();});
+
+async function loadDB(){
+  try{const d=await api('databases'); q('#dblist').innerHTML=(d||[]).map(x=>{const a=x.attributes||{};return `<div class="listrow"><div><b>${em(a.name)}</b><div class="muted small">${em(a.host?.address||'')} : ${em(a.host?.port||'')}</div></div><span>${em(a.username||'')}</span></div>`;}).join('')||'<div class="empty muted">No databases.</div>';}
+  catch(e){q('#dblist').innerHTML='<div class="error">'+em(e.message)+'</div>';}
+}
+
+async function loadBackups(){
+  try{const d=await api('backups'); q('#backuplist').innerHTML=(d||[]).map(x=>{const a=x.attributes||{};return `<div class="listrow"><div><b>${em(a.name)}</b><div class="muted small">${a.is_successful?'Ready':'Processing'} · ${a.bytes?Math.round(a.bytes/1048576)+' MB':'—'}</div></div></div>`;}).join('')||'<div class="empty muted">No backups.</div>';}
+  catch(e){q('#backuplist').innerHTML='<div class="error">'+em(e.message)+'</div>';}
+}
+q('#createbackup').onclick=async()=>{try{await api('create-backup',{body:{name:'Backup '+new Date().toLocaleString()}});loadBackups();loadActivity();}catch(e){alert(e.message);}};
+
+async function loadSchedules(){
+  try{const d=await api('schedules'); q('#schedulelist').innerHTML=(d||[]).map(x=>{const a=x.attributes||{};return `<div class="listrow"><div><b>${em(a.name||'Schedule')}</b><div class="muted small">${em((a.is_active?'Active':'Paused')+' · '+(a.cron?.minute||'*')+' '+(a.cron?.hour||'*')+' '+(a.cron?.day_of_month||'*')+' '+(a.cron?.month||'*')+' '+(a.cron?.day_of_week||'*'))}</div></div><span>${em(a.only_when_online?'Online only':'Always')}</span></div>`;}).join('')||'<div class="empty muted">No schedules.</div>';}
+  catch(e){q('#schedulelist').innerHTML='<div class="error">'+em(e.message)+'</div>';}
+}
+
+async function loadNetwork(){
+  try{const d=await api('network'); q('#netlist').innerHTML=(d||[]).map(x=>{const a=x.attributes||{};return `<div class="listrow"><div><b>${em(a.ip_alias||a.ip)}:${em(a.port)}</b><div class="muted small">${a.is_default?'Primary allocation':'Additional allocation'}</div></div></div>`;}).join('')||'<div class="empty muted">No network allocations.</div>';}
+  catch(e){q('#netlist').innerHTML='<div class="error">'+em(e.message)+'</div>';}
+}
+
+async function loadActivity(){
+  try{
+    const d=await api('activity');
+    q('#activitylog').innerHTML=(d||[]).map(a=>`<div class="activity-row"><div><b>${em(a.action||'event')}</b></div><div>${em(a.details||'')}</div><div class="meta">${em(a.created_at||'')}</div></div>`).join('')||'<div class="empty muted">No activity yet.</div>';
+  }catch(e){q('#activitylog').innerHTML='<div class="error">'+em(e.message)+'</div>';}
+}
+
+resources();
+setInterval(resources,10000);
+loadActivity();
+</script>
+</body>
+</html>
