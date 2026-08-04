@@ -73,7 +73,14 @@ function user():?array{
     if (!array_key_exists($key, $cache)) {
         $s=db()->prepare('SELECT * FROM users WHERE id=?');
         $s->execute([$uid]);
-        $cache[$key]=$s->fetch() ?: null;
+        $user = $s->fetch() ?: null;
+        if ($user) {
+            $linkedPteroUserId = link_existing_ptero_user_for_local_user($user);
+            if ($linkedPteroUserId !== null) {
+                $user['ptero_user_id'] = (string)$linkedPteroUserId;
+            }
+        }
+        $cache[$key]=$user;
     }
     return $cache[$key];
 }
@@ -218,6 +225,33 @@ function ensure_ptero_user_for_local_user(string $email, string $name = '', bool
         throw new RuntimeException('Could not create the matching Pterodactyl account.');
     }
     return $id;
+}
+
+function link_existing_ptero_user_for_local_user(array $user): ?int {
+    $uid = (int)($user['id'] ?? 0);
+    if ($uid <= 0) {
+        return null;
+    }
+
+    if (!empty($user['ptero_user_id'])) {
+        return (int)$user['ptero_user_id'];
+    }
+
+    $email = strtolower(trim((string)($user['email'] ?? '')));
+    if ($email === '') {
+        return null;
+    }
+
+    try {
+        $pteroUserId = ensure_ptero_user_for_local_user($email, (string)($user['name'] ?? ''), false);
+        if ($pteroUserId) {
+            db()->prepare('UPDATE users SET ptero_user_id=? WHERE id=?')->execute([$pteroUserId, $uid]);
+            return $pteroUserId;
+        }
+    } catch (Throwable $e) {
+    }
+
+    return null;
 }
 
 function invoice_for_order(int $orderId): int {
