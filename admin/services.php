@@ -5,7 +5,43 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
  verify_csrf();$sid=(int)($_POST['service_id']??0);$action=(string)($_POST['action']??'');
  try{
   switch($action){
-    case 'provision': $jid=provisioning_queue_service($sid,['source'=>'admin_services','admin_id'=>(int)$u['id']],85,true); service_log($sid,(int)$u['id'],'provision','Provisioning queued from Admin Center. Job #'.$jid); $msg='Provisioning queued (job #'.$jid.').'; break;
+    case 'provision':
+      $main=service_row($sid);
+      if(!empty($main['ptero_server_id'])){
+        $msg='Service already has a linked Pterodactyl server.';
+        break;
+      }
+      $dupQ=db()->prepare("SELECT * FROM services WHERE id<>? AND user_id=? AND ptero_server_id IS NOT NULL AND status IN ('active','suspended','provisioning') ORDER BY id DESC");
+      $dupQ->execute([$sid,(int)$main['user_id']]);
+      $dup=null;
+      $mainName=trim((string)($main['name']??''));
+      foreach($dupQ->fetchAll() as $cand){
+        $sameProduct=((int)($cand['product_id']??0)===(int)($main['product_id']??0));
+        $sameName=(strcasecmp(trim((string)($cand['name']??'')),$mainName)===0);
+        $sameOrder=((int)($cand['order_id']??0)>0 && (int)($cand['order_id']??0)===(int)($main['order_id']??0));
+        if($sameOrder||$sameProduct||$sameName){$dup=$cand;break;}
+      }
+      if($dup){
+        db()->beginTransaction();
+        try{
+          db()->prepare("UPDATE services SET ptero_server_id=?,ptero_identifier=?,status='active',last_error=NULL WHERE id=?")
+            ->execute([(int)$dup['ptero_server_id'],(string)($dup['ptero_identifier']??''),$sid]);
+          db()->prepare("UPDATE services SET ptero_server_id=NULL,ptero_identifier=NULL,status='cancelled',last_error=? WHERE id=?")
+            ->execute(['Merged into service #'.$sid.' from Admin Services duplicate resolver.',(int)$dup['id']]);
+          db()->commit();
+          service_log($sid,(int)$u['id'],'provision','Merged duplicate service #'.(int)$dup['id'].' into this main service and kept existing server link.');
+          $msg='Duplicate resolved: adopted existing server from service #'.(int)$dup['id'].' to this main service.';
+        }catch(Throwable $txe){
+          if(db()->inTransaction())db()->rollBack();
+          throw $txe;
+        }
+        break;
+      }
+      $jid=provisioning_queue_service($sid,['source'=>'admin_services','admin_id'=>(int)$u['id']],85,true);
+      $run=provisioning_run_worker(1);
+      service_log($sid,(int)$u['id'],'provision','Provisioning queued from Admin Center. Job #'.$jid);
+      $msg='Provisioning queued (job #'.$jid.'). Worker: '.$run['processed'].' processed, '.$run['failed'].' failed, '.$run['queued'].' still queued.';
+      break;
    case 'suspend': suspend_service($sid,(int)$u['id']);$msg='Service suspended.';break;
    case 'unsuspend': unsuspend_service($sid,(int)$u['id']);$msg='Service unsuspended.';break;
    case 'reinstall': reinstall_service($sid,(int)$u['id']);$msg='Reinstall requested.';break;

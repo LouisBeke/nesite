@@ -28,8 +28,13 @@ if (!$serviceRow || empty($serviceRow['ptero_identifier'])) {
 }
 
 try {
-    $data = ptero('/servers/' . rawurlencode((string)$serviceRow['ptero_identifier']) . '/resources');
-    echo json_encode(['ok' => true, 'data' => $data], JSON_UNESCAPED_SLASHES);
+    $pteroData = ptero('/servers/' . rawurlencode((string)$serviceRow['ptero_identifier']) . '/resources');
+    $attrs = $pteroData['attributes'] ?? [];
+    echo json_encode(['ok' => true, 'data' => [
+        'current_state' => $attrs['current_state'] ?? 'unknown',
+        'is_suspended' => (bool)($attrs['is_suspended'] ?? false),
+        'resources' => $attrs['resources'] ?? [],
+    ]], JSON_UNESCAPED_SLASHES);
 } catch (Throwable $e) {
     http_response_code(502);
     echo json_encode(['ok' => false, 'error' => $e->getMessage()]);

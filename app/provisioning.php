@@ -28,20 +28,37 @@ function provisioning_queue_service(int $serviceId, array $meta = [], int $prior
     $jobKey = 'service-provision-' . $serviceId;
     $pdo = db();
     $payload = json_encode(['service_id' => $serviceId, 'meta' => $meta], JSON_UNESCAPED_SLASHES);
+    $maxAttempts = max(1, (int)setting('provisioning_max_attempts', '5'));
 
     $existing = $pdo->prepare('SELECT id,status FROM provisioning_queue WHERE job_key=? ORDER BY id DESC LIMIT 1');
     $existing->execute([$jobKey]);
     $row = $existing->fetch();
+
+    // Normal path: keep the current waiting/running job for this service.
     if ($row && !$force && in_array((string)$row['status'], ['pending', 'running', 'retry_wait'], true)) {
         return (int)$row['id'];
     }
 
-    if ($row && $force) {
-        $pdo->prepare("UPDATE provisioning_queue SET status='cancelled',finished_at=NOW() WHERE id=? AND status IN ('pending','retry_wait')")
-            ->execute([(int)$row['id']]);
+    // Re-use the existing unique job row to avoid uq_provisioning_job_key collisions.
+    if ($row) {
+        $id = (int)$row['id'];
+        $pdo->prepare("UPDATE provisioning_queue
+            SET status='pending',
+                priority=?,
+                max_attempts=?,
+                attempts=0,
+                payload=?,
+                run_at=NOW(),
+                started_at=NULL,
+                finished_at=NULL,
+                worker_id=NULL,
+                last_error=NULL
+            WHERE id=?")
+            ->execute([$priority, $maxAttempts, $payload, $id]);
+        provisioning_emit_event('queue.job_requeued', ['service_id' => $serviceId, 'priority' => $priority, 'forced' => $force ? 1 : 0], $id, $force ? 'warning' : 'info');
+        return $id;
     }
 
-    $maxAttempts = max(1, (int)setting('provisioning_max_attempts', '5'));
     $ins = $pdo->prepare("INSERT INTO provisioning_queue(job_key,job_type,status,priority,max_attempts,attempts,payload,run_at) VALUES(?, 'provision_service', 'pending', ?, ?, 0, ?, NOW())");
     $ins->execute([$jobKey, $priority, $maxAttempts, $payload]);
     $id = (int)$pdo->lastInsertId();
@@ -95,12 +112,14 @@ function provisioning_job_payload(array $job): array {
     return is_array($payload) ? $payload : [];
 }
 
-function provisioning_verify_online(int $serverId, int $tries = 8, int $sleepMs = 900): bool {
+function provisioning_verify_online(int $serverId, int $tries = 20, int $sleepMs = 1500): bool {
+    $tries = max(5, (int)setting('provisioning_online_check_tries', (string)$tries));
+    $sleepMs = max(300, (int)setting('provisioning_online_check_sleep_ms', (string)$sleepMs));
     for ($i = 0; $i < $tries; $i++) {
         try {
             $res = app_ptero('/servers/' . $serverId . '/resources');
             $state = strtolower((string)($res['attributes']['current_state'] ?? ''));
-            if ($state === 'running') return true;
+            if (in_array($state, ['running', 'starting'], true)) return true;
         } catch (Throwable $e) {
         }
         usleep(max(100, $sleepMs) * 1000);
@@ -334,7 +353,19 @@ function provisioning_process_service_job(array $job, array &$runtime = []): voi
     }
 
     if (!provisioning_verify_online($newServerId)) {
-        throw new RuntimeException('Server did not become online during post-provision verification.');
+        $strictOnline = setting('provisioning_strict_online_check', '0') === '1';
+        if ($strictOnline) {
+            throw new RuntimeException('Server did not become online during post-provision verification.');
+        }
+        provisioning_emit_event(
+            'provisioning.online_check_timeout',
+            ['service_id' => $serviceId, 'server_id' => $newServerId],
+            (int)$job['id'],
+            'warning',
+            'Server startup verification timed out. Keeping created server and continuing.'
+        );
+        db()->prepare("UPDATE services SET status='active',last_error=NULL WHERE id=?")
+            ->execute([$serviceId]);
     }
 
     provisioning_release_allocation_lock((int)$job['id'], (int)($runtime['allocation_id'] ?? 0), 'provisioned');

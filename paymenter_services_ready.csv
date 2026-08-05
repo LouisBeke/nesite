@@ -1,0 +1,5 @@
+paymenter_service_id,email,server_name,product_name,status,price,currency_code,expires_at,pterodactyl_server_id,pterodactyl_identifier,pterodactyl_user_id
+1,louis.beke@foxnetwork.be,web #1,web,active,0.00,EUR,9999-01-01 00:00:00,24,96700518,1
+2,yoran.moonens@foxnetwork.be,Discord bot hosting  #2,Discord bot hosting,active,0.00,EUR,9999-01-01 00:00:00,25,13487ac8,2
+3,chamo.74alt@outlook.com,Discord bot hosting  #3,Discord bot hosting,active,0.00,EUR,9999-01-01 00:00:00,26,41254434,5
+4,louis.beke@foxnetwork.be,Gold #4,Gold,active,0.00,EUR,9999-01-01 00:00:00,28,e6f3f6b8,1

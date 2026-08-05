@@ -24,10 +24,13 @@ $input = file_get_contents('php://input') ?: '';
 $data = json_decode($input, true);
 if (!is_array($data)) out(['ok'=>false,'error'=>'Invalid request body']);
 
-$sessionToken = (string)($_SESSION['csrf'] ?? '');
-$requestToken = (string)($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
-if ($sessionToken === '' || $requestToken === '' || !hash_equals($sessionToken, $requestToken)) {
-    out(['ok'=>false,'error'=>'Security token expired. Refresh the page and try again.']);
+// Mobile sessions authenticated via session token bypass the web CSRF token.
+if (empty($_SESSION['mobile_api_session'])) {
+    $sessionToken = (string)($_SESSION['csrf'] ?? '');
+    $requestToken = (string)($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
+    if ($sessionToken === '' || $requestToken === '' || !hash_equals($sessionToken, $requestToken)) {
+        out(['ok'=>false,'error'=>'Security token expired. Refresh the page and try again.']);
+    }
 }
 
 $id = preg_replace('/[^a-zA-Z0-9_-]/', '', (string)($data['id'] ?? ''));

@@ -1,6 +1,24 @@
 <?php
 declare(strict_types=1);
 
+if (!function_exists('str_contains')) {
+    function str_contains($haystack, $needle): bool {
+        $haystack = (string)$haystack;
+        $needle = (string)$needle;
+        if ($needle === '') return true;
+        return strpos($haystack, $needle) !== false;
+    }
+}
+
+if (!function_exists('str_starts_with')) {
+    function str_starts_with($haystack, $needle): bool {
+        $haystack = (string)$haystack;
+        $needle = (string)$needle;
+        if ($needle === '') return true;
+        return strncmp($haystack, $needle, strlen($needle)) === 0;
+    }
+}
+
 $sessionToken = null;
 if (!empty($_SERVER['HTTP_AUTHORIZATION']) && preg_match('/^Bearer\s+(.+)$/i', (string)$_SERVER['HTTP_AUTHORIZATION'], $matches)) {
     $sessionToken = trim($matches[1]);
@@ -13,6 +31,23 @@ if ($sessionToken !== null && $sessionToken !== '') {
 }
 
 session_start();
+
+set_exception_handler(function (Throwable $e): void {
+    error_log('FoxNetwork uncaught exception: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: text/plain; charset=utf-8');
+    }
+    echo 'Internal Server Error';
+});
+
+register_shutdown_function(function (): void {
+    $error = error_get_last();
+    if (!$error) return;
+    $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR];
+    if (!in_array((int)$error['type'], $fatalTypes, true)) return;
+    error_log('FoxNetwork fatal error: ' . ($error['message'] ?? '') . ' in ' . ($error['file'] ?? '') . ':' . (int)($error['line'] ?? 0));
+});
 
 function is_suspicious_request_path(?string $path): bool {
     if ($path === null || $path === '') return false;
@@ -74,17 +109,23 @@ enforce_https_redirect();
 require_once __DIR__.'/mollie.php';
 function db(): PDO {static $pdo;if(!$pdo){$d=cfg('db');$pdo=new PDO("mysql:host={$d['host']};port={$d['port']};dbname={$d['name']};charset=utf8mb4",$d['user'],$d['pass'],[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);}return $pdo;}
 require_once __DIR__.'/migrations.php';
-fox_auto_migrate();
-fox_v9c_migrate();
-fox_v11_migrate();
-fox_v12_migrate();
-fox_v13_migrate();
-fox_v13a_migrate();
-fox_v14_migrate();
-fox_v14b_migrate();
-fox_v15_migrate();
-fox_v15a_migrate();
-fox_v15b_migrate();
+try {
+    fox_auto_migrate();
+    fox_v9c_migrate();
+    fox_v11_migrate();
+    fox_v12_migrate();
+    fox_v13_migrate();
+    fox_v13a_migrate();
+    fox_v14_migrate();
+    fox_v14b_migrate();
+    fox_v15_migrate();
+    fox_v15a_migrate();
+    fox_v15b_migrate();
+    if (function_exists('fox_v15c_migrate')) fox_v15c_migrate();
+    if (function_exists('fox_v15d_migrate')) fox_v15d_migrate();
+} catch (Throwable $e) {
+    error_log('FoxNetwork migrations skipped: '.$e->getMessage());
+}
 function e($v):string{return htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');}
 require_once __DIR__.'/mail.php';
 require_once __DIR__.'/provisioning.php';
@@ -107,8 +148,8 @@ function enc(string $plain):string{$key=hash('sha256',cfg('db.pass'),true);$iv=r
 function dec(?string $blob):?string{if(!$blob)return null;$raw=base64_decode($blob,true);if($raw===false||strlen($raw)<28)return null;$key=hash('sha256',cfg('db.pass'),true);$iv=substr($raw,0,12);$tag=substr($raw,12,16);$pt=openssl_decrypt(substr($raw,28),'aes-256-gcm',$key,OPENSSL_RAW_DATA,$iv,$tag);return $pt===false?null:$pt;}
 function ptero_cache_dir(): string { $dir=rtrim(sys_get_temp_dir(),'\\/').DIRECTORY_SEPARATOR.'foxnetwork-ptero-cache'; if(!is_dir($dir)) @mkdir($dir,0777,true); return $dir; }
 function ptero_cache_key(string $scope,string $token,string $path,string $method,?array $body): string { return sha1($scope.'|'.$token.'|'.$method.'|'.$path.'|'.($body===null?'':json_encode($body,JSON_UNESCAPED_SLASHES))); }
-function ptero_cache_get(string $key,int $ttl): mixed { $file=ptero_cache_dir().DIRECTORY_SEPARATOR.$key.'.json'; if(!is_file($file)) return null; $raw=@file_get_contents($file); if($raw===false||$raw==='') return null; $data=json_decode($raw,true); if(!is_array($data)||($data['expires_at']??0)<time()) return null; return $data['value'] ?? null; }
-function ptero_cache_set(string $key,mixed $value,int $ttl): void { $file=ptero_cache_dir().DIRECTORY_SEPARATOR.$key.'.json'; @file_put_contents($file,json_encode(['expires_at'=>time()+$ttl,'value'=>$value],JSON_UNESCAPED_SLASHES),LOCK_EX); }
+function ptero_cache_get(string $key,int $ttl) { $file=ptero_cache_dir().DIRECTORY_SEPARATOR.$key.'.json'; if(!is_file($file)) return null; $raw=@file_get_contents($file); if($raw===false||$raw==='') return null; $data=json_decode($raw,true); if(!is_array($data)||($data['expires_at']??0)<time()) return null; return $data['value'] ?? null; }
+function ptero_cache_set(string $key,$value,int $ttl): void { $file=ptero_cache_dir().DIRECTORY_SEPARATOR.$key.'.json'; @file_put_contents($file,json_encode(['expires_at'=>time()+$ttl,'value'=>$value],JSON_UNESCAPED_SLASHES),LOCK_EX); }
 function ptero(string $path,string $method='GET',?array $body=null){$u=user();$token=dec($u['ptero_client_key']??null);if(!$token)throw new RuntimeException('Pterodactyl API key not configured.');$method=strtoupper($method);$cacheTtl=$method==='GET'?3:0;$cacheKey=$cacheTtl>0?ptero_cache_key('client',$token,$path,$method,$body):null;if($cacheKey){$cached=ptero_cache_get($cacheKey,$cacheTtl);if($cached!==null)return $cached;}$ch=curl_init(rtrim(cfg('pterodactyl.url'),'/').'/api/client'.$path);$headers=['Authorization: Bearer '.$token,'Accept: Application/vnd.pterodactyl.v1+json','Content-Type: application/json'];curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_HTTPHEADER=>$headers,CURLOPT_TIMEOUT=>12,CURLOPT_CUSTOMREQUEST=>$method]);if($body!==null)curl_setopt($ch,CURLOPT_POSTFIELDS,json_encode($body));$raw=curl_exec($ch);$code=curl_getinfo($ch,CURLINFO_HTTP_CODE);if($raw===false)throw new RuntimeException(curl_error($ch));curl_close($ch);$json=json_decode($raw,true);if($code<200||$code>=300)throw new RuntimeException($json['errors'][0]['detail']??('Pterodactyl HTTP '.$code));if($cacheKey)ptero_cache_set($cacheKey,$json,$cacheTtl);return $json;}
 function greeting():string{$h=(int)date('G');return $h<12?'Good morning':($h<18?'Good afternoon':'Good evening');}
 
@@ -131,7 +172,7 @@ function fox_setting_cache_key(string $key): string {
     return sha1($key);
 }
 
-function fox_setting_cache_get(string $key, int $ttl = 30): mixed {
+function fox_setting_cache_get(string $key, int $ttl = 30) {
     $file = fox_setting_cache_dir() . DIRECTORY_SEPARATOR . fox_setting_cache_key($key) . '.json';
     if (!is_file($file)) return null;
     $raw = @file_get_contents($file);
@@ -141,7 +182,7 @@ function fox_setting_cache_get(string $key, int $ttl = 30): mixed {
     return $data['value'] ?? null;
 }
 
-function fox_setting_cache_set(string $key, mixed $value, int $ttl = 30): void {
+function fox_setting_cache_set(string $key, $value, int $ttl = 30): void {
     $file = fox_setting_cache_dir() . DIRECTORY_SEPARATOR . fox_setting_cache_key($key) . '.json';
     @file_put_contents($file, json_encode(['expires_at' => time() + $ttl, 'value' => $value], JSON_UNESCAPED_SLASHES), LOCK_EX);
 }
@@ -376,7 +417,26 @@ function mark_invoice_paid(int $invoiceId,string $provider='manual',?string $ref
 function ensure_service_for_order(int $orderId): int {
     $q=db()->prepare('SELECT id FROM services WHERE order_id=? LIMIT 1');$q->execute([$orderId]);$id=$q->fetchColumn();if($id)return (int)$id;
     $q=db()->prepare('SELECT o.user_id,oi.product_id,oi.product_name,oi.unit_price,oi.config_json FROM orders o JOIN order_items oi ON oi.order_id=o.id WHERE o.id=? ORDER BY oi.id LIMIT 1');$q->execute([$orderId]);$r=$q->fetch();if(!$r)throw new RuntimeException('Order item not found.');
-    $cfg=json_decode($r['config_json']?:'{}',true)?:[];$name=$cfg['server_name']??$r['product_name'];$q=db()->prepare("INSERT INTO services(user_id,order_id,product_id,name,status,price_monthly,next_due_at,config_json) VALUES(?,?,?,?, 'pending',?,DATE_ADD(NOW(),INTERVAL 1 MONTH),?)");$q->execute([$r['user_id'],$orderId,$r['product_id'],$name,$r['unit_price'],$r['config_json']]);return (int)db()->lastInsertId();
+    $cfg=json_decode($r['config_json']?:'{}',true)?:[];$name=$cfg['server_name']??$r['product_name'];
+    db()->beginTransaction();
+    try{
+        $chk=db()->prepare('SELECT id FROM services WHERE order_id=? LIMIT 1 FOR UPDATE');
+        $chk->execute([$orderId]);
+        $existing=$chk->fetchColumn();
+        if($existing){db()->commit();return (int)$existing;}
+        $ins=db()->prepare("INSERT INTO services(user_id,order_id,product_id,name,status,price_monthly,next_due_at,config_json) VALUES(?,?,?,?, 'pending',?,DATE_ADD(NOW(),INTERVAL 1 MONTH),?)");
+        $ins->execute([$r['user_id'],$orderId,$r['product_id'],$name,$r['unit_price'],$r['config_json']]);
+        $newId=(int)db()->lastInsertId();
+        db()->commit();
+        return $newId;
+    }catch(Throwable $e){
+        if(db()->inTransaction())db()->rollBack();
+        $q=db()->prepare('SELECT id FROM services WHERE order_id=? LIMIT 1');
+        $q->execute([$orderId]);
+        $id=$q->fetchColumn();
+        if($id)return (int)$id;
+        throw $e;
+    }
 }
 function provision_service(int $serviceId, array &$runtime=[]): array {
     $q=db()->prepare('SELECT s.*,u.email,u.name customer_name,u.ptero_user_id,p.* FROM services s JOIN users u ON u.id=s.user_id LEFT JOIN store_products p ON p.id=s.product_id WHERE s.id=?');$q->execute([$serviceId]);$r=$q->fetch();if(!$r)throw new RuntimeException('Service not found.');
@@ -423,6 +483,27 @@ function provision_service(int $serviceId, array &$runtime=[]): array {
             if(empty($r['ptero_startup']) && !empty($da['startup'])) $r['ptero_startup']=$da['startup'];
             $eggVars=$da['relationships']['variables']['data']??$detail['relationships']['variables']['data']??[];
             foreach($eggVars as $v){$va=$v['attributes']??[];$key=(string)($va['env_variable']??'');if($key==='')continue;if(!array_key_exists($key,$env) || $env[$key]===''){$default=$va['default_value']??null;if($default!==null && $default!=='')$env[$key]=(string)$default;}}
+            foreach($eggVars as $v){
+                $va=$v['attributes']??[];
+                $key=(string)($va['env_variable']??'');
+                $rules=(string)($va['rules']??'');
+                if($key==='' || !str_contains($rules,'required'))continue;
+                if(array_key_exists($key,$env) && (string)$env[$key]!=='')continue;
+                $u=strtoupper($key);
+                $candidate='';
+                if(preg_match('/(ADMIN_PASSWORD|RCON_PASSWORD|PASSWORD|PASS|TOKEN|SECRET|API[_-]?KEY)/',$u)){
+                    $candidate=substr(str_replace(['+','/','='],'',base64_encode(random_bytes(24))),0,24);
+                }elseif(str_contains($u,'EMAIL')){
+                    $candidate=(string)($r['email']??'');
+                }elseif(preg_match('/(USERNAME|USER_NAME|ADMIN_USER|ADMIN_USERNAME)/',$u)){
+                    $base=strtolower(preg_replace('/[^a-z0-9]/i','',explode('@',(string)($r['email']??''))[0]??''));
+                    if($base==='')$base='admin';
+                    $candidate=substr($base,0,16);
+                }elseif($u==='SERVER_JARFILE'){
+                    $candidate='server.jar';
+                }
+                if($candidate!=='')$env[$key]=$candidate;
+            }
             $missing=[];foreach($eggVars as $v){$va=$v['attributes']??[];$key=(string)($va['env_variable']??'');$rules=(string)($va['rules']??'');if($key!=='' && str_contains($rules,'required') && (!array_key_exists($key,$env)||$env[$key]===''))$missing[]=(string)($va['name']??$key).' ('.$key.')';}
             if($missing) throw new RuntimeException('Missing required Egg variables: '.implode(', ',$missing).'. Configure them in Admin → Products.');
         }
@@ -453,7 +534,7 @@ function provision_service(int $serviceId, array &$runtime=[]): array {
         $payload['deploy']=['locations'=>[(int)$r['ptero_location_id']],'dedicated_ip'=>false,'port_range'=>[]];
     } else throw new RuntimeException('Product has no Pterodactyl Location ID configured.');
     db()->prepare("UPDATE services SET status='provisioning',last_error=NULL WHERE id=?")->execute([$serviceId]);
-    try{$res=app_ptero('/servers','POST',$payload);$a=$res['attributes']??[];$sid=(int)($a['id']??0);$runtime['server_id']=$sid;db()->prepare("UPDATE services SET status='active',ptero_server_id=?,ptero_identifier=?,last_error=NULL WHERE id=?")->execute([$sid?:null,$a['identifier']??null,$serviceId]);if($sid){try{app_ptero('/servers/'.$sid.'/startup','POST');}catch(Throwable $ignore){}}if($sid&&!provisioning_verify_online($sid,4,700))throw new RuntimeException('Pterodactyl server did not report online state after startup.');if($r['order_id'])db()->prepare("UPDATE orders SET status='active' WHERE id=?")->execute([$r['order_id']]);}catch(Throwable $e){db()->prepare("UPDATE services SET status='failed',last_error=? WHERE id=?")->execute([$e->getMessage(),$serviceId]);throw $e;}
+    try{$res=app_ptero('/servers','POST',$payload);$a=$res['attributes']??[];$sid=(int)($a['id']??0);$runtime['server_id']=$sid;db()->prepare("UPDATE services SET status='active',ptero_server_id=?,ptero_identifier=?,last_error=NULL WHERE id=?")->execute([$sid?:null,$a['identifier']??null,$serviceId]);if($sid){try{app_ptero('/servers/'.$sid.'/startup','POST');}catch(Throwable $ignore){}}if($sid&&!provisioning_verify_online($sid,20,1500)){db()->prepare("UPDATE services SET last_error=? WHERE id=?")->execute(['Startup verification timed out. Server may still be booting.',$serviceId]);}if($r['order_id'])db()->prepare("UPDATE orders SET status='active' WHERE id=?")->execute([$r['order_id']]);}catch(Throwable $e){db()->prepare("UPDATE services SET status='failed',last_error=? WHERE id=?")->execute([$e->getMessage(),$serviceId]);throw $e;}
     return ['server_id'=>(int)($runtime['server_id']??0),'ptero_user_id'=>$puid,'created_ptero_user'=>$createdPteroUser?1:0,'node_id'=>(int)($runtime['node_id']??0),'allocation_id'=>(int)($runtime['allocation_id']??0)];
 }
 
