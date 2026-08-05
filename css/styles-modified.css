@@ -1,6 +1,27 @@
 /*    By Brandio    */
 :root {
-    --custom-icon-font: "Font Awesome 5 Pro" !important;
+    --custom-icon-font: "Font Awesome 5 Free" !important;
+}
+
+/* Keep icon families/weights pinned to FA5 Free to avoid tofu squares. */
+.fas,
+i.fas,
+.fa,
+i.fa {
+    font-family: "Font Awesome 5 Free" !important;
+    font-weight: 900 !important;
+}
+
+.far,
+i.far {
+    font-family: "Font Awesome 5 Free" !important;
+    font-weight: 400 !important;
+}
+
+.fab,
+i.fab {
+    font-family: "Font Awesome 5 Brands" !important;
+    font-weight: 400 !important;
 }
 
 body {
@@ -2179,6 +2200,19 @@ td,
 
 #pricing-plans .pricing-card .fa-discord {
     color: #5865f2;
+}
+
+#pricing-plans .pricing-card .fas,
+#pricing-plans .pricing-card i.fas,
+#pricing-plans .pricing-card .fa-cube,
+#pricing-plans .pricing-card .fa-globe,
+#pricing-plans .pricing-card .fa-fire,
+#pricing-plans .pricing-card .fa-rocket,
+#pricing-plans .pricing-card .fa-paw {
+    font-family: "Font Awesome 5 Free" !important;
+    font-weight: 900 !important;
+    font-style: normal !important;
+    text-transform: none !important;
 }
 
 #info,

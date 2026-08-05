@@ -1,5 +1,5 @@
 -- FoxNetwork Portal v9C - safe Stage 9 / 2FA schema upgrade
--- Run against the database used by my.foxnetwork.be (NOT the Paymenter database).
+-- Run against the database used by foxnetwork.be (NOT the Paymenter database).
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_secret TEXT NULL;

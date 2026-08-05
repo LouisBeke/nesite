@@ -713,16 +713,41 @@ admin_head($u, 'Queue Manager', 'queue');
     let pollTimer=null;
     let stream=null;
     let sseFailed=false;
+    let isShuttingDown=false;
+    let pollAbortController=null;
+
+    function stopLive(){
+        isShuttingDown=true;
+        if(pollTimer){
+            clearInterval(pollTimer);
+            pollTimer=null;
+        }
+        if(pollAbortController){
+            pollAbortController.abort();
+            pollAbortController=null;
+        }
+        if(stream){
+            stream.close();
+            stream=null;
+        }
+    }
 
     async function pollLive(){
+        if(isShuttingDown) return;
         try{
-            const r=await fetch('/api/admin-queue-live.php',{cache:'no-store'});
+            if(pollAbortController) pollAbortController.abort();
+            pollAbortController=new AbortController();
+            const r=await fetch('/api/admin-queue-live.php',{cache:'no-store',signal:pollAbortController.signal});
             const j=await r.json();
             if(!j.ok) throw new Error(j.error||'Live update failed');
             renderLive(j.data||{});
         }catch(e){
+            if(isShuttingDown) return;
+            if(e && e.name==='AbortError') return;
             const stamp=document.getElementById('live-updated-at');
             if(stamp) stamp.textContent='Polling unavailable: '+(e.message||String(e));
+        }finally{
+            pollAbortController=null;
         }
     }
 
@@ -739,16 +764,19 @@ admin_head($u, 'Queue Manager', 'queue');
         }
         stream=new EventSource('/api/admin-queue-stream.php');
         stream.addEventListener('update',ev=>{
+            if(isShuttingDown) return;
             try{
                 const p=JSON.parse(ev.data||'{}');
                 if(!p.ok) throw new Error(p.error||'SSE update failed');
                 renderLive(p.data||{});
             }catch(e){
+                if(isShuttingDown) return;
                 const stamp=document.getElementById('live-updated-at');
                 if(stamp) stamp.textContent='SSE parse error: '+(e.message||String(e));
             }
         });
         stream.addEventListener('error',()=>{
+            if(isShuttingDown) return;
             if(stream){stream.close();stream=null;}
             if(!sseFailed){
                 sseFailed=true;
@@ -758,6 +786,9 @@ admin_head($u, 'Queue Manager', 'queue');
             }
         });
     }
+
+    window.addEventListener('pagehide',stopLive);
+    window.addEventListener('beforeunload',stopLive);
 
     startStream();
 })();

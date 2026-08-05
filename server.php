@@ -2,13 +2,28 @@
 require __DIR__.'/app/bootstrap.php';
 $u = require_user();
 $id = preg_replace('/[^a-zA-Z0-9_-]/','',$_GET['id'] ?? '');
-if(!$id){header('Location:/');exit;}
+if(!$id){header('Location:/client');exit;}
 
-try{
-  $srv = ptero('/servers/'.$id)['attributes'] ?? [];
-}catch(Throwable $e){
-  $err = $e->getMessage();
-  $srv = ['name'=>'Server'];
+$hasClientKey = !empty($u['ptero_client_key']);
+$localService = null;
+$localStatus = 'unknown';
+try {
+  $sq = db()->prepare('SELECT id,name,status,ptero_identifier,ptero_server_id FROM services WHERE user_id=? AND ptero_identifier=? LIMIT 1');
+  $sq->execute([(int)$u['id'], $id]);
+  $localService = $sq->fetch() ?: null;
+  if ($localService) $localStatus = (string)($localService['status'] ?? 'unknown');
+} catch (Throwable $e) {
+}
+
+if($hasClientKey){
+  try{
+    $srv = ptero('/servers/'.$id)['attributes'] ?? [];
+  }catch(Throwable $e){
+    $err = $e->getMessage();
+    $srv = ['name'=>($localService['name'] ?? 'Server'),'description'=>'FoxNetwork game server'];
+  }
+} else {
+  $srv = ['name'=>($localService['name'] ?? 'Server'),'description'=>'FoxNetwork game server'];
 }
 ?>
 <!doctype html>
@@ -60,7 +75,7 @@ try{
 <aside class="side">
 <div class="brand"><img src="/images/logo.png"><span>FOX<b>NETWORK</b></span></div>
 <nav class="nav">
-<a href="/">My Servers</a>
+<a href="/client">My Servers</a>
 <a class="active" href="#">Manage Service</a>
 </nav>
 <nav class="nav bottom"><?php if(($u['role'] ?? '') === 'admin'): ?><a href="/admin/"><span>Admin</span></a><?php endif?><a href="/settings.php">Account Settings</a><a href="/logout.php">Sign out</a></nav>
@@ -94,10 +109,10 @@ try{
 <div class="manage-card">
 <div class="cardhead"><b>SERVICE CONTROLS</b></div>
 <div class="control-grid">
-<button class="btn primary" data-power="start">Start</button>
-<button class="btn" data-power="restart">Restart</button>
-<button class="btn" data-power="stop">Stop</button>
-<button class="btn warning" id="reinstall">Reinstall</button>
+<button class="btn primary" data-power="start" <?=$hasClientKey?'':'disabled title="Client API key required (admin key cannot be used here)"'?>>Start</button>
+<button class="btn" data-power="restart" <?=$hasClientKey?'':'disabled title="Client API key required (admin key cannot be used here)"'?>>Restart</button>
+<button class="btn" data-power="stop" <?=$hasClientKey?'':'disabled title="Client API key required (admin key cannot be used here)"'?>>Stop</button>
+<button class="btn warning" id="reinstall" <?=$hasClientKey?'':'disabled title="Client API key required (admin key cannot be used here)"'?>>Reinstall</button>
 <a class="btn" href="<?=e(rtrim(cfg('pterodactyl.url'),'/').'/server/'.$id)?>" target="_blank">Advanced Panel</a>
 </div>
 </div>
@@ -145,10 +160,21 @@ try{
 
 <script>
 const ID=<?=json_encode($id)?>,CSRF=<?=json_encode(csrf())?>;
+const HAS_CLIENT_KEY=<?=json_encode($hasClientKey)?>;
+const LOCAL_STATUS=<?=json_encode($localStatus)?>;
 const q=s=>document.querySelector(s);
 function em(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function mb(n){return (n/1024/1024).toFixed(1)+' MB'}
 function stripAnsi(text){return String(text??'').replace(/\x1b\[[0-9;]*[A-Za-z]/g,'');}
+
+function localStatusLabel(status){
+  const s=String(status||'').toLowerCase();
+  if(s==='active') return 'RUNNING';
+  if(s==='suspended') return 'SUSPENDED';
+  if(s==='failed') return 'FAILED';
+  if(s==='pending'||s==='provisioning') return 'PROVISIONING';
+  return 'UNKNOWN';
+}
 
 async function api(action,opt={}){
   let url='/api/manage.php?action='+encodeURIComponent(action)+'&id='+encodeURIComponent(ID);
@@ -162,6 +188,12 @@ async function api(action,opt={}){
 }
 
 async function resources(){
+  if(!HAS_CLIENT_KEY){
+    q('#status').textContent=localStatusLabel(LOCAL_STATUS);
+    q('#cpu').textContent='-';
+    q('#memory').textContent='-';
+    return;
+  }
   try{
     const r=await fetch('/api/resources.php?id='+encodeURIComponent(ID));
     const j=await r.json();
@@ -188,6 +220,10 @@ q('#reinstall').onclick=async()=>{
 };
 
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
+  if(!HAS_CLIENT_KEY && b.dataset.tab!=='overview' && b.dataset.tab!=='activity'){
+    alert('This section uses Pterodactyl client endpoints and requires a Client API key. The admin/application key cannot be used for this section.');
+    return;
+  }
   document.querySelectorAll('.tab,.pane').forEach(x=>x.classList.remove('active'));
   b.classList.add('active');
   q('#'+b.dataset.tab).classList.add('active');
@@ -446,9 +482,9 @@ async function loadActivity(){
 }
 
 resources();
-setInterval(resources,10000);
+if(HAS_CLIENT_KEY) setInterval(resources,10000);
 loadActivity();
-loadFiles('/');
+if(HAS_CLIENT_KEY) loadFiles('/');
 </script>
 </body>
 </html>

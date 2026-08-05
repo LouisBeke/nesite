@@ -344,15 +344,40 @@ admin_head($u, 'Queue Job #'.$jobId, 'queue');
     let pollTimer=null;
     let stream=null;
     let sseFailed=false;
+    let isShuttingDown=false;
+    let pollAbortController=null;
+
+    function stopLive(){
+        isShuttingDown=true;
+        if(pollTimer){
+            clearInterval(pollTimer);
+            pollTimer=null;
+        }
+        if(pollAbortController){
+            pollAbortController.abort();
+            pollAbortController=null;
+        }
+        if(stream){
+            stream.close();
+            stream=null;
+        }
+    }
 
     async function poll(){
+        if(isShuttingDown) return;
         try{
-            const r=await fetch('/api/admin-queue-job-live.php?id='+encodeURIComponent(jobId),{cache:'no-store'});
+            if(pollAbortController) pollAbortController.abort();
+            pollAbortController=new AbortController();
+            const r=await fetch('/api/admin-queue-job-live.php?id='+encodeURIComponent(jobId),{cache:'no-store',signal:pollAbortController.signal});
             const j=await r.json();
             if(!j.ok) throw new Error(j.error||'Live update failed');
             render(j.data||{});
         }catch(e){
+            if(isShuttingDown) return;
+            if(e && e.name==='AbortError') return;
             setText('live-job-updated','Polling unavailable: '+(e.message||String(e)));
+        }finally{
+            pollAbortController=null;
         }
     }
 
@@ -366,15 +391,18 @@ admin_head($u, 'Queue Job #'.$jobId, 'queue');
         if(!window.EventSource){ startPolling(); return; }
         stream=new EventSource('/api/admin-queue-job-stream.php?id='+encodeURIComponent(jobId));
         stream.addEventListener('update',ev=>{
+            if(isShuttingDown) return;
             try{
                 const p=JSON.parse(ev.data||'{}');
                 if(!p.ok) throw new Error(p.error||'SSE update failed');
                 render(p.data||{});
             }catch(e){
+                if(isShuttingDown) return;
                 setText('live-job-updated','SSE parse error: '+(e.message||String(e)));
             }
         });
         stream.addEventListener('error',()=>{
+            if(isShuttingDown) return;
             if(stream){stream.close();stream=null;}
             if(!sseFailed){
                 sseFailed=true;
@@ -383,6 +411,9 @@ admin_head($u, 'Queue Job #'.$jobId, 'queue');
             }
         });
     }
+
+    window.addEventListener('pagehide',stopLive);
+    window.addEventListener('beforeunload',stopLive);
 
     startStream();
 })();

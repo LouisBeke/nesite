@@ -254,8 +254,23 @@ $(window).on("load", function() {
                 status.removeClass("success").addClass("error").text("Please complete all required fields before sending.");
                 return;
             }
-            status.removeClass("error").addClass("success").text("Thanks, your message is queued. For urgent issues, please open a support ticket.");
-            this.reset();
+            status.removeClass("error").removeClass("success").text("Sending...");
+            var form = this;
+            $.ajax({
+                url: "/api/contact-submit.php",
+                method: "POST",
+                data: $(form).serialize(),
+                dataType: "json"
+            }).done(function(res) {
+                if (res && res.ok) {
+                    status.removeClass("error").addClass("success").text(res.message || "Message sent.");
+                    form.reset();
+                    return;
+                }
+                status.removeClass("success").addClass("error").text((res && res.message) ? res.message : "Could not submit your message.");
+            }).fail(function() {
+                status.removeClass("success").addClass("error").text("Could not submit right now. Please open a support ticket.");
+            });
         });
     }
 

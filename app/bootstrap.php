@@ -35,10 +35,21 @@ function site_url(string $path='/'): string {
 }
 function enforce_https_redirect(): void {
     if(PHP_SAPI==='cli')return;
-    if(isset($_SERVER['HTTPS']) && in_array((string)$_SERVER['HTTPS'],['on','1'],true))return;
-    if(!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string)$_SERVER['HTTP_X_FORWARDED_PROTO'])==='https')return;
     $base=(string)cfg('app_url');
-    if($base==='' || !str_starts_with($base,'https://'))return;
+    if($base==='')return;
+    $isHttps = isset($_SERVER['HTTPS']) && in_array((string)$_SERVER['HTTPS'],['on','1'],true);
+    if(!$isHttps && !empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string)$_SERVER['HTTP_X_FORWARDED_PROTO'])==='https'){
+        $isHttps = true;
+    }
+    $requiresHttps = str_starts_with($base,'https://') && !$isHttps;
+    $targetHost = strtolower((string)(parse_url($base, PHP_URL_HOST) ?? ''));
+    $currentHost = strtolower((string)($_SERVER['HTTP_X_FORWARDED_HOST'] ?? $_SERVER['HTTP_HOST'] ?? ''));
+    if(($commaPos = strpos($currentHost, ',')) !== false){
+        $currentHost = substr($currentHost, 0, $commaPos);
+    }
+    $currentHost = trim(preg_replace('/:\\d+$/', '', $currentHost));
+    $requiresHostRedirect = $targetHost !== '' && $currentHost !== '' && !hash_equals($targetHost, $currentHost);
+    if(!$requiresHttps && !$requiresHostRedirect)return;
     $uri=$_SERVER['REQUEST_URI']??'/';
     $qs='';
     if(($pos=strpos($uri,'?'))!==false){$qs=substr($uri,$pos);$uri=substr($uri,0,$pos);} 
@@ -73,14 +84,7 @@ function user():?array{
     if (!array_key_exists($key, $cache)) {
         $s=db()->prepare('SELECT * FROM users WHERE id=?');
         $s->execute([$uid]);
-        $user = $s->fetch() ?: null;
-        if ($user) {
-            $linkedPteroUserId = link_existing_ptero_user_for_local_user($user);
-            if ($linkedPteroUserId !== null) {
-                $user['ptero_user_id'] = (string)$linkedPteroUserId;
-            }
-        }
-        $cache[$key]=$user;
+        $cache[$key]=$s->fetch() ?: null;
     }
     return $cache[$key];
 }
@@ -252,6 +256,94 @@ function link_existing_ptero_user_for_local_user(array $user): ?int {
     }
 
     return null;
+}
+
+function extract_ptero_client_token_from_response(array $resp): ?string {
+    $candidates = [
+        (string)($resp['attributes']['token'] ?? ''),
+        (string)($resp['attributes']['plain_text_token'] ?? ''),
+        (string)($resp['attributes']['full_token'] ?? ''),
+        (string)($resp['meta']['token'] ?? ''),
+        (string)($resp['meta']['plain_text_token'] ?? ''),
+    ];
+
+    $identifier = (string)($resp['attributes']['identifier'] ?? '');
+    $secret = (string)($resp['meta']['secret_token'] ?? '');
+    if ($identifier !== '' && $secret !== '') {
+        $candidates[] = $identifier . $secret;
+        $candidates[] = $identifier . '.' . $secret;
+    }
+
+    foreach ($candidates as $token) {
+        $token = trim($token);
+        if ($token !== '') return $token;
+    }
+    return null;
+}
+
+function verify_ptero_client_token(string $token): bool {
+    $base = rtrim((string)cfg('pterodactyl.url'), '/');
+    if ($base === '') return false;
+
+    $ch = curl_init($base . '/api/client/account');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => [
+            'Authorization: Bearer ' . $token,
+            'Accept: Application/vnd.pterodactyl.v1+json',
+            'Content-Type: application/json',
+        ],
+        CURLOPT_TIMEOUT => 15,
+    ]);
+    $raw = curl_exec($ch);
+    $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    return $raw !== false && $code >= 200 && $code < 300;
+}
+
+function create_ptero_client_key_with_application_api(int $pteroUserId): ?string {
+    if ($pteroUserId <= 0) return null;
+
+    $attempts = [
+        ['/users/' . $pteroUserId . '/api-keys', ['description' => 'FoxNetwork Portal Auto Key', 'allowed_ips' => []]],
+        ['/users/' . $pteroUserId . '/api-keys', ['description' => 'FoxNetwork Portal Auto Key']],
+        ['/users/' . $pteroUserId . '/keys', ['description' => 'FoxNetwork Portal Auto Key', 'allowed_ips' => []]],
+        ['/users/' . $pteroUserId . '/keys', ['description' => 'FoxNetwork Portal Auto Key']],
+    ];
+
+    foreach ($attempts as [$path, $payload]) {
+        try {
+            $resp = app_ptero((string)$path, 'POST', $payload);
+            $token = extract_ptero_client_token_from_response(is_array($resp) ? $resp : []);
+            if ($token !== null) return $token;
+        } catch (Throwable $e) {
+        }
+    }
+
+    return null;
+}
+
+function auto_setup_ptero_client_key_for_local_user(array $user): bool {
+    $uid = (int)($user['id'] ?? 0);
+    if ($uid <= 0) return false;
+
+    if (trim((string)($user['ptero_client_key'] ?? '')) !== '') {
+        return true;
+    }
+
+    $pteroUserId = (int)($user['ptero_user_id'] ?? 0);
+    if ($pteroUserId <= 0) {
+        $pteroUserId = (int)(link_existing_ptero_user_for_local_user($user) ?? 0);
+    }
+    if ($pteroUserId <= 0) return false;
+
+    $token = create_ptero_client_key_with_application_api($pteroUserId);
+    if (!$token) return false;
+    if (!verify_ptero_client_token($token)) return false;
+
+    db()->prepare('UPDATE users SET ptero_client_key=? WHERE id=?')->execute([enc($token), $uid]);
+    return true;
 }
 
 function invoice_for_order(int $orderId): int {

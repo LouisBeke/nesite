@@ -158,7 +158,7 @@ function queue_live_payload(): array {
 
 try {
     require_admin();
-    ignore_user_abort(true);
+    ignore_user_abort(false);
     @set_time_limit(0);
 
     sse_emit('hello', ['ok' => true, 'data' => ['server_time' => date('Y-m-d H:i:s')]]);
