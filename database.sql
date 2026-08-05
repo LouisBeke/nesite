@@ -71,13 +71,6 @@ INSERT IGNORE INTO store_categories (name,slug,description,icon,sort_order) VALU
 ('Minecraft Hosting','minecraft','Fast Minecraft servers powered by FoxNetwork.','fas fa-cube',10),
 ('Game Hosting','games','Simple game server hosting with instant management.','fas fa-gamepad',20);
 
-INSERT IGNORE INTO store_products (category_id,name,slug,description,price_monthly,ram_mb,disk_mb,cpu_percent,backups,database_limit,allocation_limit,sort_order)
-SELECT id,'Fox Starter','minecraft-starter','A simple starter server for friends and small worlds.',4.99,2048,10000,100,1,1,1,10 FROM store_categories WHERE slug='minecraft';
-INSERT IGNORE INTO store_products (category_id,name,slug,description,price_monthly,ram_mb,disk_mb,cpu_percent,backups,database_limit,allocation_limit,sort_order)
-SELECT id,'Fox Plus','minecraft-plus','More memory and CPU for plugins, mods and growing communities.',8.99,4096,20000,200,3,2,2,20 FROM store_categories WHERE slug='minecraft';
-INSERT IGNORE INTO store_products (category_id,name,slug,description,price_monthly,ram_mb,disk_mb,cpu_percent,backups,database_limit,allocation_limit,sort_order)
-SELECT id,'Fox Pro','minecraft-pro','High-performance hosting for larger modpacks and communities.',14.99,8192,40000,300,5,4,3,30 FROM store_categories WHERE slug='minecraft';
-
 -- Stage 5: Billing, invoices, services and provisioning
 ALTER TABLE users ADD COLUMN IF NOT EXISTS ptero_user_id BIGINT UNSIGNED NULL;
 ALTER TABLE store_products ADD COLUMN IF NOT EXISTS ptero_egg_id INT UNSIGNED NULL;

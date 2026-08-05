@@ -429,3 +429,38 @@ function fox_v15_migrate(): void {
 
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15-advanced-hosting']);
 }
+
+function fox_v15a_migrate(): void {
+    static $ran=false; if($ran)return; $ran=true; $pdo=db();
+    if (fox_migration_applied($pdo, 'v15a-remove-legacy-minecraft-plans')) return;
+
+    if (fox_table_exists($pdo, 'store_products')) {
+        $del = $pdo->prepare('DELETE FROM store_products WHERE slug IN (?,?,?) OR name IN (?,?,?)');
+        $del->execute([
+            'minecraft-starter','minecraft-plus','minecraft-pro',
+            'Fox Starter','Fox Plus','Fox Pro'
+        ]);
+    }
+
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15a-remove-legacy-minecraft-plans']);
+}
+
+function fox_v15b_migrate(): void {
+    static $ran=false; if($ran)return; $ran=true; $pdo=db();
+    if (fox_migration_applied($pdo, 'v15b-reprice-minecraft-plans')) return;
+
+    if (fox_table_exists($pdo, 'store_products')) {
+        $prices = [
+            'iron' => 5.00,
+            'bronze' => 8.00,
+            'silver' => 12.00,
+            'gold' => 18.00,
+        ];
+        $up = $pdo->prepare('UPDATE store_products SET price_monthly=? WHERE slug=?');
+        foreach ($prices as $slug => $price) {
+            $up->execute([$price, $slug]);
+        }
+    }
+
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15b-reprice-minecraft-plans']);
+}

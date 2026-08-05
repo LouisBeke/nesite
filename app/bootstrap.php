@@ -71,6 +71,8 @@ fox_v13a_migrate();
 fox_v14_migrate();
 fox_v14b_migrate();
 fox_v15_migrate();
+fox_v15a_migrate();
+fox_v15b_migrate();
 function e($v):string{return htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');}
 require_once __DIR__.'/mail.php';
 require_once __DIR__.'/provisioning.php';

@@ -8,7 +8,6 @@ $items=[
  'products'=>['/admin/products.php','Products','◇'],
  'billing'=>['/admin/billing.php','Billing','€'],
  'services'=>['/admin/services.php','Services','▣'],
- 'queue'=>['/admin/queue.php','Queue','◷'],
  'email'=>['/admin/email.php','Email','✉'],
  'settings'=>['/admin/settings.php','Settings','⚙'],
  'migration'=>['/admin/migration.php','Migration','⇄'],

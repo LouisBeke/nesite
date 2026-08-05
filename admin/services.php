@@ -1,5 +1,6 @@
 <?php
 require __DIR__.'/../app/bootstrap.php';require __DIR__.'/_layout.php';$u=require_admin();$msg='';$err='';
+if((string)($_GET['queue_removed'] ?? '')==='1'){$msg='Queue page was removed. Use Services actions for provisioning management.';}
 if($_SERVER['REQUEST_METHOD']==='POST'){
  verify_csrf();$sid=(int)($_POST['service_id']??0);$action=(string)($_POST['action']??'');
  try{
@@ -34,7 +35,7 @@ $activity=[];try{$activity=db()->query("SELECT a.*,u.name admin_name,s.name serv
 admin_head($u,'Services','services');?>
 <?php if($msg):?><div class="notice"><?=e($msg)?></div><?php endif?><?php if($err):?><div class="error"><?=e($err)?></div><?php endif?>
 <section class="card"><div class="cardhead"><b>CUSTOMER SERVICES</b><span class="muted"><?=count($rows)?> services</span></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Service</th><th>Customer</th><th>Product</th><th>Next due</th><th>Pterodactyl</th><th>Status</th><th>Actions</th></tr></thead><tbody>
-<?php foreach($rows as $r): $cfg=json_decode((string)($r['config_json']??''),true)?:[]; $imported=(($cfg['source']??'')==='Paymenter'||!empty($cfg['imported'])); $displayProduct=$r['product_name']??($cfg['product_name']??'—');?><tr><td><b><?=e($r['name'])?></b><?php if($imported):?><span class="admin-badge status-pending" style="margin-left:8px">IMPORTED FROM PAYMENTER</span><?php endif?><small>#<?=e($r['id'])?></small><?php if($r['last_error']):?><small class="redtext"><?=e($r['last_error'])?></small><?php endif?></td><td><?=e($r['customer_name'])?><small><?=e($r['email'])?></small></td><td><?=e($displayProduct)?></td><td><?=e($r['next_due_at']?date('d M Y',strtotime($r['next_due_at'])):'—')?></td><td><?=e($r['ptero_identifier']??'Not provisioned')?></td><td><?=admin_badge($r['status'])?></td><td>
+<?php foreach($rows as $r): $cfg=json_decode((string)($r['config_json']??''),true)?:[]; $displayProduct=$r['product_name']??($cfg['product_name']??'—');?><tr><td><b><?=e($r['name'])?></b><small>#<?=e($r['id'])?></small><?php if($r['last_error']):?><small class="redtext"><?=e($r['last_error'])?></small><?php endif?></td><td><?=e($r['customer_name'])?><small><?=e($r['email'])?></small></td><td><?=e($displayProduct)?></td><td><?=e($r['next_due_at']?date('d M Y',strtotime($r['next_due_at'])):'—')?></td><td><?=e($r['ptero_identifier']??'Not provisioned')?></td><td><?=admin_badge($r['status'])?></td><td>
 <div class="service-actions">
 <?php if(!$r['ptero_server_id'] && !in_array($r['status'],['terminated','cancelled'],true)):?><form method="post"><input type="hidden" name="csrf" value="<?=e(csrf())?>"><input type="hidden" name="service_id" value="<?=e($r['id'])?>"><button class="btn primary" name="action" value="provision">Provision</button></form><?php endif?>
 <?php if($r['ptero_server_id'] && $r['status']==='active'):?><form method="post"><input type="hidden" name="csrf" value="<?=e(csrf())?>"><input type="hidden" name="service_id" value="<?=e($r['id'])?>"><button class="btn warning" name="action" value="suspend">Suspend</button></form><?php endif?>
