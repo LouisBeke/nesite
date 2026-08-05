@@ -1,5 +1,17 @@
 <?php
 declare(strict_types=1);
+
+$sessionToken = null;
+if (!empty($_SERVER['HTTP_AUTHORIZATION']) && preg_match('/^Bearer\s+(.+)$/i', (string)$_SERVER['HTTP_AUTHORIZATION'], $matches)) {
+    $sessionToken = trim($matches[1]);
+} elseif (!empty($_SERVER['HTTP_X_SESSION_TOKEN'])) {
+    $sessionToken = trim((string)$_SERVER['HTTP_X_SESSION_TOKEN']);
+}
+
+if ($sessionToken !== null && $sessionToken !== '') {
+    session_id($sessionToken);
+}
+
 session_start();
 
 function is_suspicious_request_path(?string $path): bool {
