@@ -54,58 +54,66 @@ $(function() {
 
 // Add Slider functionality to the #testimonials section in the home page.
 var testimonialsSlider = $("#testimonials #testimonials-slider");
-testimonialsSlider.slick({
-    dots: false,
-    arrows: true,
-    infinite: false,
-    slidesToShow: 1,
-    slidesToScroll: 1
-});
+if (testimonialsSlider.length && $.fn.slick) {
+    testimonialsSlider.slick({
+        dots: false,
+        arrows: true,
+        infinite: false,
+        slidesToShow: 1,
+        slidesToScroll: 1
+    });
+}
 // Add Slider functionality to the testimonials in the "Sign in" and "Sign out" pages.
 var miniTestimonialsSlider = $("#form-section .mini-testimonials-slider");
-miniTestimonialsSlider.slick({
-    dots: true,
-    arrows: false,
-    infinite: false,
-    autoplay: true,
-    speed: 200
-});
+if (miniTestimonialsSlider.length && $.fn.slick) {
+    miniTestimonialsSlider.slick({
+        dots: true,
+        arrows: false,
+        infinite: false,
+        autoplay: true,
+        speed: 200
+    });
+}
 // Add Slider functionality to the info-slider in the about page.
 var infoSlider = $("#page-head .info-slider");
-infoSlider.slick({
-    dots: true,
-    arrows: false,
-    infinite: false,
-    autoplay: true,
-    speed: 200
-});
+if (infoSlider.length && $.fn.slick) {
+    infoSlider.slick({
+        dots: true,
+        arrows: false,
+        infinite: false,
+        autoplay: true,
+        speed: 200
+    });
+}
 $(window).on("load", function() {
     // Adding animation to the #main-slider
     $('#main-slider .slick-active > div:nth-child(1)').addClass("animated");
     $('#main-slider .slick-active > div:nth-child(2)').addClass("animated animation-delay1");
     // Counter slider functions in "CUSTOM HOSTING PLAN" section on the homepage
     var cPlan = $('#c-plan');
-    cPlan.slider({
-        tooltip: 'always'
-    });
-    var valueHolder = $('.slider .tooltip.tooltip-main','#custom-plan');
-    valueHolder.css("margin-left", (valueHolder.outerWidth()/2)*-1+"px");
-    cPlan.on("slide", function(e) {
-        $('.slider .tooltip-up','#custom-plan').text(e.value/20);
-        $('.price','#custom-plan').text($(this).data("currency") + e.value/20);
-        $('.feature1 span','#custom-plan').text(e.value);
-        $('.feature2 span','#custom-plan').text(e.value*98);
+    if (cPlan.length && $.fn.slider) {
+        cPlan.slider({
+            tooltip: 'always'
+        });
+        var valueHolder = $('.slider .tooltip.tooltip-main','#custom-plan');
         valueHolder.css("margin-left", (valueHolder.outerWidth()/2)*-1+"px");
-    });
-    cPlan.value = cPlan.data("slider-value");
-    $('.slider .tooltip','#custom-plan').append('<div class="tooltip-up"></div>');
-    $('.slider .tooltip-up','#custom-plan').text(cPlan.value/20);
-    $('.slider .tooltip-inner','#custom-plan').attr("data-unit",cPlan.data("unit"));
-    $('.slider .tooltip-up','#custom-plan').attr("data-currency",cPlan.data("currency"));
-    
-    $('.price','#custom-plan').text(cPlan.data("currency") + cPlan.value/20);
-    $('.feature1 span','#custom-plan').text(cPlan.value);
-    $('.feature2 span','#custom-plan').text(cPlan.value*98);
+        cPlan.on("slide", function(e) {
+            $('.slider .tooltip-up','#custom-plan').text(e.value/20);
+            $('.price','#custom-plan').text($(this).data("currency") + e.value/20);
+            $('.feature1 span','#custom-plan').text(e.value);
+            $('.feature2 span','#custom-plan').text(e.value*98);
+            valueHolder.css("margin-left", (valueHolder.outerWidth()/2)*-1+"px");
+        });
+        cPlan.value = cPlan.data("slider-value");
+        $('.slider .tooltip','#custom-plan').append('<div class="tooltip-up"></div>');
+        $('.slider .tooltip-up','#custom-plan').text(cPlan.value/20);
+        $('.slider .tooltip-inner','#custom-plan').attr("data-unit",cPlan.data("unit"));
+        $('.slider .tooltip-up','#custom-plan').attr("data-currency",cPlan.data("currency"));
+        
+        $('.price','#custom-plan').text(cPlan.data("currency") + cPlan.value/20);
+        $('.feature1 span','#custom-plan').text(cPlan.value);
+        $('.feature2 span','#custom-plan').text(cPlan.value*98);
+    }
 
     // Features Section click function
     var featureIconHolder = $("#features-links-holder .feature-icon-holder");

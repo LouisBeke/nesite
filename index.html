@@ -12,7 +12,6 @@
     <link rel="stylesheet" type="text/css" href="css/bootstrap.min.css">
     <link rel="preload" as="image" href="images/graphic1.png" fetchpriority="high">
     <link rel="stylesheet" type="text/css" href="css/fontawesome-all.min.css?v=20260805b" media="print" onload="this.media='all'">
-    <link rel="stylesheet" type="text/css" href="css/slick.css" media="print" onload="this.media='all'">
     <link rel="stylesheet" type="text/css" href="css/style.css">
     <link rel="stylesheet" type="text/css" href="css/custom.css">
     <link rel="stylesheet" type="text/css" href="css/styles-modified.css?v=20260805b">
@@ -694,7 +693,16 @@
         </div>
     </div>
 </div>
-<script src="https://app.trysoro.com/api/embed/7de016d4-6a20-4987-83c0-4564918ac116" defer></script>
+<script>
+window.addEventListener('load', function () {
+    window.setTimeout(function () {
+        var blogScript = document.createElement('script');
+        blogScript.src = 'https://app.trysoro.com/api/embed/7de016d4-6a20-4987-83c0-4564918ac116';
+        blogScript.async = true;
+        document.body.appendChild(blogScript);
+    }, 1200);
+});
+</script>
 
 <div id="security" class="container-fluid" style="background: #fff; padding: 60px 0; border-top: 2px solid #e0e0e0; border-bottom: 1px solid #e0e0e0;">
     <div class="container">
@@ -792,7 +800,6 @@
 </div>
 <script src="js/jquery.min.js" defer></script>
 <script src="js/bootstrap.min.js" defer></script>
-<script src="js/slick.min.js" defer></script>
 <script src="js/main.js" defer></script>
 </body>
 </html>
