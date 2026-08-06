@@ -2463,6 +2463,7 @@ body.dark-mode .mfeature-box,
 body.dark-mode .faq-item,
 body.dark-mode #contact-info .info-box,
 body.dark-mode #contact-form .contact-form-wrapper,
+body.dark-mode .quick-actions .action-card,
 body.dark-mode .article-summary,
 body.dark-mode .feature-box,
 body.dark-mode .details-holder {
@@ -2530,6 +2531,17 @@ body.dark-mode .form-control {
 
 body.dark-mode .form-control::placeholder {
     color: #8ea2c4 !important;
+}
+
+body.dark-mode .quick-actions .action-card p,
+body.dark-mode .contact-note,
+body.dark-mode .contact-form-status {
+    color: #b3c3db !important;
+}
+
+body.dark-mode .article-summary .article-img,
+body.dark-mode .article-summary .article-details {
+    background: #111b31 !important;
 }
 
 body.dark-mode #cta-primary .ybtn[style*="background: white"] {

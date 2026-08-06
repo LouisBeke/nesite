@@ -151,6 +151,32 @@ function ptero_cache_key(string $scope,string $token,string $path,string $method
 function ptero_cache_get(string $key,int $ttl) { $file=ptero_cache_dir().DIRECTORY_SEPARATOR.$key.'.json'; if(!is_file($file)) return null; $raw=@file_get_contents($file); if($raw===false||$raw==='') return null; $data=json_decode($raw,true); if(!is_array($data)||($data['expires_at']??0)<time()) return null; return $data['value'] ?? null; }
 function ptero_cache_set(string $key,$value,int $ttl): void { $file=ptero_cache_dir().DIRECTORY_SEPARATOR.$key.'.json'; @file_put_contents($file,json_encode(['expires_at'=>time()+$ttl,'value'=>$value],JSON_UNESCAPED_SLASHES),LOCK_EX); }
 function ptero(string $path,string $method='GET',?array $body=null){$u=user();$token=dec($u['ptero_client_key']??null);if(!$token)throw new RuntimeException('Pterodactyl API key not configured.');$method=strtoupper($method);$cacheTtl=$method==='GET'?3:0;$cacheKey=$cacheTtl>0?ptero_cache_key('client',$token,$path,$method,$body):null;if($cacheKey){$cached=ptero_cache_get($cacheKey,$cacheTtl);if($cached!==null)return $cached;}$ch=curl_init(rtrim(cfg('pterodactyl.url'),'/').'/api/client'.$path);$headers=['Authorization: Bearer '.$token,'Accept: Application/vnd.pterodactyl.v1+json','Content-Type: application/json'];curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_HTTPHEADER=>$headers,CURLOPT_TIMEOUT=>12,CURLOPT_CUSTOMREQUEST=>$method]);if($body!==null)curl_setopt($ch,CURLOPT_POSTFIELDS,json_encode($body));$raw=curl_exec($ch);$code=curl_getinfo($ch,CURLINFO_HTTP_CODE);if($raw===false)throw new RuntimeException(curl_error($ch));curl_close($ch);$json=json_decode($raw,true);if($code<200||$code>=300)throw new RuntimeException($json['errors'][0]['detail']??('Pterodactyl HTTP '.$code));if($cacheKey)ptero_cache_set($cacheKey,$json,$cacheTtl);return $json;}
+function ptero_deleted_server_error(string $message): bool {
+    $message = strtolower($message);
+    return str_contains($message, 'no query results for model')
+        || str_contains($message, 'pterodactyl\\models\\server')
+        || str_contains($message, 'pterodactyl\models\server')
+        || str_contains($message, 'server not found');
+}
+function clear_deleted_ptero_service_link(int $serviceId, int $userId): void {
+    if ($serviceId <= 0 || $userId <= 0) return;
+    try {
+        db()->prepare("UPDATE services SET ptero_identifier=NULL, ptero_server_id=NULL, last_error='Pterodactyl server was deleted or not found.' WHERE id=? AND user_id=?")
+            ->execute([$serviceId, $userId]);
+    } catch (Throwable $e) {
+    }
+}
+function clear_deleted_ptero_service_link_by_service_id(int $serviceId): void {
+    if ($serviceId <= 0) return;
+    try {
+        db()->prepare("UPDATE services SET ptero_identifier=NULL, ptero_server_id=NULL, last_error='Pterodactyl server was deleted or not found.' WHERE id=?")
+            ->execute([$serviceId]);
+    } catch (Throwable $e) {
+    }
+}
+function deleted_ptero_service_message(): string {
+    return 'This server was deleted in Pterodactyl and is no longer linked. Recreate or relink the service in the panel.';
+}
 function greeting():string{$h=(int)date('G');return $h<12?'Good morning':($h<18?'Good afternoon':'Good evening');}
 
 function require_admin(): array {

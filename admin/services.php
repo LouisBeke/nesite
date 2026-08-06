@@ -64,7 +64,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     service_log($sid,(int)$u['id'],'verify_link','Pterodactyl link verified: server #'.$sv['ptero_server_id'].' '.$actual);$msg='Pterodactyl link verified for '.$sv['name'].'.';break;
    default: throw new RuntimeException('Unknown service action.');
   }
- }catch(Throwable $e){$err=$e->getMessage();}
+ }catch(Throwable $e){if($sid>0&&ptero_deleted_server_error($e->getMessage())){clear_deleted_ptero_service_link_by_service_id($sid);$err=deleted_ptero_service_message();}else{$err=$e->getMessage();}}
 }
 $rows=db()->query("SELECT s.*,u.name customer_name,u.email,p.name product_name FROM services s JOIN users u ON u.id=s.user_id LEFT JOIN store_products p ON p.id=s.product_id ORDER BY s.id DESC")->fetchAll();$products=db()->query('SELECT * FROM store_products WHERE active=1 ORDER BY name')->fetchAll();
 $activity=[];try{$activity=db()->query("SELECT a.*,u.name admin_name,s.name service_name FROM service_activity a LEFT JOIN users u ON u.id=a.admin_user_id LEFT JOIN services s ON s.id=a.service_id ORDER BY a.id DESC LIMIT 30")->fetchAll();}catch(Throwable $e){}

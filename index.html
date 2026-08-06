@@ -18,6 +18,15 @@
 </head>
 
 <body class="page-home">
+<script>
+(function () {
+    try {
+        var theme = localStorage.getItem('foxnetwork-theme');
+        if (!theme && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) theme = 'dark';
+        if (theme === 'dark') document.body.classList.add('dark-mode');
+    } catch (e) {}
+})();
+</script>
 <header id="header-holder" class="header-holder main-header container-fluid">
     <div class="bg-animation">
     </div>

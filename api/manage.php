@@ -51,6 +51,15 @@ function service_server_id_by_identifier_for_user(string $identifier, int $userI
     return (int)$q->fetchColumn();
 }
 
+function clear_deleted_server_by_identifier(string $identifier, int $userId): bool {
+    $q = db()->prepare('SELECT id FROM services WHERE ptero_identifier=? AND user_id=? LIMIT 1');
+    $q->execute([$identifier, $userId]);
+    $serviceId = (int)$q->fetchColumn();
+    if ($serviceId <= 0) return false;
+    clear_deleted_ptero_service_link($serviceId, $userId);
+    return true;
+}
+
 try {
     switch ($action) {
         case 'websocket': {
@@ -254,5 +263,8 @@ try {
             outm(false, null, 'Unknown action.');
     }
 } catch (Throwable $e) {
+    if (ptero_deleted_server_error($e->getMessage()) && clear_deleted_server_by_identifier($id, (int)$u['id'])) {
+        outm(false, null, deleted_ptero_service_message());
+    }
     outm(false, null, $e->getMessage());
 }

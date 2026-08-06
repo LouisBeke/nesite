@@ -38,6 +38,9 @@ if (!$servers && !empty($u['ptero_user_id'])) {
           $serviceMap[$identifier] = $svc;
         }
       } catch (Throwable $e) {
+        if (ptero_deleted_server_error($e->getMessage())) {
+          clear_deleted_ptero_service_link((int)$svc['id'], (int)$u['id']);
+        }
       }
     }
     if ($identifier === '') continue;
