@@ -39,6 +39,18 @@ if ($id === '' || !in_array($signal, ['start','stop','restart','kill'], true)) {
     out(['ok'=>false,'error'=>'Invalid server or power action']);
 }
 
+$localServiceId = ctype_digit($id) ? (int)$id : 0;
+if ($localServiceId > 0) {
+    $q = db()->prepare('SELECT ptero_identifier, ptero_server_id FROM services WHERE id=? AND user_id=? LIMIT 1');
+    $q->execute([$localServiceId, (int)$u['id']]);
+    $service = $q->fetch();
+    if (!$service) out(['ok'=>false,'error'=>'Service not found']);
+    $id = (string)($service['ptero_identifier'] ?? '');
+    if ($id === '') $id = (string)($service['ptero_server_id'] ?? '');
+    $id = preg_replace('/[^a-zA-Z0-9_-]/', '', $id);
+    if ($id === '') out(['ok'=>false,'error'=>'This service is not linked to a panel server yet.']);
+}
+
 $token = dec($u['ptero_client_key'] ?? null);
 if (!$token) out(['ok'=>false,'error'=>'Pterodactyl Client API key is not configured.']);
 
@@ -77,9 +89,12 @@ if ($raw === false || $errno !== 0) {
 
 if ($code >= 200 && $code < 300) {
     try {
-        $q = db()->prepare('SELECT id FROM services WHERE ptero_identifier=? LIMIT 1');
-        $q->execute([$id]);
-        $sid = (int)$q->fetchColumn();
+        $sid = $localServiceId;
+        if ($sid <= 0) {
+            $q = db()->prepare('SELECT id FROM services WHERE user_id=? AND (ptero_identifier=? OR ptero_server_id=?) LIMIT 1');
+            $q->execute([(int)$u['id'], $id, $id]);
+            $sid = (int)$q->fetchColumn();
+        }
         if ($sid > 0) {
             db()->prepare('INSERT INTO service_activity(service_id,admin_user_id,action,details) VALUES(?,?,?,?)')
                 ->execute([$sid, null, 'power_'.$signal, 'Power action from customer portal']);

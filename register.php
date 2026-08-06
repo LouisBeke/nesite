@@ -48,12 +48,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         try {
-            link_existing_ptero_user_for_local_user($u);
+            provision_ptero_client_key_for_new_user($uid);
         } catch (Throwable $e) {
-        }
-        try {
-            auto_setup_ptero_client_key_for_local_user($u);
-        } catch (Throwable $e) {
+            error_log('FoxNetwork registration Pterodactyl key setup failed for user '.$uid.': '.$e->getMessage());
         }
 
         session_regenerate_id(true);

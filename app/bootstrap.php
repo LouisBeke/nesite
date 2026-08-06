@@ -72,7 +72,7 @@ if (is_suspicious_request_path($_SERVER['REQUEST_URI'] ?? '')) {
 $configFile=__DIR__.'/../config.php';
 if(!file_exists($configFile)){http_response_code(500);die('Copy config.example.php to config.php and configure it.');}
 $config=require $configFile;
-function cfg(string $key=null){global $config;if($key===null)return $config;$v=$config;foreach(explode('.',$key) as $p){$v=$v[$p]??null;}return $v;}
+function cfg(?string $key=null){global $config;if($key===null)return $config;$v=$config;foreach(explode('.',$key) as $p){$v=$v[$p]??null;}return $v;}
 function site_url(string $path='/'): string {
     $base=(string)cfg('app_url');
     if($base==='')return $path;
@@ -399,6 +399,34 @@ function auto_setup_ptero_client_key_for_local_user(array $user): bool {
 
     db()->prepare('UPDATE users SET ptero_client_key=? WHERE id=?')->execute([enc($token), $uid]);
     return true;
+}
+
+function provision_ptero_client_key_for_new_user(int $uid): bool {
+    if ($uid <= 0) return false;
+
+    $q = db()->prepare('SELECT * FROM users WHERE id=? LIMIT 1');
+    $q->execute([$uid]);
+    $user = $q->fetch();
+    if (!$user) return false;
+
+    if (trim((string)($user['ptero_client_key'] ?? '')) !== '') {
+        return true;
+    }
+
+    $pteroUserId = (int)($user['ptero_user_id'] ?? 0);
+    if ($pteroUserId <= 0) {
+        $pteroUserId = (int)(ensure_ptero_user_for_local_user(
+            (string)($user['email'] ?? ''),
+            (string)($user['name'] ?? ''),
+            true
+        ) ?? 0);
+        if ($pteroUserId > 0) {
+            db()->prepare('UPDATE users SET ptero_user_id=? WHERE id=?')->execute([$pteroUserId, $uid]);
+            $user['ptero_user_id'] = $pteroUserId;
+        }
+    }
+
+    return auto_setup_ptero_client_key_for_local_user($user);
 }
 
 function invoice_for_order(int $orderId): int {
