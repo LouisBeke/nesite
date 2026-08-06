@@ -108,6 +108,14 @@ try {
     $socket = (string)($data['socket'] ?? '');
     $token = (string)($data['token'] ?? '');
 
+    if (str_starts_with($socket, 'https://')) {
+        $socket = 'wss://' . substr($socket, 8);
+    } elseif (str_starts_with($socket, 'http://')) {
+        $socket = 'ws://' . substr($socket, 7);
+    } elseif (str_starts_with($socket, '//')) {
+        $socket = 'wss:' . $socket;
+    }
+
     if ($socket === '' || $token === '') {
         throw new RuntimeException('Pterodactyl did not return console websocket access for this server.');
     }
