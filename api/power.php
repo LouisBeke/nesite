@@ -13,6 +13,22 @@ function out(array $data): never {
     exit;
 }
 
+function power_deleted_server_error(string $message): bool {
+    $message = strtolower($message);
+    return str_contains($message, 'no query results for model')
+        || str_contains($message, 'pterodactyl\\models\\server')
+        || str_contains($message, 'pterodactyl\models\server')
+        || str_contains($message, 'server not found');
+}
+
+function power_clear_ptero_link(int $serviceId, int $userId): void {
+    try {
+        db()->prepare('UPDATE services SET ptero_identifier=NULL, ptero_server_id=NULL WHERE id=? AND user_id=?')
+            ->execute([$serviceId, $userId]);
+    } catch (Throwable $e) {
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     out(['ok'=>false,'error'=>'Method not allowed']);
 }
@@ -41,13 +57,30 @@ if ($id === '' || !in_array($signal, ['start','stop','restart','kill'], true)) {
 
 $localServiceId = ctype_digit($id) ? (int)$id : 0;
 if ($localServiceId > 0) {
-    $q = db()->prepare('SELECT ptero_identifier, ptero_server_id FROM services WHERE id=? AND user_id=? LIMIT 1');
+    $q = db()->prepare('SELECT id, ptero_identifier, ptero_server_id FROM services WHERE id=? AND user_id=? LIMIT 1');
     $q->execute([$localServiceId, (int)$u['id']]);
     $service = $q->fetch();
     if (!$service) out(['ok'=>false,'error'=>'Service not found']);
     $id = (string)($service['ptero_identifier'] ?? '');
-    if ($id === '') $id = (string)($service['ptero_server_id'] ?? '');
     $id = preg_replace('/[^a-zA-Z0-9_-]/', '', $id);
+
+    if ($id === '' && (int)($service['ptero_server_id'] ?? 0) > 0) {
+        try {
+            $server = app_ptero('/servers/' . (int)$service['ptero_server_id']);
+            $id = preg_replace('/[^a-zA-Z0-9_-]/', '', (string)($server['attributes']['identifier'] ?? ''));
+            if ($id !== '') {
+                db()->prepare('UPDATE services SET ptero_identifier=? WHERE id=? AND user_id=?')
+                    ->execute([$id, (int)$service['id'], (int)$u['id']]);
+            }
+        } catch (Throwable $e) {
+            if (power_deleted_server_error($e->getMessage())) {
+                power_clear_ptero_link((int)$service['id'], (int)$u['id']);
+                out(['ok'=>false,'error'=>'This server was deleted in Pterodactyl and is no longer linked. Recreate or relink the service in the panel.']);
+            }
+            out(['ok'=>false,'error'=>$e->getMessage()]);
+        }
+    }
+
     if ($id === '') out(['ok'=>false,'error'=>'This service is not linked to a panel server yet.']);
 }
 
@@ -112,5 +145,9 @@ if (is_array($decoded)) {
 if (!$detail) {
     $plain = trim(strip_tags((string)$raw));
     $detail = $plain !== '' ? mb_substr($plain, 0, 300) : 'No response body';
+}
+if ($localServiceId > 0 && power_deleted_server_error((string)$detail)) {
+    power_clear_ptero_link($localServiceId, (int)$u['id']);
+    out(['ok'=>false,'error'=>'This server was deleted in Pterodactyl and is no longer linked. Recreate or relink the service in the panel.','http'=>$code]);
 }
 out(['ok'=>false,'error'=>'Pterodactyl HTTP ' . $code . ': ' . $detail,'http'=>$code]);
