@@ -97,6 +97,7 @@ if (!$servers && !empty($u['ptero_user_id'])) {
 </nav>
 <nav class="nav bottom">
 <?php if(($u['role'] ?? '') === 'admin'): ?><a href="/admin/"><span>Admin</span></a><?php endif?>
+<?php if(!empty($_SESSION['admin_return_uid'])):?><a href="/return-admin.php">← Return to Admin</a><?php endif?>
 <a href="/settings.php">Account Settings</a>
 <a href="/logout.php">Sign out</a>
 </nav>

@@ -65,23 +65,8 @@ try {
         .'<p><b>Email:</b> '.e($email).'</p>'
         .'<p><b>Subject:</b> '.e($subject).'</p>'
         .'<p><b>Message:</b><br>'.nl2br(e($message)).'</p>';
-    try {
-        send_custom_email(null, $supportTo, $emailSubject, $body);
-        contact_out(true, 'Thanks, your message has been sent by email.', ['mode' => 'email']);
-    } catch (Throwable $mailError) {
-        // If M365 is selected but Graph is blocked (403/permission issues), try SMTP fallback.
-        if (mail_provider() === 'm365') {
-            try {
-                smtp_send($supportTo, $emailSubject, branded_email($body));
-                db()->prepare('INSERT INTO email_log(user_id,recipient,subject,status,error_message) VALUES(?,?,?,?,?)')
-                    ->execute([null, $supportTo, $emailSubject, 'sent', null]);
-                contact_out(true, 'Thanks, your message has been sent by email.', ['mode' => 'email-fallback']);
-            } catch (Throwable $smtpError) {
-                throw $mailError;
-            }
-        }
-        throw $mailError;
-    }
+    send_custom_email(null, $supportTo, $emailSubject, $body);
+    contact_out(true, 'Thanks, your message has been sent by email.', ['mode' => 'email']);
 } catch (Throwable $e) {
     http_response_code(500);
     contact_out(false, 'Could not submit your message right now. Please open a support ticket.');

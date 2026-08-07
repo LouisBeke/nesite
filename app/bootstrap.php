@@ -125,6 +125,7 @@ try {
     if (function_exists('fox_v15d_migrate')) fox_v15d_migrate();
     if (function_exists('fox_v15e_migrate')) fox_v15e_migrate();
     if (function_exists('fox_v15f_migrate')) fox_v15f_migrate();
+    if (function_exists('fox_v15g_migrate')) fox_v15g_migrate();
 } catch (Throwable $e) {
     error_log('FoxNetwork migrations skipped: '.$e->getMessage());
 }

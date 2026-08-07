@@ -8,8 +8,7 @@ $err = '';
 $keys = [
     'company_name','support_email','billing_email','invoice_prefix','currency','vat_rate','invoice_due_days',
     'renewal_days_before','grace_days','auto_suspend','auto_unsuspend','cron_token',
-    'smtp_host','smtp_port','smtp_security','smtp_username','smtp_password','smtp_from_email','smtp_from_name',
-    'mail_provider','m365_tenant_id','m365_client_id','m365_sender_email',
+    'smtp_host','smtp_port','smtp_security','smtp_username','smtp_from_email','smtp_from_name','mail_provider',
     'hosting_allow_startup_variable_edit','hosting_allow_custom_startup_command','hosting_allow_docker_image_selection','hosting_allow_extra_allocations',
     'provisioning_smart_node_enabled','provisioning_node_cache_max_age_seconds','provisioning_allocation_lock_timeout_seconds',
     'provisioning_weight_cpu','provisioning_weight_ram','provisioning_weight_disk','provisioning_weight_servers',
@@ -24,8 +23,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 save_setting($k, (string)$_POST[$k]);
             }
         }
-        if (isset($_POST['m365_client_secret']) && trim((string)$_POST['m365_client_secret']) !== '') {
-            save_setting('m365_client_secret', 'enc:' . enc(trim((string)$_POST['m365_client_secret'])));
+        if (isset($_POST['smtp_password']) && trim((string)$_POST['smtp_password']) !== '') {
+            save_setting('smtp_password', 'enc:' . enc(trim((string)$_POST['smtp_password'])));
         }
         $msg = 'Settings saved.';
     } catch (Throwable $e) {
@@ -135,15 +134,10 @@ admin_head($u, 'Settings', 'settings');
 </section>
 
 <section class="card settings-card" style="margin-bottom:18px">
-    <div class="cardhead"><b>SMTP MAIL</b></div>
+    <div class="cardhead"><b>ZOHO MAIL</b></div>
     <div class="admin-form-grid">
-        <label>Mail provider
-            <select name="mail_provider">
-                <option value="smtp" <?=setting('mail_provider','smtp')==='smtp'?'selected':''?>>SMTP</option>
-                <option value="m365" <?=setting('mail_provider','smtp')==='m365'?'selected':''?>>Microsoft 365</option>
-            </select>
-        </label>
-        <label>SMTP host<input name="smtp_host" value="<?=e(setting('smtp_host',''))?>"></label>
+        <input type="hidden" name="mail_provider" value="zoho">
+        <label>SMTP host<input name="smtp_host" value="<?=e(setting('smtp_host','smtppro.zoho.eu'))?>"></label>
         <label>SMTP port<input name="smtp_port" value="<?=e(setting('smtp_port','587'))?>"></label>
         <label>SMTP security
             <select name="smtp_security">
@@ -152,20 +146,11 @@ admin_head($u, 'Settings', 'settings');
                 <option value="none" <?=setting('smtp_security','tls')==='none'?'selected':''?>>None</option>
             </select>
         </label>
-        <label>SMTP username<input name="smtp_username" value="<?=e(setting('smtp_username',''))?>"></label>
-        <label>SMTP password<input type="password" name="smtp_password" value="<?=e(setting('smtp_password',''))?>"></label>
-        <label>From email<input name="smtp_from_email" value="<?=e(setting('smtp_from_email',''))?>"></label>
+        <label>Zoho mailbox<input type="email" name="smtp_username" value="<?=e(setting('smtp_username','info@foxnetwork.be'))?>"></label>
+        <label>Zoho app password<input type="password" name="smtp_password" value="" placeholder="Leave empty to keep current password"></label>
+        <label>From email<input type="email" name="smtp_from_email" value="<?=e(setting('smtp_from_email','info@foxnetwork.be'))?>"></label>
         <label>From name<input name="smtp_from_name" value="<?=e(setting('smtp_from_name','FoxNetwork'))?>"></label>
-    </div>
-</section>
-
-<section class="card settings-card" style="margin-bottom:18px">
-    <div class="cardhead"><b>MICROSOFT 365</b></div>
-    <div class="admin-form-grid">
-        <label>Tenant ID<input name="m365_tenant_id" value="<?=e(setting('m365_tenant_id',''))?>"></label>
-        <label>Client ID<input name="m365_client_id" value="<?=e(setting('m365_client_id',''))?>"></label>
-        <label>Client secret<input type="password" name="m365_client_secret" value="" placeholder="Leave empty to keep current secret"></label>
-        <label>Sender email<input name="m365_sender_email" value="<?=e(setting('m365_sender_email',''))?>"></label>
+        <p class="muted" style="grid-column:1/-1;margin:0">Use the exact SMTP host shown in Zoho Mail's Server Configuration. EU paid organization accounts commonly use smtppro.zoho.eu. Port 587 with TLS is recommended.</p>
     </div>
 </section>
 
