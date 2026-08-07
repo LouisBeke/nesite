@@ -58,7 +58,7 @@ try {
         contact_out(true, 'Ticket created. Our team will reply shortly.', ['mode' => 'ticket', 'ticket_id' => $ticketId]);
     }
 
-    $supportTo = (string)setting('support_email', 'support@foxnetwork.be');
+    $supportTo = (string)setting('support_email', 'info@foxnetwork.be');
     $emailSubject = '[Contact Form] '.$subject;
     $body = '<h3>New contact form message</h3>'
         .'<p><b>Name:</b> '.e($name).'</p>'

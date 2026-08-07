@@ -21,6 +21,11 @@ function power_deleted_server_error(string $message): bool {
         || str_contains($message, 'server not found');
 }
 
+function power_broken_panel_installation_error(string $message): bool {
+    $message = strtolower($message);
+    return str_contains($message, 'pterodactyl\\models\\task::permissionforaction');
+}
+
 function power_clear_ptero_link(int $serviceId, int $userId): void {
     try {
         db()->prepare('UPDATE services SET ptero_identifier=NULL, ptero_server_id=NULL WHERE id=? AND user_id=?')
@@ -145,6 +150,13 @@ if (is_array($decoded)) {
 if (!$detail) {
     $plain = trim(strip_tags((string)$raw));
     $detail = $plain !== '' ? mb_substr($plain, 0, 300) : 'No response body';
+}
+if (power_broken_panel_installation_error((string)$detail)) {
+    out([
+        'ok'=>false,
+        'error'=>'Power controls are temporarily unavailable because the Pterodactyl panel update is incomplete. Please contact info@foxnetwork.be.',
+        'http'=>$code,
+    ]);
 }
 if ($localServiceId > 0 && power_deleted_server_error((string)$detail)) {
     power_clear_ptero_link($localServiceId, (int)$u['id']);

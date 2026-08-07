@@ -553,3 +553,29 @@ function fox_v15d_migrate(): void {
 
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15d-merge-duplicate-services']);
 }
+
+function fox_v15e_migrate(): void {
+    static $ran=false; if($ran)return; $ran=true; $pdo=db();
+    if (fox_migration_applied($pdo, 'v15e-support-email')) return;
+
+    if (fox_table_exists($pdo, 'app_settings')) {
+        $pdo->prepare("INSERT INTO app_settings(setting_key,setting_value) VALUES('support_email',?)
+                       ON DUPLICATE KEY UPDATE setting_value=IF(setting_value='support@foxnetwork.be',VALUES(setting_value),setting_value)")
+            ->execute(['info@foxnetwork.be']);
+    }
+
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15e-support-email']);
+}
+
+function fox_v15f_migrate(): void {
+    static $ran=false; if($ran)return; $ran=true; $pdo=db();
+    if (fox_migration_applied($pdo, 'v15f-billing-email')) return;
+
+    if (fox_table_exists($pdo, 'app_settings')) {
+        $pdo->prepare("INSERT INTO app_settings(setting_key,setting_value) VALUES('billing_email',?)
+                       ON DUPLICATE KEY UPDATE setting_value=IF(setting_value='billing@foxnetwork.be',VALUES(setting_value),setting_value)")
+            ->execute(['info@foxnetwork.be']);
+    }
+
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15f-billing-email']);
+}

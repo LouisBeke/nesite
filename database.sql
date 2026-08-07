@@ -199,7 +199,7 @@ ALTER TABLE invoices ADD COLUMN IF NOT EXISTS reminder_sent_at DATETIME NULL;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS overdue_sent_at DATETIME NULL;
 
 INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES
-('company_name','FoxNetwork'),('support_email','support@foxnetwork.be'),('billing_email','billing@foxnetwork.be'),
+('company_name','FoxNetwork'),('support_email','info@foxnetwork.be'),('billing_email','info@foxnetwork.be'),
 ('invoice_prefix','INV'),('currency','EUR'),('vat_rate','21'),('invoice_due_days','7'),('renewal_days_before','7'),
 ('grace_days','3'),('auto_suspend','1'),('auto_unsuspend','1'),('smtp_host',''),('smtp_port','587'),
 ('smtp_security','tls'),('smtp_username',''),('smtp_password',''),('smtp_from_email',''),('smtp_from_name','FoxNetwork'),
