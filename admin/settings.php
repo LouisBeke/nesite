@@ -8,7 +8,7 @@ $err = '';
 $keys = [
     'company_name','support_email','billing_email','invoice_prefix','currency','vat_rate','invoice_due_days',
     'renewal_days_before','grace_days','auto_suspend','auto_unsuspend','cron_token',
-    'smtp_host','smtp_port','smtp_security','smtp_username','smtp_from_email','smtp_from_name','mail_provider',
+    'smtp_host','smtp_port','smtp_security','smtp_ehlo_domain','smtp_username','smtp_from_email','smtp_from_name','mail_provider',
     'hosting_allow_startup_variable_edit','hosting_allow_custom_startup_command','hosting_allow_docker_image_selection','hosting_allow_extra_allocations',
     'provisioning_smart_node_enabled','provisioning_node_cache_max_age_seconds','provisioning_allocation_lock_timeout_seconds',
     'provisioning_weight_cpu','provisioning_weight_ram','provisioning_weight_disk','provisioning_weight_servers',
@@ -139,6 +139,7 @@ admin_head($u, 'Settings', 'settings');
         <input type="hidden" name="mail_provider" value="zoho">
         <label>SMTP host<input name="smtp_host" value="<?=e(setting('smtp_host','smtppro.zoho.eu'))?>"></label>
         <label>SMTP port<input name="smtp_port" value="<?=e(setting('smtp_port','587'))?>"></label>
+        <label>EHLO domain<input name="smtp_ehlo_domain" value="<?=e(setting('smtp_ehlo_domain','foxnetwork.be'))?>" placeholder="foxnetwork.be"></label>
         <label>SMTP security
             <select name="smtp_security">
                 <option value="tls" <?=setting('smtp_security','tls')==='tls'?'selected':''?>>TLS</option>
@@ -150,7 +151,7 @@ admin_head($u, 'Settings', 'settings');
         <label>Zoho app password<input type="password" name="smtp_password" value="" placeholder="Leave empty to keep current password"></label>
         <label>From email<input type="email" name="smtp_from_email" value="<?=e(setting('smtp_from_email','info@foxnetwork.be'))?>"></label>
         <label>From name<input name="smtp_from_name" value="<?=e(setting('smtp_from_name','FoxNetwork'))?>"></label>
-        <p class="muted" style="grid-column:1/-1;margin:0">Use the exact SMTP host shown in Zoho Mail's Server Configuration. EU paid organization accounts commonly use smtppro.zoho.eu. Port 587 with TLS is recommended.</p>
+        <p class="muted" style="grid-column:1/-1;margin:0">Use the exact SMTP host shown in Zoho Mail's Server Configuration. EU paid organization accounts commonly use smtppro.zoho.eu. Port 587 with TLS is recommended. The EHLO domain must be a complete domain such as foxnetwork.be.</p>
     </div>
 </section>
 

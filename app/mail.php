@@ -5,6 +5,23 @@ function save_setting(string $key,string $value):void{$q=db()->prepare('INSERT I
 function smtp_read($fp):string{$out='';while(($line=fgets($fp,515))!==false){$out.=$line;if(strlen($line)<4||$line[3]===' ')break;}return $out;}
 function smtp_cmd($fp,string $cmd,array $ok):string{fwrite($fp,$cmd."\r\n");$r=smtp_read($fp);$c=(int)substr($r,0,3);if(!in_array($c,$ok,true))throw new RuntimeException(trim($r));return $r;}
 function smtp_password():string{$v=(string)setting('smtp_password','');if(str_starts_with($v,'enc:'))return (string)(dec(substr($v,4))??'');return $v;}
+function smtp_ehlo_domain():string{
+    $appHost=parse_url((string)cfg('app_url'),PHP_URL_HOST);
+    $candidates=[
+        (string)setting('smtp_ehlo_domain','foxnetwork.be'),
+        is_string($appHost)?$appHost:'',
+        (string)($_SERVER['SERVER_NAME']??''),
+        'foxnetwork.be',
+    ];
+    foreach($candidates as $candidate){
+        $candidate=strtolower(trim($candidate));
+        if($candidate===''||preg_match('/[\r\n]/',$candidate))continue;
+        $parsed=parse_url('//'.$candidate,PHP_URL_HOST);
+        if(is_string($parsed)&&$parsed!=='')$candidate=strtolower($parsed);
+        if(preg_match('/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i',$candidate))return $candidate;
+    }
+    return 'foxnetwork.be';
+}
 function smtp_open_authenticated(){
     $host=trim((string)setting('smtp_host','smtppro.zoho.eu'));
     $port=(int)setting('smtp_port','587');
@@ -18,11 +35,12 @@ function smtp_open_authenticated(){
     stream_set_timeout($fp,15);
     $g=smtp_read($fp);
     if((int)substr($g,0,3)!==220)throw new RuntimeException(trim($g));
-    smtp_cmd($fp,'EHLO '.($_SERVER['SERVER_NAME']??'foxnetwork.be'),[250]);
+    $ehloDomain=smtp_ehlo_domain();
+    smtp_cmd($fp,'EHLO '.$ehloDomain,[250]);
     if($sec==='tls'){
         smtp_cmd($fp,'STARTTLS',[220]);
         if(!stream_socket_enable_crypto($fp,true,STREAM_CRYPTO_METHOD_TLS_CLIENT))throw new RuntimeException('SMTP TLS negotiation failed.');
-        smtp_cmd($fp,'EHLO '.($_SERVER['SERVER_NAME']??'foxnetwork.be'),[250]);
+        smtp_cmd($fp,'EHLO '.$ehloDomain,[250]);
     }
     smtp_cmd($fp,'AUTH LOGIN',[334]);
     smtp_cmd($fp,base64_encode($user),[334]);
