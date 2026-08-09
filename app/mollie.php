@@ -52,6 +52,7 @@ function process_mollie_payment(string $paymentId): void {
                                 WHERE id=?")->execute([$sid]);
                         if($sv['status']==='suspended' && setting('auto_unsuspend','1')==='1'){unsuspend_service($sid,0);send_template('service_unsuspended',$iv,['service_name'=>$sv['name']]);}
                 }
+        zoho_crm_try_sync_invoice($iid);
     } else {
         $map=['failed'=>'failed','canceled'=>'cancelled','expired'=>'expired','pending'=>'pending','open'=>'pending','authorized'=>'pending'];$local=$map[$status]??'pending';
         db()->prepare("UPDATE payments SET status=? WHERE provider='mollie' AND provider_reference=?")->execute([$local,$paymentId]);

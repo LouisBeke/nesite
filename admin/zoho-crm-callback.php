@@ -25,6 +25,7 @@ try {
 
     zoho_crm_exchange_authorization_code($code, zoho_crm_callback_url());
     save_setting('zoho_crm_enabled', '1');
+    save_setting('zoho_crm_scope_version', '2');
     $_SESSION['zoho_crm_flash_message'] = 'Zoho CRM connected successfully. Automatic CRM sync is enabled.';
 } catch (Throwable $e) {
     $_SESSION['zoho_crm_flash_error'] = $e->getMessage();

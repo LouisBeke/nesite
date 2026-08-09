@@ -66,6 +66,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     service_log($sid,(int)$u['id'],'verify_link','Pterodactyl link verified: server #'.$sv['ptero_server_id'].' '.$actual);$msg='Pterodactyl link verified for '.$sv['name'].'.';break;
    default: throw new RuntimeException('Unknown service action.');
   }
+  zoho_crm_try_sync_service($sid);
  }catch(Throwable $e){if($sid>0&&ptero_deleted_server_error($e->getMessage())){clear_deleted_ptero_service_link_by_service_id($sid);$err=deleted_ptero_service_message();}else{$err=$e->getMessage();}}
 }
 $rows=db()->query("SELECT s.*,u.name customer_name,u.email,p.name product_name FROM services s JOIN users u ON u.id=s.user_id LEFT JOIN store_products p ON p.id=s.product_id ORDER BY s.id DESC")->fetchAll();$products=db()->query('SELECT * FROM store_products WHERE active=1 ORDER BY name')->fetchAll();

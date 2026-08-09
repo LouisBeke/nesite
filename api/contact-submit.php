@@ -55,6 +55,8 @@ try {
         db()->prepare('INSERT INTO support_messages(ticket_id,user_id,message) VALUES(?,?,?)')
             ->execute([$ticketId, (int)$u['id'], $fullMessage]);
 
+        zoho_crm_try_sync_ticket($ticketId);
+
         try {
             zoho_crm_sync_customer($u);
         } catch (Throwable $crmError) {

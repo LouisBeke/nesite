@@ -203,8 +203,33 @@ INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES
 ('invoice_prefix','INV'),('currency','EUR'),('vat_rate','21'),('invoice_due_days','7'),('renewal_days_before','7'),
 ('grace_days','3'),('auto_suspend','1'),('auto_unsuspend','1'),('mail_provider','zoho'),('smtp_host','smtppro.zoho.eu'),('smtp_port','587'),
 ('smtp_security','tls'),('smtp_ehlo_domain','foxnetwork.be'),('smtp_username','info@foxnetwork.be'),('smtp_password',''),('smtp_from_email','info@foxnetwork.be'),('smtp_from_name','FoxNetwork'),
-('zoho_crm_enabled','0'),('zoho_crm_client_id',''),('zoho_crm_client_secret',''),('zoho_crm_refresh_token',''),('zoho_crm_access_token',''),('zoho_crm_access_token_expires_at','0'),
-('cron_token','CHANGE_THIS_TO_A_LONG_RANDOM_TOKEN');
+('zoho_crm_enabled','0'),('zoho_crm_client_id',''),('zoho_crm_client_secret',''),('zoho_crm_refresh_token',''),('zoho_crm_access_token',''),('zoho_crm_access_token_expires_at','0'),('zoho_crm_scope_version','0'),
+('zoho_crm_pipeline',''),('zoho_crm_deal_stage_open','Qualification'),('zoho_crm_deal_stage_won','Closed Won'),('zoho_crm_deal_stage_lost','Closed Lost'),
+('zoho_crm_case_origin','Web'),('zoho_crm_case_status_open','New'),('zoho_crm_case_status_hold','On Hold'),('zoho_crm_case_status_closed','Closed'),
+('cron_token','CHANGE_THIS_TO_A_LONG_RANDOM_TOKEN'),('automation_batch_size','20'),('automation_worker_timeout_seconds','300');
+
+CREATE TABLE IF NOT EXISTS automation_jobs (
+ id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ job_key VARCHAR(190) NOT NULL UNIQUE,
+ provider VARCHAR(40) NOT NULL,
+ job_type VARCHAR(80) NOT NULL,
+ entity_type VARCHAR(40) NOT NULL,
+ entity_id BIGINT UNSIGNED NOT NULL,
+ status VARCHAR(24) NOT NULL DEFAULT 'pending',
+ attempts INT UNSIGNED NOT NULL DEFAULT 0,
+ max_attempts INT UNSIGNED NOT NULL DEFAULT 5,
+ payload LONGTEXT NULL,
+ requested_version BIGINT UNSIGNED NOT NULL DEFAULT 1,
+ processing_version BIGINT UNSIGNED NOT NULL DEFAULT 0,
+ run_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ started_at DATETIME NULL,
+ completed_at DATETIME NULL,
+ last_error TEXT NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+ INDEX idx_automation_ready(status,run_at),
+ INDEX idx_automation_entity(provider,entity_type,entity_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT IGNORE INTO email_templates(template_key,subject,body_html) VALUES
 ('invoice_created','Invoice {{invoice_number}} from FoxNetwork','<h2>Your FoxNetwork invoice is ready</h2><p>Hi {{customer_name}},</p><p>Invoice <b>{{invoice_number}}</b> for <b>{{total}} {{currency}}</b> is due on {{due_date}}.</p><p><a href="{{billing_url}}">View & pay invoice</a></p>'),

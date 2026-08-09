@@ -128,12 +128,15 @@ try {
     if (function_exists('fox_v15g_migrate')) fox_v15g_migrate();
     if (function_exists('fox_v15h_migrate')) fox_v15h_migrate();
     if (function_exists('fox_v15i_migrate')) fox_v15i_migrate();
+    if (function_exists('fox_v15j_migrate')) fox_v15j_migrate();
+    if (function_exists('fox_v15k_migrate')) fox_v15k_migrate();
 } catch (Throwable $e) {
     error_log('FoxNetwork migrations skipped: '.$e->getMessage());
 }
 function e($v):string{return htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');}
 require_once __DIR__.'/mail.php';
 require_once __DIR__.'/zoho-crm.php';
+require_once __DIR__.'/automation.php';
 require_once __DIR__.'/provisioning.php';
 function csrf():string{if(empty($_SESSION['csrf']))$_SESSION['csrf']=bin2hex(random_bytes(32));return $_SESSION['csrf'];}
 function verify_csrf():void{if(!hash_equals($_SESSION['csrf']??'',$_POST['csrf']??'')){http_response_code(419);die('Invalid request token');}}
@@ -469,10 +472,12 @@ function invoice_for_order(int $orderId): int {
     $items=db()->prepare('SELECT product_name,unit_price,quantity FROM order_items WHERE order_id=?');$items->execute([$orderId]);$ins=db()->prepare('INSERT INTO invoice_items(invoice_id,description,amount,quantity) VALUES(?,?,?,?)');foreach($items as $it)$ins->execute([$iid,$it['product_name'].' — monthly hosting',$it['unit_price'],$it['quantity']]);
     db()->prepare("UPDATE orders SET status='awaiting_payment' WHERE id=?")->execute([$orderId]);
     try{$uq=db()->prepare('SELECT * FROM users WHERE id=?');$uq->execute([$o['user_id']]);$cu=$uq->fetch();if($cu)send_template('invoice_created',$cu,['invoice_number'=>$num,'total'=>number_format((float)$o['total'],2),'currency'=>$o['currency'],'due_date'=>date('d M Y',strtotime($due))]);}catch(Throwable $e){}
+    zoho_crm_try_sync_order($orderId);
     return $iid;
 }
 function mark_invoice_paid(int $invoiceId,string $provider='manual',?string $reference=null): void {
     db()->beginTransaction();try{$q=db()->prepare('SELECT * FROM invoices WHERE id=? FOR UPDATE');$q->execute([$invoiceId]);$i=$q->fetch();if(!$i)throw new RuntimeException('Invoice not found.');if($i['status']!=='paid'){if(!empty($i['order_id'])){$sq=db()->prepare('SELECT p.id,p.stock,oi.quantity FROM order_items oi JOIN store_products p ON p.id=oi.product_id WHERE oi.order_id=? FOR UPDATE');$sq->execute([(int)$i['order_id']]);foreach($sq->fetchAll() as $sp){if($sp['stock']!==null){$need=max(1,(int)$sp['quantity']);if((int)$sp['stock']<$need)throw new RuntimeException('Product is out of stock. Payment cannot be completed automatically.');db()->prepare('UPDATE store_products SET stock=stock-? WHERE id=?')->execute([$need,(int)$sp['id']]);}}}$q=db()->prepare("UPDATE invoices SET status='paid',paid_at=NOW() WHERE id=?");$q->execute([$invoiceId]);$q=db()->prepare("INSERT INTO payments(user_id,invoice_id,provider,provider_reference,amount,currency,status) VALUES(?,?,?,?,?,?,'completed')");$q->execute([$i['user_id'],$invoiceId,$provider,$reference,$i['total'],$i['currency']]);if($i['order_id'])db()->prepare("UPDATE orders SET status='paid' WHERE id=?")->execute([$i['order_id']]);}db()->commit();}catch(Throwable $e){db()->rollBack();throw $e;}
+    zoho_crm_try_sync_invoice($invoiceId);
 }
 function ensure_service_for_order(int $orderId): int {
     $q=db()->prepare('SELECT id FROM services WHERE order_id=? LIMIT 1');$q->execute([$orderId]);$id=$q->fetchColumn();if($id)return (int)$id;
@@ -483,11 +488,12 @@ function ensure_service_for_order(int $orderId): int {
         $chk=db()->prepare('SELECT id FROM services WHERE order_id=? LIMIT 1 FOR UPDATE');
         $chk->execute([$orderId]);
         $existing=$chk->fetchColumn();
-        if($existing){db()->commit();return (int)$existing;}
+        if($existing){db()->commit();zoho_crm_try_sync_service((int)$existing);return (int)$existing;}
         $ins=db()->prepare("INSERT INTO services(user_id,order_id,product_id,name,status,price_monthly,next_due_at,config_json) VALUES(?,?,?,?, 'pending',?,DATE_ADD(NOW(),INTERVAL 1 MONTH),?)");
         $ins->execute([$r['user_id'],$orderId,$r['product_id'],$name,$r['unit_price'],$r['config_json']]);
         $newId=(int)db()->lastInsertId();
         db()->commit();
+        zoho_crm_try_sync_service($newId);
         return $newId;
     }catch(Throwable $e){
         if(db()->inTransaction())db()->rollBack();
@@ -632,10 +638,12 @@ function require_ptero_server(array $service): int {
 function suspend_service(int $serviceId,int $adminId): void {
     $s=service_row($serviceId);$pid=require_ptero_server($s);app_ptero('/servers/'.$pid.'/suspend','POST');
     db()->prepare("UPDATE services SET status='suspended',last_error=NULL WHERE id=?")->execute([$serviceId]);service_log($serviceId,$adminId,'suspend','Pterodactyl server suspended.');
+    zoho_crm_try_sync_service($serviceId);
 }
 function unsuspend_service(int $serviceId,int $adminId): void {
     $s=service_row($serviceId);$pid=require_ptero_server($s);app_ptero('/servers/'.$pid.'/unsuspend','POST');
     db()->prepare("UPDATE services SET status='active',last_error=NULL WHERE id=?")->execute([$serviceId]);service_log($serviceId,$adminId,'unsuspend','Pterodactyl server unsuspended.');
+    zoho_crm_try_sync_service($serviceId);
 }
 function reinstall_service(int $serviceId,int $adminId): void {
     $s=service_row($serviceId);$pid=require_ptero_server($s);app_ptero('/servers/'.$pid.'/reinstall','POST');service_log($serviceId,$adminId,'reinstall','Pterodactyl reinstall requested.');
@@ -643,16 +651,19 @@ function reinstall_service(int $serviceId,int $adminId): void {
 function cancel_service(int $serviceId,int $adminId): void {
     $s=service_row($serviceId);if($s['status']==='terminated')throw new RuntimeException('A terminated service cannot be cancelled.');
     db()->prepare("UPDATE services SET status='cancelled' WHERE id=?")->execute([$serviceId]);service_log($serviceId,$adminId,'cancel','Service cancelled in FoxNetwork. Server was not deleted.');
+    zoho_crm_try_sync_service($serviceId);
 }
 function reactivate_service(int $serviceId,int $adminId): void {
     $s=service_row($serviceId);if($s['status']==='terminated')throw new RuntimeException('A terminated service cannot be reactivated.');
     if(!empty($s['ptero_server_id'])){try{app_ptero('/servers/'.(int)$s['ptero_server_id'].'/unsuspend','POST');}catch(Throwable $e){/* already unsuspended is harmless for local reactivation */}}
     db()->prepare("UPDATE services SET status='active',last_error=NULL WHERE id=?")->execute([$serviceId]);service_log($serviceId,$adminId,'reactivate','Service reactivated.');
+    zoho_crm_try_sync_service($serviceId);
 }
 function terminate_service(int $serviceId,int $adminId,string $confirmation): void {
     $s=service_row($serviceId);if(!hash_equals((string)$s['name'],trim($confirmation)))throw new RuntimeException('Confirmation does not match the service name.');
     $pid=(int)($s['ptero_server_id']??0);if($pid)app_ptero('/servers/'.$pid,'DELETE');
     db()->prepare("UPDATE services SET status='terminated',ptero_server_id=NULL,ptero_identifier=NULL,last_error=NULL WHERE id=?")->execute([$serviceId]);service_log($serviceId,$adminId,'terminate','Pterodactyl server permanently deleted and service terminated.');
+    zoho_crm_try_sync_service($serviceId);
 }
 
 // Stage 9 security helpers.

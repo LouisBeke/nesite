@@ -12,19 +12,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = (string)($_POST['action'] ?? 'role');
         if ($action === 'sync_zoho_all') {
             if (!zoho_crm_enabled()) throw new RuntimeException('Enable Zoho CRM sync in Admin > Settings first.');
+            if (!zoho_crm_full_sync_enabled()) throw new RuntimeException('Reconnect Zoho CRM in Admin > Settings to grant Deals and Cases access.');
             $customers = db()->query("SELECT * FROM users WHERE role='customer' ORDER BY id")->fetchAll();
             $synced = 0;
             $failed = 0;
             foreach ($customers as $customer) {
                 try {
-                    zoho_crm_sync_customer($customer);
+                    zoho_crm_sync_customer($customer, true);
                     $synced++;
                 } catch (Throwable $syncError) {
                     $failed++;
                     error_log('FoxNetwork bulk Zoho CRM sync failed for user '.(int)$customer['id'].': '.$syncError->getMessage());
                 }
             }
-            $msg = 'Zoho CRM sync finished: '.$synced.' synced, '.$failed.' failed.';
+            $ordersSynced = $servicesSynced = $ticketsSynced = 0;
+            foreach (db()->query('SELECT id FROM orders ORDER BY id')->fetchAll() as $row) {
+                try { zoho_crm_sync_order((int)$row['id']); $ordersSynced++; }
+                catch (Throwable $syncError) { $failed++; error_log('FoxNetwork bulk Zoho CRM order sync failed for order '.(int)$row['id'].': '.$syncError->getMessage()); }
+            }
+            foreach (db()->query('SELECT id FROM services WHERE order_id IS NULL ORDER BY id')->fetchAll() as $row) {
+                try { zoho_crm_sync_service((int)$row['id']); $servicesSynced++; }
+                catch (Throwable $syncError) { $failed++; error_log('FoxNetwork bulk Zoho CRM service sync failed for service '.(int)$row['id'].': '.$syncError->getMessage()); }
+            }
+            foreach (db()->query('SELECT id FROM invoices WHERE status=\'paid\' AND order_id IS NULL ORDER BY id')->fetchAll() as $row) {
+                try { zoho_crm_sync_invoice((int)$row['id']); $servicesSynced++; }
+                catch (Throwable $syncError) { $failed++; error_log('FoxNetwork bulk Zoho CRM invoice sync failed for invoice '.(int)$row['id'].': '.$syncError->getMessage()); }
+            }
+            foreach (db()->query('SELECT id FROM support_tickets ORDER BY id')->fetchAll() as $row) {
+                try { zoho_crm_sync_ticket((int)$row['id']); $ticketsSynced++; }
+                catch (Throwable $syncError) { $failed++; error_log('FoxNetwork bulk Zoho CRM ticket sync failed for ticket '.(int)$row['id'].': '.$syncError->getMessage()); }
+            }
+            $msg = 'Zoho CRM full sync finished: '.$synced.' contacts, '.$ordersSynced.' orders, '.$servicesSynced.' services/invoices, '.$ticketsSynced.' cases; '.$failed.' failed.';
         } else {
             $id = (int)($_POST['id'] ?? 0);
             if ($id === (int)$u['id']) {
@@ -71,7 +89,7 @@ admin_head($u, 'Customers', 'customers');
             <form method="post">
                 <input type="hidden" name="csrf" value="<?= e(csrf()) ?>">
                 <input type="hidden" name="action" value="sync_zoho_all">
-                <button class="btn">Sync all to Zoho CRM</button>
+                <button class="btn">Sync all data to Zoho CRM</button>
             </form>
         </div>
     </div>

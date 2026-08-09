@@ -93,6 +93,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             db()->prepare('INSERT INTO support_messages(ticket_id,user_id,message) VALUES(?,?,?)')->execute([$ticketId, (int)$u['id'], $message]);
          }
          db()->commit();
+         zoho_crm_try_sync_order($oid);
+         if ($ticketId > 0) zoho_crm_try_sync_ticket($ticketId);
          if ($isDeviceRepair) {
             header('Location: /support.php?id=' . (int)$ticketId);
             exit;

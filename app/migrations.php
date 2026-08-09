@@ -602,3 +602,60 @@ function fox_v15i_migrate(): void {
 
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15i-zoho-crm']);
 }
+
+function fox_v15j_migrate(): void {
+    static $ran=false; if($ran)return; $ran=true; $pdo=db();
+    if (fox_migration_applied($pdo, 'v15j-zoho-crm-full-sync')) return;
+
+    if (fox_table_exists($pdo, 'app_settings')) {
+        $defaults=[
+            'zoho_crm_scope_version'=>'0',
+            'zoho_crm_pipeline'=>'',
+            'zoho_crm_deal_stage_open'=>'Qualification',
+            'zoho_crm_deal_stage_won'=>'Closed Won',
+            'zoho_crm_deal_stage_lost'=>'Closed Lost',
+            'zoho_crm_case_origin'=>'Web',
+            'zoho_crm_case_status_open'=>'New',
+            'zoho_crm_case_status_hold'=>'On Hold',
+            'zoho_crm_case_status_closed'=>'Closed',
+        ];
+        $insert=$pdo->prepare('INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES(?,?)');
+        foreach($defaults as $key=>$value)$insert->execute([$key,$value]);
+    }
+
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15j-zoho-crm-full-sync']);
+}
+
+function fox_v15k_migrate(): void {
+    static $ran=false; if($ran)return; $ran=true; $pdo=db();
+    if (fox_migration_applied($pdo, 'v15k-automation-jobs')) return;
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS automation_jobs (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        job_key VARCHAR(190) NOT NULL UNIQUE,
+        provider VARCHAR(40) NOT NULL,
+        job_type VARCHAR(80) NOT NULL,
+        entity_type VARCHAR(40) NOT NULL,
+        entity_id BIGINT UNSIGNED NOT NULL,
+        status VARCHAR(24) NOT NULL DEFAULT 'pending',
+        attempts INT UNSIGNED NOT NULL DEFAULT 0,
+        max_attempts INT UNSIGNED NOT NULL DEFAULT 5,
+        payload LONGTEXT NULL,
+        requested_version BIGINT UNSIGNED NOT NULL DEFAULT 1,
+        processing_version BIGINT UNSIGNED NOT NULL DEFAULT 0,
+        run_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        started_at DATETIME NULL,
+        completed_at DATETIME NULL,
+        last_error TEXT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_automation_ready(status,run_at),
+        INDEX idx_automation_entity(provider,entity_type,entity_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    if (fox_table_exists($pdo, 'app_settings')) {
+        $pdo->prepare("INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES('automation_batch_size','20'),('automation_worker_timeout_seconds','300')")->execute();
+    }
+
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15k-automation-jobs']);
+}

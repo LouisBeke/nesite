@@ -45,6 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $q->execute([$st, $id]);
             $msg = 'Order updated.';
         }
+        zoho_crm_try_sync_order($id);
     } catch (Throwable $x) {
         $err = $x->getMessage();
     }

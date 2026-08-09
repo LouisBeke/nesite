@@ -69,6 +69,7 @@ function provisioning_queue_service(int $serviceId, array $meta = [], int $prior
 function provisioning_dispatch_order(int $orderId, array $meta = []): int {
     $serviceId = ensure_service_for_order($orderId);
     db()->prepare("UPDATE orders SET status='provisioning' WHERE id=? AND status IN ('paid','awaiting_payment')")->execute([$orderId]);
+    zoho_crm_try_sync_service($serviceId);
     return provisioning_queue_service($serviceId, $meta, 70, false);
 }
 
@@ -406,6 +407,8 @@ function provisioning_process_service_job(array $job, array &$runtime = []): voi
         send_template('service_ready', $recipient, ['service_name' => $serviceAfter['name']]);
     }
 
+    zoho_crm_try_sync_service($serviceId);
+
     provisioning_emit_event('provisioning.completed', ['service_id' => $serviceId, 'server_id' => $newServerId], (int)$job['id']);
 }
 
@@ -434,6 +437,7 @@ function provisioning_rollback_service_job(array $job, Throwable $error, array $
         if (!empty($service['order_id'])) {
             db()->prepare("UPDATE orders SET status='paid' WHERE id=? AND status='provisioning'")->execute([(int)$service['order_id']]);
         }
+        zoho_crm_try_sync_service($serviceId);
     } catch (Throwable $e) {
     }
 }

@@ -10,7 +10,8 @@ $keys = [
     'company_name','support_email','billing_email','invoice_prefix','currency','vat_rate','invoice_due_days',
     'renewal_days_before','grace_days','auto_suspend','auto_unsuspend','cron_token',
     'smtp_host','smtp_port','smtp_security','smtp_ehlo_domain','smtp_username','smtp_from_email','smtp_from_name','mail_provider',
-    'zoho_crm_enabled','zoho_crm_client_id',
+    'zoho_crm_enabled','zoho_crm_client_id','zoho_crm_pipeline','zoho_crm_deal_stage_open','zoho_crm_deal_stage_won','zoho_crm_deal_stage_lost',
+    'zoho_crm_case_origin','zoho_crm_case_status_open','zoho_crm_case_status_hold','zoho_crm_case_status_closed',
     'hosting_allow_startup_variable_edit','hosting_allow_custom_startup_command','hosting_allow_docker_image_selection','hosting_allow_extra_allocations',
     'provisioning_smart_node_enabled','provisioning_node_cache_max_age_seconds','provisioning_allocation_lock_timeout_seconds',
     'provisioning_weight_cpu','provisioning_weight_ram','provisioning_weight_disk','provisioning_weight_servers',
@@ -50,6 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $crmGrantExchanged = false;
         if (isset($_POST['zoho_crm_grant_code']) && trim((string)$_POST['zoho_crm_grant_code']) !== '') {
             zoho_crm_exchange_grant_code(trim((string)$_POST['zoho_crm_grant_code']));
+            save_setting('zoho_crm_scope_version', '2');
             $crmGrantExchanged = true;
         }
         if ($settingsAction === 'test_zoho_crm') {
@@ -187,7 +189,7 @@ admin_head($u, 'Settings', 'settings');
 </section>
 
 <section class="card settings-card" style="margin-bottom:18px">
-    <div class="cardhead"><b>ZOHO CRM</b><span class="muted"><?=zoho_crm_secret('zoho_crm_refresh_token')!==''?'Connected':'Not connected'?> · EU data centre</span></div>
+    <div class="cardhead"><b>ZOHO CRM</b><span class="muted"><?php if(zoho_crm_secret('zoho_crm_refresh_token')===''):?>Not connected<?php elseif(!zoho_crm_full_sync_enabled()):?>Reconnect required for full sync<?php else:?>Connected · full sync<?php endif?> · EU data centre</span></div>
     <div class="admin-form-grid">
         <label>CRM sync
             <select name="zoho_crm_enabled">
@@ -198,6 +200,14 @@ admin_head($u, 'Settings', 'settings');
         <label>OAuth client ID<input name="zoho_crm_client_id" value="<?=e(setting('zoho_crm_client_id',''))?>" autocomplete="off"></label>
         <label>OAuth client secret<input type="password" name="zoho_crm_client_secret" value="" placeholder="Leave empty to keep current secret" autocomplete="new-password"></label>
         <label style="grid-column:1/-1">Redirect URI<input value="<?=e(zoho_crm_callback_url())?>" readonly onclick="this.select()"></label>
+        <label>Deal pipeline (optional)<input name="zoho_crm_pipeline" value="<?=e(setting('zoho_crm_pipeline',''))?>" placeholder="Exact Zoho pipeline name"></label>
+        <label>Open deal stage<input name="zoho_crm_deal_stage_open" value="<?=e(setting('zoho_crm_deal_stage_open','Qualification'))?>"></label>
+        <label>Won deal stage<input name="zoho_crm_deal_stage_won" value="<?=e(setting('zoho_crm_deal_stage_won','Closed Won'))?>"></label>
+        <label>Lost deal stage<input name="zoho_crm_deal_stage_lost" value="<?=e(setting('zoho_crm_deal_stage_lost','Closed Lost'))?>"></label>
+        <label>Case origin<input name="zoho_crm_case_origin" value="<?=e(setting('zoho_crm_case_origin','Web'))?>"></label>
+        <label>New case status<input name="zoho_crm_case_status_open" value="<?=e(setting('zoho_crm_case_status_open','New'))?>"></label>
+        <label>Waiting case status<input name="zoho_crm_case_status_hold" value="<?=e(setting('zoho_crm_case_status_hold','On Hold'))?>"></label>
+        <label>Closed case status<input name="zoho_crm_case_status_closed" value="<?=e(setting('zoho_crm_case_status_closed','Closed'))?>"></label>
         <div style="grid-column:1/-1;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
             <button class="btn primary" name="settings_action" value="connect_zoho_crm">Connect Zoho CRM</button>
             <span class="muted">Create a Zoho Server-based client with the redirect URI above, enter its ID and secret, then click Connect.</span>
@@ -209,7 +219,7 @@ admin_head($u, 'Settings', 'settings');
                 <label>OAuth refresh token<input type="password" name="zoho_crm_refresh_token" value="" placeholder="Leave empty to keep current token" autocomplete="new-password"></label>
             </div>
         </details>
-        <p class="muted" style="grid-column:1/-1;margin:0">The connection requests access only to Contacts and Leads. Portal customers sync to Contacts and public contact requests sync to Leads.</p>
+        <p class="muted" style="grid-column:1/-1;margin:0">The connection requests access to Contacts, Leads, Deals and Cases. Use the exact pipeline, stage and case picklist labels configured in your Zoho CRM. Reconnect once after this upgrade to grant the added Deals and Cases scopes.</p>
     </div>
 </section>
 
