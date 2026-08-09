@@ -127,16 +127,12 @@ function fox_v11_migrate(): void {
             'cancel_at_period_end'=>'TINYINT(1) NOT NULL DEFAULT 0',
             'cancel_at'=>'DATETIME NULL',
             'renewal_interval'=>'INT UNSIGNED NOT NULL DEFAULT 1',
-            'renewal_unit'=>"VARCHAR(12) NOT NULL DEFAULT 'month'",
-            'paymenter_service_id'=>'BIGINT UNSIGNED NULL'
+            'renewal_unit'=>"VARCHAR(12) NOT NULL DEFAULT 'month'"
         ];
         foreach($cols as $c=>$d) if(!fox_column_exists($pdo,'services',$c)) $pdo->exec("ALTER TABLE `services` ADD COLUMN `$c` $d");
     }
-    if (fox_table_exists($pdo,'store_categories')) {
-        foreach(['paymenter_category_id'=>'BIGINT UNSIGNED NULL','source'=>"VARCHAR(30) NULL"] as $c=>$d) if(!fox_column_exists($pdo,'store_categories',$c)) $pdo->exec("ALTER TABLE `store_categories` ADD COLUMN `$c` $d");
-    }
     if (fox_table_exists($pdo,'store_products')) {
-        $cols=['paymenter_product_id'=>'BIGINT UNSIGNED NULL','billing_period'=>'INT UNSIGNED NOT NULL DEFAULT 1','billing_unit'=>"VARCHAR(12) NOT NULL DEFAULT 'month'",'setup_fee'=>'DECIMAL(10,2) NOT NULL DEFAULT 0.00','source'=>"VARCHAR(30) NULL",'stock'=>'INT UNSIGNED NULL'];
+        $cols=['billing_period'=>'INT UNSIGNED NOT NULL DEFAULT 1','billing_unit'=>"VARCHAR(12) NOT NULL DEFAULT 'month'",'setup_fee'=>'DECIMAL(10,2) NOT NULL DEFAULT 0.00','stock'=>'INT UNSIGNED NULL'];
         foreach($cols as $c=>$d) if(!fox_column_exists($pdo,'store_products',$c)) $pdo->exec("ALTER TABLE `store_products` ADD COLUMN `$c` $d");
     }
     $pdo->exec("CREATE TABLE IF NOT EXISTS service_lifecycle (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,service_id BIGINT UNSIGNED NOT NULL,actor_user_id BIGINT UNSIGNED NULL,event VARCHAR(60) NOT NULL,details TEXT NULL,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,KEY idx_lifecycle_service(service_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
@@ -626,6 +622,18 @@ function fox_v15j_migrate(): void {
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15j-zoho-crm-full-sync']);
 }
 
+function fox_v15l_migrate(): void {
+    static $ran=false; if($ran)return; $ran=true; $pdo=db();
+    if (fox_migration_applied($pdo, 'v15l-free-services-never-expire')) return;
+    if (fox_table_exists($pdo, 'services')) {
+        $pdo->exec("UPDATE services SET next_due_at=NULL,cancel_at_period_end=0,cancel_at=NULL WHERE price_monthly<=0");
+        if (fox_table_exists($pdo, 'invoices')) {
+            $pdo->exec("UPDATE invoices i JOIN services s ON s.id=i.service_id SET i.status='cancelled' WHERE s.price_monthly<=0 AND i.total<=0 AND i.status IN ('unpaid','overdue')");
+        }
+    }
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15l-free-services-never-expire']);
+}
+
 function fox_v15k_migrate(): void {
     static $ran=false; if($ran)return; $ran=true; $pdo=db();
     if (fox_migration_applied($pdo, 'v15k-automation-jobs')) return;
@@ -659,3 +667,13 @@ function fox_v15k_migrate(): void {
 
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15k-automation-jobs']);
 }
+/* Removed malformed duplicate migration tail.
+')) {
+        $pdo->prepare("INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES('automation_batch_size','20'),('automation_worker_timeout_seconds','300')")->execute();
+    }
+
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15k-automation-jobs']);
+}
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15k-automation-jobs']);
+}
+*/

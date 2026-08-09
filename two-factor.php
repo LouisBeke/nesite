@@ -1,1 +1,68 @@
-<?php require __DIR__.'/app/bootstrap.php';$id=(int)($_SESSION['2fa_pending_uid']??0);if(!$id){header('Location:/login.php');exit;}$q=db()->prepare('SELECT * FROM users WHERE id=?');$q->execute([$id]);$u=$q->fetch();if(!$u){header('Location:/login.php');exit;}$err='';if($_SERVER['REQUEST_METHOD']==='POST'){verify_csrf();$code=trim($_POST['code']??'');$ok=totp_verify(dec($u['two_factor_secret'])?:'', $code);if(!$ok){$codes=json_decode(dec($u['two_factor_recovery_codes'])?:'[]',true)?:[];$idx=array_search(strtoupper($code),$codes,true);if($idx!==false){unset($codes[$idx]);db()->prepare('UPDATE users SET two_factor_recovery_codes=? WHERE id=?')->execute([enc(json_encode(array_values($codes))),$id]);$ok=true;}}if($ok){unset($_SESSION['2fa_pending_uid'],$_SESSION['2fa_pending_email']);session_regenerate_id(true);$_SESSION['uid']=$id;security_log_login($id,$u['email'],true);security_touch_session($id);try{link_existing_ptero_user_for_local_user($u);}catch(Throwable $e){}try{auto_setup_ptero_client_key_for_local_user($u);}catch(Throwable $e){}db()->prepare('UPDATE users SET last_login_at=NOW(),last_login_ip=? WHERE id=?')->execute([$_SERVER['REMOTE_ADDR']??null,$id]);header('Location:/client');exit;}$err='Invalid authentication or recovery code.';}?><!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Two-factor authentication</title><link rel="stylesheet" href="/assets/portal.css?v=9"></head><body><div class="auth"><form class="authbox" method="post"><img src="/images/logo.png"><h1>Two-factor authentication</h1><p class="muted">Enter the 6-digit code from your authenticator app, or a recovery code.</p><?php if($err):?><div class="error"><?=e($err)?></div><?php endif?><input type="hidden" name="csrf" value="<?=csrf()?>"><div class="field"><label>Authentication code</label><input name="code" autocomplete="one-time-code" required autofocus></div><button class="btn primary wide">Verify</button></form></div></body></html>
+<?php require __DIR__ . '/app/bootstrap.php';
+$id = (int)($_SESSION['2fa_pending_uid'] ?? 0);
+if (!$id) {
+    header('Location:/login.php');
+    exit;
+}
+$q = db()->prepare('SELECT * FROM users WHERE id=?');
+$q->execute([$id]);
+$u = $q->fetch();
+if (!$u) {
+    header('Location:/login.php');
+    exit;
+}
+$err = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
+    $code = trim($_POST['code'] ?? '');
+    $ok = totp_verify(dec($u['two_factor_secret']) ?: '', $code);
+    if (!$ok) {
+        $codes = json_decode(dec($u['two_factor_recovery_codes']) ?: '[]', true) ?: [];
+        $idx = array_search(strtoupper($code), $codes, true);
+        if ($idx !== false) {
+            unset($codes[$idx]);
+            db()->prepare('UPDATE users SET two_factor_recovery_codes=? WHERE id=?')->execute([enc(json_encode(array_values($codes))), $id]);
+            $ok = true;
+        }
+    }
+    if ($ok) {
+        unset($_SESSION['2fa_pending_uid'], $_SESSION['2fa_pending_email']);
+        session_regenerate_id(true);
+        $_SESSION['uid'] = $id;
+        security_log_login($id, $u['email'], true);
+        security_touch_session($id);
+        try {
+            link_existing_ptero_user_for_local_user($u);
+        } catch (Throwable $e) {
+        }
+        try {
+            auto_setup_ptero_client_key_for_local_user($u);
+        } catch (Throwable $e) {
+        }
+        db()->prepare('UPDATE users SET last_login_at=NOW(),last_login_ip=? WHERE id=?')->execute([$_SERVER['REMOTE_ADDR'] ?? null, $id]);
+        header('Location:/client');
+        exit;
+    }
+    $err = 'Invalid authentication or recovery code.';
+} ?>
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width">
+    <title>Two-factor authentication</title>
+    <link rel="stylesheet" href="/assets/portal.css?v=<?= rawurlencode((string)@filemtime(__DIR__ . '/assets/portal.css')) ?>">
+</head>
+
+<body>
+    <div class="auth">
+        <form class="authbox" method="post"><img src="/images/logo.png">
+            <h1>Two-factor authentication</h1>
+            <p class="muted">Enter the 6-digit code from your authenticator app, or a recovery code.</p><?php if ($err): ?><div class="error"><?= e($err) ?></div><?php endif ?><input type="hidden" name="csrf" value="<?= csrf() ?>">
+            <div class="field"><label>Authentication code</label><input name="code" autocomplete="one-time-code" required autofocus></div><button class="btn primary wide">Verify</button>
+        </form>
+    </div>
+</body>
+
+</html>

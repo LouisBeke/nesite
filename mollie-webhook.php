@@ -1,1 +1,15 @@
-<?php require __DIR__.'/app/bootstrap.php';$id=trim((string)($_POST['id']??''));if($id===''){http_response_code(400);exit('Missing id');}try{process_mollie_payment($id);http_response_code(200);echo 'OK';}catch(Throwable $e){error_log('Mollie webhook: '.$e->getMessage());http_response_code(500);echo 'ERROR';}
+<?php require __DIR__ . '/app/bootstrap.php';
+$id = trim((string)($_POST['id'] ?? ''));
+if ($id === '') {
+    http_response_code(400);
+    exit('Missing id');
+}
+try {
+    process_mollie_payment($id);
+    http_response_code(200);
+    echo 'OK';
+} catch (Throwable $e) {
+    error_log('Mollie webhook: ' . $e->getMessage());
+    http_response_code(500);
+    echo 'ERROR';
+}

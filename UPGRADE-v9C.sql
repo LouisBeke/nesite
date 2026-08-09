@@ -1,5 +1,5 @@
 -- FoxNetwork Portal v9C - safe Stage 9 / 2FA schema upgrade
--- Run against the database used by foxnetwork.be (NOT the Paymenter database).
+-- Run against the database used by foxnetwork.be.
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_secret TEXT NULL;
@@ -41,3 +41,4 @@ CREATE TABLE IF NOT EXISTS user_sessions (
  INDEX(user_id),
  CONSTRAINT fk_session_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+ COLLATE=utf8mb4_unicode_ci;

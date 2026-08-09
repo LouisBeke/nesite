@@ -130,10 +130,12 @@ try {
     if (function_exists('fox_v15i_migrate')) fox_v15i_migrate();
     if (function_exists('fox_v15j_migrate')) fox_v15j_migrate();
     if (function_exists('fox_v15k_migrate')) fox_v15k_migrate();
+    if (function_exists('fox_v15l_migrate')) fox_v15l_migrate();
 } catch (Throwable $e) {
     error_log('FoxNetwork migrations skipped: '.$e->getMessage());
 }
 function e($v):string{return htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');}
+require_once __DIR__.'/client-layout.php';
 require_once __DIR__.'/mail.php';
 require_once __DIR__.'/zoho-crm.php';
 require_once __DIR__.'/automation.php';
@@ -279,6 +281,46 @@ function app_ptero(string $path,string $method='GET',?array $body=null){
     if($code<200||$code>=300)throw new RuntimeException($json['errors'][0]['detail']??('Pterodactyl Application API HTTP '.$code));
     if($cacheKey)ptero_cache_set($cacheKey,$json,$cacheTtl);
     return $json;
+}
+
+function app_ptero_egg_detail(int $eggId): array {
+    static $cache=[];
+    if($eggId<=0)throw new RuntimeException('Invalid Pterodactyl Egg ID.');
+    if(isset($cache[$eggId]))return $cache[$eggId];
+    $nests=app_ptero('/nests?include=eggs&per_page=100');
+    $nestId=0;$eggName='Server software';
+    foreach(($nests['data']??[]) as $nest){
+        $na=$nest['attributes']??[];$nid=(int)($na['id']??0);
+        $eggs=$na['relationships']['eggs']['data']??$nest['relationships']['eggs']['data']??[];
+        if(!$eggs&&$nid){try{$response=app_ptero('/nests/'.$nid.'/eggs?per_page=100');$eggs=$response['data']??[];}catch(Throwable $e){}}
+        foreach($eggs as $egg){$ea=$egg['attributes']??[];if((int)($ea['id']??0)!==$eggId)continue;$nestId=$nid;$eggName=(string)($ea['name']??$eggName);break 2;}
+    }
+    if($nestId<=0)throw new RuntimeException('Pterodactyl Egg #'.$eggId.' was not found.');
+    $detail=app_ptero('/nests/'.$nestId.'/eggs/'.$eggId.'?include=variables');
+    $attributes=$detail['attributes']??[];
+    $variables=$attributes['relationships']['variables']['data']??$detail['relationships']['variables']['data']??[];
+    return $cache[$eggId]=['nest_id'=>$nestId,'name'=>(string)($attributes['name']??$eggName),'attributes'=>$attributes,'variables'=>$variables];
+}
+
+function app_ptero_egg_customer_fields(int $eggId): array {
+    $detail=app_ptero_egg_detail($eggId);$fields=[];$sort=0;
+    foreach(($detail['variables']??[]) as $variable){
+        $a=$variable['attributes']??[];$key=(string)($a['env_variable']??'');
+        if($key===''||!preg_match('/^[A-Z0-9_]+$/i',$key)||empty($a['user_viewable'])||empty($a['user_editable']))continue;
+        $rules=(string)($a['rules']??'');$ruleParts=array_values(array_filter(array_map('trim',explode('|',$rules))));
+        $required=in_array('required',$ruleParts,true);$type='text';$options=[];
+        foreach($ruleParts as $rule){
+            if($rule==='integer'||$rule==='numeric')$type='number';
+            if($rule==='boolean'){$options=['1','0'];$type='select';}
+            if(str_starts_with($rule,'in:')){$options=array_values(array_filter(array_map('trim',explode(',',substr($rule,3))),fn($value)=>$value!==''));if($options)$type='select';}
+        }
+        $fields[$key]=[
+            'egg_id'=>$eggId,'env_variable'=>$key,'display_name'=>(string)($a['name']??$key),'description'=>(string)($a['description']??''),
+            'customer_visible'=>1,'customer_editable'=>1,'required'=>$required?1:0,'input_type'=>$type,
+            'default_value'=>(string)($a['default_value']??''),'options_json'=>json_encode($options,JSON_UNESCAPED_SLASHES),'sort_order'=>$sort++,
+        ];
+    }
+    return $fields;
 }
 
 function ensure_ptero_user_for_local_user(string $email, string $name = '', bool $createIfMissing = true): ?int {
@@ -489,8 +531,9 @@ function ensure_service_for_order(int $orderId): int {
         $chk->execute([$orderId]);
         $existing=$chk->fetchColumn();
         if($existing){db()->commit();zoho_crm_try_sync_service((int)$existing);return (int)$existing;}
-        $ins=db()->prepare("INSERT INTO services(user_id,order_id,product_id,name,status,price_monthly,next_due_at,config_json) VALUES(?,?,?,?, 'pending',?,DATE_ADD(NOW(),INTERVAL 1 MONTH),?)");
-        $ins->execute([$r['user_id'],$orderId,$r['product_id'],$name,$r['unit_price'],$r['config_json']]);
+        $nextDueAt=(float)$r['unit_price']>0?date('Y-m-d H:i:s',strtotime('+1 month')):null;
+        $ins=db()->prepare("INSERT INTO services(user_id,order_id,product_id,name,status,price_monthly,next_due_at,config_json) VALUES(?,?,?,?, 'pending',?,?,?)");
+        $ins->execute([$r['user_id'],$orderId,$r['product_id'],$name,$r['unit_price'],$nextDueAt,$r['config_json']]);
         $newId=(int)db()->lastInsertId();
         db()->commit();
         zoho_crm_try_sync_service($newId);
@@ -547,6 +590,7 @@ function provision_service(int $serviceId, array &$runtime=[]): array {
         $customerEnv=$cfg['environment']??[]; if(is_array($customerEnv)){
             $vq=db()->prepare('SELECT env_variable,customer_editable FROM product_egg_variables WHERE product_id=? AND egg_id=?');$vq->execute([(int)$r['product_id'],$selectedEggId]);
             $allowed=[];foreach($vq->fetchAll() as $vv)if(!empty($vv['customer_editable']))$allowed[(string)$vv['env_variable']]=true;
+            foreach(($cfg['customer_environment_keys']??[]) as $customerKey)if(is_string($customerKey)&&preg_match('/^[A-Z0-9_]+$/i',$customerKey))$allowed[$customerKey]=true;
             foreach($customerEnv as $k=>$v)if(isset($allowed[(string)$k]))$env[(string)$k]=(string)$v;
         }
     }
@@ -631,6 +675,20 @@ function service_row(int $serviceId): array {
 function service_log(int $serviceId,int $adminId,string $action,string $details=''): void {
     $q=db()->prepare('INSERT INTO service_activity(service_id,admin_user_id,action,details) VALUES(?,?,?,?)');
     $q->execute([$serviceId,$adminId,$action,$details]);
+}
+function normalize_service_billing_schedule(int $serviceId): void {
+    db()->prepare("UPDATE services SET
+        next_due_at=CASE
+            WHEN price_monthly<=0 THEN NULL
+            WHEN next_due_at IS NOT NULL THEN next_due_at
+            WHEN COALESCE(renewal_unit,'month')='day' THEN DATE_ADD(NOW(),INTERVAL GREATEST(1,COALESCE(renewal_interval,1)) DAY)
+            WHEN COALESCE(renewal_unit,'month')='week' THEN DATE_ADD(NOW(),INTERVAL GREATEST(1,COALESCE(renewal_interval,1)) WEEK)
+            WHEN COALESCE(renewal_unit,'month')='year' THEN DATE_ADD(NOW(),INTERVAL GREATEST(1,COALESCE(renewal_interval,1)) YEAR)
+            ELSE DATE_ADD(NOW(),INTERVAL GREATEST(1,COALESCE(renewal_interval,1)) MONTH)
+        END,
+        cancel_at_period_end=IF(price_monthly<=0,0,cancel_at_period_end),
+        cancel_at=IF(price_monthly<=0,NULL,cancel_at)
+        WHERE id=?")->execute([$serviceId]);
 }
 function require_ptero_server(array $service): int {
     $id=(int)($service['ptero_server_id']??0); if(!$id) throw new RuntimeException('This service has no Pterodactyl server yet.'); return $id;
@@ -723,6 +781,7 @@ function apply_pending_service_change_for_invoice(int $invoiceId): void {
       $s=service_row((int)$c['service_id']);if(!empty($s['ptero_server_id']))ptero_apply_limits((int)$c['service_id'],$limits);
       $newServiceCfg=json_decode((string)($s['config_json']??''),true)?:[];foreach(['ram_mb','disk_mb','cpu_percent','backups','database_limit','allocation_limit'] as $k)$newServiceCfg[$k]=$cfg[$k]??$newServiceCfg[$k]??null;
       db()->prepare('UPDATE services SET product_id=?,price_monthly=?,config_json=?,last_error=NULL WHERE id=?')->execute([$c['new_product_id'],$c['new_price'],json_encode($newServiceCfg),(int)$c['service_id']]);
+      normalize_service_billing_schedule((int)$c['service_id']);
       db()->prepare("UPDATE service_changes SET status='completed',completed_at=NOW() WHERE id=?")->execute([$c['id']]);service_log((int)$c['service_id'],0,'upgrade','Service package/resources updated after invoice payment.');
     }catch(Throwable $e){db()->prepare("UPDATE service_changes SET status='failed',error_message=? WHERE id=?")->execute([$e->getMessage(),$c['id']]);db()->prepare('UPDATE services SET last_error=? WHERE id=?')->execute([$e->getMessage(),$c['service_id']]);throw $e;}
 }

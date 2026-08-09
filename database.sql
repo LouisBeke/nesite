@@ -300,7 +300,7 @@ CREATE TABLE IF NOT EXISTS customer_activity (
  CONSTRAINT fk_customer_activity_admin FOREIGN KEY(admin_user_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Stage 8: Production, security, audit and migration
+-- Stage 8: Production, security and audit
 CREATE TABLE IF NOT EXISTS admin_audit_log (
  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
  admin_user_id BIGINT UNSIGNED NULL,
@@ -314,36 +314,9 @@ CREATE TABLE IF NOT EXISTS admin_audit_log (
  CONSTRAINT fk_audit_admin FOREIGN KEY (admin_user_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS migration_imports (
- id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
- admin_user_id BIGINT UNSIGNED NULL,
- import_type VARCHAR(40) NOT NULL,
- filename VARCHAR(255) NULL,
- rows_total INT UNSIGNED NOT NULL DEFAULT 0,
- rows_created INT UNSIGNED NOT NULL DEFAULT 0,
- rows_skipped INT UNSIGNED NOT NULL DEFAULT 0,
- rows_failed INT UNSIGNED NOT NULL DEFAULT 0,
- summary TEXT NULL,
- created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
- CONSTRAINT fk_migration_admin FOREIGN KEY (admin_user_id) REFERENCES users(id) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES
 ('maintenance_mode','0'),('maintenance_message','FoxNetwork customer portal is undergoing scheduled maintenance.'),
-('portal_registration','1'),('security_session_hours','12'),('migration_mode','0');
-
--- Stage 8P: Paymenter direct migration mapping
-CREATE TABLE IF NOT EXISTS migration_links (
- id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
- source VARCHAR(40) NOT NULL,
- entity_type VARCHAR(40) NOT NULL,
- source_id BIGINT UNSIGNED NOT NULL,
- local_id BIGINT UNSIGNED NOT NULL,
- metadata LONGTEXT NULL,
- created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
- UNIQUE KEY uq_migration_source_entity (source,entity_type,source_id),
- KEY idx_migration_local (entity_type,local_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+('portal_registration','1'),('security_session_hours','12');
 
 -- Stage 9: Customer Account & Security
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP NULL;
@@ -488,6 +461,34 @@ CREATE TABLE IF NOT EXISTS provisioning_allocation_locks (
  node_id BIGINT UNSIGNED NOT NULL,
  allocation_id BIGINT UNSIGNED NOT NULL,
  status VARCHAR(20) NOT NULL DEFAULT 'locked',
+ release_reason VARCHAR(120) NULL,
+ locked_at DATETIME NOT NULL,
+ released_at DATETIME NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+ UNIQUE KEY uq_prov_alloc_lock_allocation(allocation_id),
+ INDEX idx_prov_alloc_lock_queue(queue_id),
+ INDEX idx_prov_alloc_lock_node(node_id),
+ INDEX idx_prov_alloc_lock_status(status,locked_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES
+('provisioning_enabled','1'),
+('provisioning_batch_size','5'),
+('provisioning_max_attempts','5'),
+('provisioning_retry_base_seconds','30'),
+('provisioning_retry_max_seconds','900'),
+('provisioning_worker_timeout_seconds','240'),
+('pterodactyl_webhook_secret',''),
+('provisioning_smart_node_enabled','1'),
+('provisioning_node_cache_max_age_seconds','300'),
+('provisioning_allocation_lock_timeout_seconds','900'),
+('provisioning_weight_cpu','35'),
+('provisioning_weight_ram','30'),
+('provisioning_weight_disk','20'),
+('provisioning_weight_servers','15'),
+('provisioning_remove_failed_queue_item','1');
+ NOT NULL DEFAULT 'locked',
  release_reason VARCHAR(120) NULL,
  locked_at DATETIME NOT NULL,
  released_at DATETIME NULL,

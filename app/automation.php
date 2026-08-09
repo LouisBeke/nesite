@@ -66,7 +66,7 @@ function automation_process_job(array $job): void {
         $q = db()->prepare('SELECT * FROM users WHERE id=? LIMIT 1');
         $q->execute([$entityId]);
         $customer = $q->fetch();
-        if (!$customer) throw new RuntimeException('Customer no longer exists.');
+        if (!$customer) throw new ZohoCrmEntityNotFoundException('Customer no longer exists; Zoho CRM sync skipped.');
         zoho_crm_sync_customer($customer, true);
         return;
     }
@@ -110,6 +110,11 @@ function automation_fail_job(array $job, Throwable $error): bool {
     return $terminal;
 }
 
+function automation_skip_job(array $job, ZohoCrmEntityNotFoundException $reason): void {
+    db()->prepare("UPDATE automation_jobs SET status='skipped',completed_at=NOW(),last_error=?,updated_at=NOW() WHERE id=?")
+        ->execute([mb_substr($reason->getMessage(), 0, 8000), (int)$job['id']]);
+}
+
 function automation_retry_job(int $jobId): void {
     db()->prepare("UPDATE automation_jobs SET status='pending',attempts=0,run_at=NOW(),started_at=NULL,completed_at=NULL,last_error=NULL,requested_version=requested_version+1,updated_at=NOW() WHERE id=?")
         ->execute([$jobId]);
@@ -126,6 +131,7 @@ function automation_recover_stale_jobs(): int {
 function automation_run_worker(int $limit = 20): array {
     $processed = 0;
     $failed = 0;
+    $skipped = 0;
     automation_recover_stale_jobs();
     for ($i = 0; $i < max(1, min(100, $limit)); $i++) {
         $job = automation_claim_job();
@@ -134,10 +140,13 @@ function automation_run_worker(int $limit = 20): array {
             automation_process_job($job);
             automation_complete_job($job);
             $processed++;
+        } catch (ZohoCrmEntityNotFoundException $e) {
+            automation_skip_job($job, $e);
+            $skipped++;
         } catch (Throwable $e) {
             if (automation_fail_job($job, $e)) $failed++;
         }
     }
     $queued = (int)db()->query("SELECT COUNT(*) FROM automation_jobs WHERE status IN ('pending','retry_wait','running')")->fetchColumn();
-    return ['processed' => $processed, 'failed' => $failed, 'queued' => $queued];
+    return ['processed' => $processed, 'skipped' => $skipped, 'failed' => $failed, 'queued' => $queued];
 }

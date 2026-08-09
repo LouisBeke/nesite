@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+final class ZohoCrmEntityNotFoundException extends RuntimeException {}
+
 function zoho_crm_enabled(): bool {
     return setting('zoho_crm_enabled', '0') === '1';
 }
@@ -292,7 +294,7 @@ function zoho_crm_sync_order(int $orderId): ?array {
     $q = db()->prepare('SELECT o.*,u.name customer_name,u.email FROM orders o JOIN users u ON u.id=o.user_id WHERE o.id=? LIMIT 1');
     $q->execute([$orderId]);
     $order = $q->fetch();
-    if (!$order) throw new RuntimeException('Order not found for Zoho CRM sync.');
+    if (!$order) throw new ZohoCrmEntityNotFoundException('Order no longer exists; Zoho CRM sync skipped.');
 
     $itemsQ = db()->prepare('SELECT product_name,unit_price,quantity,config_json FROM order_items WHERE order_id=? ORDER BY id');
     $itemsQ->execute([$orderId]);
@@ -340,7 +342,7 @@ function zoho_crm_sync_service(int $serviceId): ?array {
     $q = db()->prepare('SELECT s.*,u.name customer_name,u.email,p.name product_name FROM services s JOIN users u ON u.id=s.user_id LEFT JOIN store_products p ON p.id=s.product_id WHERE s.id=? LIMIT 1');
     $q->execute([$serviceId]);
     $service = $q->fetch();
-    if (!$service) throw new RuntimeException('Service not found for Zoho CRM sync.');
+    if (!$service) throw new ZohoCrmEntityNotFoundException('Service no longer exists; Zoho CRM sync skipped.');
     if (!empty($service['order_id'])) return zoho_crm_sync_order((int)$service['order_id']);
 
     $lines = [
@@ -368,7 +370,8 @@ function zoho_crm_sync_invoice(int $invoiceId): ?array {
     $q = db()->prepare('SELECT i.*,u.name customer_name,u.email FROM invoices i JOIN users u ON u.id=i.user_id WHERE i.id=? LIMIT 1');
     $q->execute([$invoiceId]);
     $invoice = $q->fetch();
-    if (!$invoice || $invoice['status'] !== 'paid') return null;
+    if (!$invoice) throw new ZohoCrmEntityNotFoundException('Invoice no longer exists; Zoho CRM sync skipped.');
+    if ($invoice['status'] !== 'paid') return null;
     if (!empty($invoice['order_id'])) return zoho_crm_sync_order((int)$invoice['order_id']);
 
     $lines = [
@@ -408,7 +411,7 @@ function zoho_crm_sync_ticket(int $ticketId): ?array {
     $q = db()->prepare('SELECT t.*,u.name customer_name,u.email,s.name service_name FROM support_tickets t JOIN users u ON u.id=t.user_id LEFT JOIN services s ON s.id=t.service_id WHERE t.id=? LIMIT 1');
     $q->execute([$ticketId]);
     $ticket = $q->fetch();
-    if (!$ticket) throw new RuntimeException('Support ticket not found for Zoho CRM sync.');
+    if (!$ticket) throw new ZohoCrmEntityNotFoundException('Support ticket no longer exists; Zoho CRM sync skipped.');
     $messagesQ = db()->prepare('SELECT m.message,m.is_staff,m.created_at FROM support_messages m WHERE m.ticket_id=? AND m.is_internal=0 ORDER BY m.id');
     $messagesQ->execute([$ticketId]);
     $lines = [

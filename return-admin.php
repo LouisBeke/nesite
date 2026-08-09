@@ -1,1 +1,10 @@
-<?php require __DIR__.'/app/bootstrap.php'; if(empty($_SESSION['admin_return_uid'])){header('Location: /client');exit;}$id=(int)$_SESSION['admin_return_uid'];unset($_SESSION['admin_return_uid']);$_SESSION['uid']=$id;header('Location: /admin/');exit;
+<?php require __DIR__ . '/app/bootstrap.php';
+if (empty($_SESSION['admin_return_uid'])) {
+    header('Location: /client');
+    exit;
+}
+$id = (int)$_SESSION['admin_return_uid'];
+unset($_SESSION['admin_return_uid']);
+$_SESSION['uid'] = $id;
+header('Location: /admin/');
+exit;

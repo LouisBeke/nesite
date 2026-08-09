@@ -1,6 +1,0 @@
-paymenter_service_id,email,server_name,product_name,status,price,currency_code,expires_at,pterodactyl_server_id,pterodactyl_identifier,pterodactyl_user_id,# Orders,invoiced
-900101,louis.beke@foxnetwork.be,SCP. The Not Believed,Gold,active,0.00,EUR,9999-01-01 00:00:00,REPLACE_SERVER_ID,c65da308,REPLACE_PTERO_USER_ID,1,1
-900102,louis.beke@foxnetwork.be,bumgeecord,Discord bot hosting,active,0.00,EUR,9999-01-01 00:00:00,REPLACE_SERVER_ID,b97682d0,REPLACE_PTERO_USER_ID,1,1
-900103,louis.beke@foxnetwork.be,api,web,active,0.00,EUR,9999-01-01 00:00:00,REPLACE_SERVER_ID,c406f0a6,REPLACE_PTERO_USER_ID,1,0
-900104,louis.beke@foxnetwork.be,links,web,active,0.00,EUR,9999-01-01 00:00:00,REPLACE_SERVER_ID,93d4a780,REPLACE_PTERO_USER_ID,1,0
-900105,thepawner@outlook.com,Palworld,Palworld,active,0.00,EUR,9999-01-01 00:00:00,REPLACE_SERVER_ID,4f28661d,REPLACE_PTERO_USER_ID,1,0

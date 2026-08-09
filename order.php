@@ -18,10 +18,46 @@ $eggQ = db()->prepare("SELECT * FROM product_eggs WHERE product_id=? AND enabled
 $eggQ->execute([(int)$p['id']]);
 $allowedEggs = $eggQ->fetchAll();
 if (!$allowedEggs && !empty($p['ptero_egg_id'])) $allowedEggs = [['egg_id' => (int)$p['ptero_egg_id'], 'display_name' => null, 'is_default' => 1]];
+$allowedEggLabels = [];
+foreach ($allowedEggs as &$allowedEgg) {
+   $customerLabel = trim((string)($allowedEgg['display_name'] ?? ''));
+   if ($customerLabel === '') $customerLabel = trim((string)$p['name']).' software';
+   if ($customerLabel === ' software') $customerLabel = 'Server software';
+   $allowedEgg['customer_label'] = $customerLabel;
+   $allowedEggLabels[(int)$allowedEgg['egg_id']] = $customerLabel;
+}
+unset($allowedEgg);
 $varQ = db()->prepare('SELECT * FROM product_egg_variables WHERE product_id=? ORDER BY egg_id,sort_order,id');
 $varQ->execute([(int)$p['id']]);
 $varsByEgg = [];
-foreach ($varQ->fetchAll() as $v) $varsByEgg[(int)$v['egg_id']][] = $v;
+foreach ($varQ->fetchAll() as $v) $varsByEgg[(int)$v['egg_id']][(string)$v['env_variable']] = $v;
+if (!$isDeviceRepair) {
+   foreach ($allowedEggs as $allowedEgg) {
+      $allowedEggId = (int)$allowedEgg['egg_id'];
+      try {
+         $savedFields = $varsByEgg[$allowedEggId] ?? [];
+         $varsByEgg[$allowedEggId] = [];
+         foreach (app_ptero_egg_customer_fields($allowedEggId) as $key => $liveField) {
+            $savedField = $savedFields[$key] ?? [];
+            $merged = array_merge($liveField, $savedField);
+            $merged['customer_visible'] = 1;
+            $merged['customer_editable'] = 1;
+            $merged['required'] = !empty($liveField['required']) || !empty($savedField['required']) ? 1 : 0;
+            if (trim((string)($merged['display_name'] ?? '')) === '') $merged['display_name'] = $liveField['display_name'];
+            if (trim((string)($merged['description'] ?? '')) === '') $merged['description'] = $liveField['description'];
+            $varsByEgg[$allowedEggId][$key] = $merged;
+         }
+      } catch (Throwable $eggVariableError) {
+         error_log('FoxNetwork checkout Egg variable load failed for Egg '.$allowedEggId.': '.$eggVariableError->getMessage());
+         break;
+      }
+   }
+}
+foreach ($varsByEgg as &$eggFields) {
+   uasort($eggFields, fn($left, $right) => ((int)($left['sort_order'] ?? 0) <=> (int)($right['sort_order'] ?? 0)) ?: strcmp((string)$left['env_variable'], (string)$right['env_variable']));
+   $eggFields = array_values($eggFields);
+}
+unset($eggFields);
 $error = '';
 $ticketId = 0;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -29,12 +65,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
    $name = trim((string)($_POST['server_name'] ?? ''));
    $repairNote = trim((string)($_POST['repair_note'] ?? ''));
    $eggId = (int)($_POST['egg_id'] ?? 0);
+   $softwareLabel = '';
    $allowedIds = array_map(fn($x) => (int)$x['egg_id'], $allowedEggs);
    $customerEnv = [];
    if ($name === '') $error = $isDeviceRepair ? 'Enter a device name or model.' : 'Choose a server name.';
    if ($error === '' && !$isDeviceRepair) {
       if (!$eggId || !in_array($eggId, $allowedIds, true)) $error = 'Choose valid server software.';
       else {
+         $softwareLabel = (string)($allowedEggLabels[$eggId] ?? 'Server software');
          foreach (($varsByEgg[$eggId] ?? []) as $v) {
             if (empty($v['customer_editable'])) continue;
             $key = (string)$v['env_variable'];
@@ -42,6 +80,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $opts = json_decode((string)($v['options_json'] ?? '[]'), true) ?: [];
             if ($v['input_type'] === 'select' && $opts && !in_array($val, $opts, true)) {
                $error = 'Choose a valid ' . ($v['display_name'] ?: $key) . '.';
+               break;
+            }
+            if ($v['input_type'] === 'number' && $val !== '' && !is_numeric($val)) {
+               $error = ($v['display_name'] ?: $key) . ' must be a number.';
                break;
             }
             if (!empty($v['required']) && $val === '') {
@@ -79,7 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
          if ($isDeviceRepair) {
             $cfg = json_encode(['service_type' => 'device_repair', 'device_name' => $name, 'repair_note' => $repairNote, 'intake_required' => true], JSON_UNESCAPED_SLASHES);
          } else {
-            $cfg = json_encode(['server_name' => $name, 'egg_id' => $eggId, 'environment' => $customerEnv, 'ram_mb' => (int)$p['ram_mb'], 'disk_mb' => (int)$p['disk_mb'], 'cpu_percent' => (int)$p['cpu_percent']], JSON_UNESCAPED_SLASHES);
+            $cfg = json_encode(['server_name' => $name, 'egg_id' => $eggId, 'software_label' => $softwareLabel, 'environment' => $customerEnv, 'customer_environment_keys' => array_keys($customerEnv), 'ram_mb' => (int)$p['ram_mb'], 'disk_mb' => (int)$p['disk_mb'], 'cpu_percent' => (int)$p['cpu_percent']], JSON_UNESCAPED_SLASHES);
          }
          $q = db()->prepare("INSERT INTO order_items(order_id,product_id,product_name,unit_price,quantity,config_json) VALUES(?,?,?,?,1,?)");
          $q->execute([$oid, $p['id'], $p['name'], $orderAmount, $cfg]);
@@ -126,16 +168,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
    <meta name="viewport" content="width=device-width,initial-scale=1">
    <title>FoxNetwork | Configure Order</title>
    <link rel="stylesheet" href="/css/fontawesome-all.min.css">
-   <link rel="stylesheet" href="/assets/portal.css?v=13">
+   <link rel="stylesheet" href="/assets/portal.css?v=<?=rawurlencode((string)@filemtime(__DIR__.'/assets/portal.css'))?>">
 </head>
 
-<body>
+<body class="portal-page">
    <div class="app">
-      <aside class="side">
-         <div class="brand"><img src="/images/logo.png"><span>FOX<b>NETWORK</b></span></div>
-         <nav class="nav"><a href="/client">Overview</a><a class="active" href="/store.php">Store</a><a href="/orders.php">Orders</a><a href="/billing.php">Billing</a><a href="/support.php">Support</a></nav>
-         <nav class="nav bottom"><?php if (($u['role'] ?? '') === 'admin'): ?><a href="/admin/"><span>Admin</span></a><?php endif ?><a href="/settings.php">Account Settings</a><a href="/logout.php">Sign out</a></nav>
-      </aside>
+      <?php render_client_sidebar($u, 'store'); ?>
       <main class="main">
          <header>
             <div class="profile">
@@ -155,8 +193,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   <div class="cardhead"><b><?= $isDeviceRepair ? 'DEVICE REPAIR INTAKE' : 'SERVER CONFIGURATION' ?></b></div>
                   <form method="post" class="order-form" id="configForm"><input type="hidden" name="csrf" value="<?= e(csrf()) ?>"><input type="hidden" name="product" value="<?= e($p['slug']) ?>">
                      <div class="field"><label><?= $isDeviceRepair ? 'Device name / model' : 'Server name' ?></label><input name="server_name" maxlength="60" required value="<?= e($_POST['server_name'] ?? '') ?>" placeholder="<?= $isDeviceRepair ? 'e.g. iPhone 13 Pro' : 'My server' ?>"></div><?php if ($isDeviceRepair): ?><div class="field"><label>Issue details</label><textarea name="repair_note" rows="5" placeholder="Describe the issue, damage, and anything we should know."><?= e($_POST['repair_note'] ?? '') ?></textarea></div><?php else: ?><div class="field"><label>Server software</label><select name="egg_id" id="eggSelect" required>
-                              <option value="">— Choose software —</option><?php foreach ($allowedEggs as $ae): $label = trim((string)($ae['display_name'] ?? ''));
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    if ($label === '') $label = 'Egg #' . (int)$ae['egg_id'];
+                              <option value="">— Choose software —</option><?php foreach ($allowedEggs as $ae): $label = (string)$ae['customer_label'];
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     $sel = (int)($_POST['egg_id'] ?? 0) === (int)$ae['egg_id'] || (!isset($_POST['egg_id']) && !empty($ae['is_default'])); ?><option value="<?= e($ae['egg_id']) ?>" <?= $sel ? 'selected' : '' ?>><?= e($label) ?><?= !empty($ae['is_default']) ? ' — Recommended' : '' ?></option><?php endforeach ?>
                            </select></div><?php endif ?>
                      <?php if (!$isDeviceRepair): ?><?php foreach ($varsByEgg as $eid => $vars): ?><div class="egg-options" data-egg="<?= e($eid) ?>" style="display:none">
@@ -191,7 +228,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
          const sel = document.getElementById('eggSelect');
          if (!sel) return;
          const id = sel.value;
-         document.querySelectorAll('.egg-options').forEach(x => x.style.display = x.dataset.egg === id ? 'block' : 'none')
+         document.querySelectorAll('.egg-options').forEach(group => {
+            const active = group.dataset.egg === id;
+            group.style.display = active ? 'block' : 'none';
+            group.querySelectorAll('input,select,textarea').forEach(control => control.disabled = !active);
+         });
       }
       const eggSelect = document.getElementById('eggSelect');
       if (eggSelect) eggSelect.addEventListener('change', showEgg);

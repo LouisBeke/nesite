@@ -1,4 +1,6 @@
 <?php
+declare(strict_types=1);
+
 require __DIR__.'/../app/bootstrap.php';
 $u = require_user();
 
@@ -6,17 +8,51 @@ $servers = [];
 $error = '';
 $serviceMap = [];
 $serviceRows = [];
+$dashboard = [
+    'active_services' => 0,
+    'total_services' => 0,
+    'open_tickets' => 0,
+    'unpaid_invoices' => 0,
+    'unpaid_total' => 0.0,
+    'currency' => (string)setting('currency', 'EUR'),
+    'orders' => 0,
+];
+$nextRenewal = null;
+
 try {
-  $q = db()->prepare("SELECT id,name,ptero_identifier,ptero_server_id,status FROM services WHERE user_id=? AND status<>'terminated'");
+    $q = db()->prepare("SELECT id,name,ptero_identifier,ptero_server_id,status,price_monthly,currency,next_due_at FROM services WHERE user_id=? AND status<>'terminated' ORDER BY FIELD(status,'active','provisioning','pending','suspended','failed','cancelled'),id DESC");
     $q->execute([(int)$u['id']]);
-  $serviceRows = $q->fetchAll();
-  foreach ($serviceRows as $svc) {
+    $serviceRows = $q->fetchAll();
+    $dashboard['total_services'] = count($serviceRows);
+    foreach ($serviceRows as $svc) {
+        if ((string)$svc['status'] === 'active') $dashboard['active_services']++;
         if (!empty($svc['ptero_identifier'])) $serviceMap[(string)$svc['ptero_identifier']] = $svc;
+        if (in_array((string)$svc['status'], ['active', 'suspended', 'provisioning', 'pending'], true) && !empty($svc['next_due_at']) && strtotime((string)$svc['next_due_at']) !== false) {
+            if ($nextRenewal === null || strtotime((string)$svc['next_due_at']) < strtotime((string)$nextRenewal['next_due_at'])) {
+                $nextRenewal = $svc;
+            }
+        }
     }
+
+    $q = db()->prepare("SELECT COUNT(*) invoice_count,COALESCE(SUM(total),0) invoice_total,MAX(currency) currency FROM invoices WHERE user_id=? AND status IN ('unpaid','overdue')");
+    $q->execute([(int)$u['id']]);
+    $invoiceStats = $q->fetch() ?: [];
+    $dashboard['unpaid_invoices'] = (int)($invoiceStats['invoice_count'] ?? 0);
+    $dashboard['unpaid_total'] = (float)($invoiceStats['invoice_total'] ?? 0);
+    if (!empty($invoiceStats['currency'])) $dashboard['currency'] = (string)$invoiceStats['currency'];
+
+    $q = db()->prepare("SELECT COUNT(*) FROM support_tickets WHERE user_id=? AND status<>'closed'");
+    $q->execute([(int)$u['id']]);
+    $dashboard['open_tickets'] = (int)$q->fetchColumn();
+
+    $q = db()->prepare('SELECT COUNT(*) FROM orders WHERE user_id=?');
+    $q->execute([(int)$u['id']]);
+    $dashboard['orders'] = (int)$q->fetchColumn();
 } catch (Throwable $e) {
+    error_log('FoxNetwork client dashboard summary failed: '.$e->getMessage());
 }
 
-if ($u['ptero_client_key']) {
+if (!empty($u['ptero_client_key'])) {
     try {
         $r = ptero('/');
         $servers = $r['data'] ?? [];
@@ -26,247 +62,327 @@ if ($u['ptero_client_key']) {
 }
 
 if (!$servers && !empty($u['ptero_user_id'])) {
-  foreach ($serviceRows as $svc) {
-    $identifier = (string)($svc['ptero_identifier'] ?? '');
-    if ($identifier === '' && !empty($svc['ptero_server_id'])) {
-      try {
-        $srv = app_ptero('/servers/' . (int)$svc['ptero_server_id']);
-        $identifier = (string)($srv['attributes']['identifier'] ?? '');
-        if ($identifier !== '') {
-          db()->prepare('UPDATE services SET ptero_identifier=? WHERE id=?')->execute([$identifier, (int)$svc['id']]);
-          $svc['ptero_identifier'] = $identifier;
-          $serviceMap[$identifier] = $svc;
+    foreach ($serviceRows as $svc) {
+        $identifier = (string)($svc['ptero_identifier'] ?? '');
+        if ($identifier === '' && !empty($svc['ptero_server_id'])) {
+            try {
+                $srv = app_ptero('/servers/'.(int)$svc['ptero_server_id']);
+                $identifier = (string)($srv['attributes']['identifier'] ?? '');
+                if ($identifier !== '') {
+                    db()->prepare('UPDATE services SET ptero_identifier=? WHERE id=?')->execute([$identifier, (int)$svc['id']]);
+                    $svc['ptero_identifier'] = $identifier;
+                    $serviceMap[$identifier] = $svc;
+                }
+            } catch (Throwable $e) {
+                if (ptero_deleted_server_error($e->getMessage())) {
+                    clear_deleted_ptero_service_link((int)$svc['id'], (int)$u['id']);
+                }
+            }
         }
-      } catch (Throwable $e) {
-        if (ptero_deleted_server_error($e->getMessage())) {
-          clear_deleted_ptero_service_link((int)$svc['id'], (int)$u['id']);
-        }
-      }
+        if ($identifier === '') continue;
+        $servers[] = [
+            'attributes' => [
+                'identifier' => $identifier,
+                'name' => (string)($svc['name'] ?? ('Service #'.(int)$svc['id'])),
+                'description' => 'FoxNetwork game server',
+            ],
+        ];
     }
-    if ($identifier === '') continue;
-    $servers[] = [
-      'attributes' => [
-        'identifier' => $identifier,
-        'name' => (string)($svc['name'] ?? ('Service #' . (int)$svc['id'])),
-        'description' => 'FoxNetwork game server',
-      ],
-    ];
-  }
 }
+
+$nameParts = preg_split('/\s+/', trim((string)$u['name'])) ?: [];
+$firstName = (string)($nameParts[0] ?? $u['name']);
+$hasClientKey = !empty($u['ptero_client_key']);
+$hasPteroLink = $hasClientKey || !empty($u['ptero_user_id']);
+$initial = mb_strtoupper(mb_substr(trim((string)$u['name']), 0, 1));
 ?>
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FoxNetwork | Dashboard</title>
-<link rel="stylesheet" href="/css/fontawesome-all.min.css">
-<link rel="stylesheet" href="/assets/portal.css?v=14.0">
-<style>
-.prov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;margin-top:16px}
-.prov-card{background:#15181d;border:1px solid #2a2e35;border-radius:14px;padding:14px}
-.prov-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
-.prov-title{font-weight:800}
-.prov-step{font-size:12px;color:#a8afbb}
-.prov-bar{height:10px;border-radius:999px;background:#0d1116;overflow:hidden;margin:10px 0}
-.prov-fill{height:100%;background:linear-gradient(90deg,#ff7417,#ff9f5a);width:0;transition:width .35s ease}
-.prov-meta{display:flex;justify-content:space-between;font-size:12px;color:#9aa3b2}
-.prov-logs{margin-top:10px;background:#0c0f13;border:1px solid #252b33;border-radius:10px;max-height:130px;overflow:auto;padding:8px}
-.prov-log{font:12px/1.45 Consolas,monospace;color:#d1d7e0;padding:2px 0}
-.prov-timeline{margin-top:8px;border-top:1px solid #252b33;padding-top:8px}
-.prov-event{display:flex;gap:9px;align-items:flex-start;font-size:12px;padding:4px 0}
-.prov-dot{width:8px;height:8px;border-radius:50%;background:#ff7417;margin-top:5px;flex:0 0 auto}
-.status-chip{display:inline-flex;padding:5px 8px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase}
-.status-chip.pending{background:#2a2e35;color:#c8ced8}
-.status-chip.provisioning{background:#2d241a;color:#ffbb81}
-.status-chip.active{background:#1a2f21;color:#8fe6b1}
-.status-chip.failed{background:#3a1f24;color:#ff9fae}
-.status-chip.suspended{background:#253040;color:#9ec5ff}
-</style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="theme-color" content="#0b0d10">
+    <title>FoxNetwork | Control Center</title>
+    <link rel="stylesheet" href="/css/fontawesome-all.min.css">
+    <link rel="stylesheet" href="/assets/portal.css?v=<?=rawurlencode((string)@filemtime(__DIR__.'/../assets/portal.css'))?>">
 </head>
-<body>
-<div class="app">
-<aside class="side">
-<div class="brand"><img src="/images/logo.png"><span>FOX<b>NETWORK</b></span></div>
-<nav class="nav">
-<a class="active" href="/client">Overview</a>
-<a href="/store.php">Store</a>
-<a href="/orders.php">Orders</a>
-<a href="/billing.php">Billing</a>
-<a href="/support.php">Support</a>
-</nav>
-<nav class="nav bottom">
-<?php if(($u['role'] ?? '') === 'admin'): ?><a href="/admin/"><span>Admin</span></a><?php endif?>
-<?php if(!empty($_SESSION['admin_return_uid'])):?><a href="/return-admin.php">← Return to Admin</a><?php endif?>
-<a href="/settings.php">Account Settings</a>
-<a href="/logout.php">Sign out</a>
-</nav>
-</aside>
-<main class="main">
-<header>
-<div class="profile"><div><b><?=e($u['name'])?></b><div class="muted" style="font-size:12px"><?=e(ucfirst($u['role']))?></div></div><div class="avatar"><?=e(strtoupper(substr($u['name'],0,1)))?></div></div>
-</header>
-<div class="content">
-<div class="eyebrow">FoxNetwork Control Center</div>
-<h1><?=greeting()?>, <?=e(explode(' ', $u['name'])[0])?>.</h1>
-<div class="muted">Live server operations and provisioning timeline.</div>
-<?php if(!$u['ptero_client_key'] && empty($u['ptero_user_id'])):?><div class="notice">Link your Pterodactyl account by email in <a class="link" href="/settings.php">Account Settings</a> to load your servers.</div><?php endif?>
-<?php if($error):?><div class="error"><?=e($error)?></div><?php endif?>
+<body class="client-body">
+<div class="client-shell">
+    <?php render_client_sidebar($u, 'overview', (int)$dashboard['open_tickets'], 'client'); ?>
 
-<section class="card" id="prov-section" style="display:none">
-<div class="cardhead"><b>LIVE PROVISIONING STATUS</b><span class="muted" id="prov-summary">Loading…</span></div>
-<div id="prov-grid" class="prov-grid">
-<div class="muted">Checking provisioning queue…</div>
-</div>
-</section>
+    <main class="client-main">
+        <header class="client-topbar">
+            <div class="client-page-title">
+                <span>Control Center</span>
+                <small>Overview</small>
+            </div>
+            <div class="client-top-actions">
+                <a class="topbar-action" href="/support.php" aria-label="Open support"><i class="far fa-question-circle" aria-hidden="true"></i></a>
+                <a class="client-profile" href="/settings.php">
+                    <span class="client-profile-copy"><b><?=e($u['name'])?></b><small><?=e(ucfirst((string)$u['role']))?> account</small></span>
+                    <span class="client-avatar"><?=e($initial)?></span>
+                </a>
+            </div>
+        </header>
 
-<section class="card" style="margin-top:20px">
-<div class="cardhead"><b>MY SERVERS</b><span class="muted"><?=count($servers)?> server<?=count($servers)===1?'':'s'?></span></div>
-<div class="servers">
-<?php if(!$servers):?><div class="empty muted">No servers found.</div><?php endif?>
-<?php foreach($servers as $row):
-    $a=$row['attributes'];
-    $id=(string)$a['identifier'];
-    $service=(array)($serviceMap[$id] ?? []);
-    $serviceId=(int)($service['id'] ?? 0);
-  $localStatus=(string)($service['status'] ?? 'unknown');
-?>
-<article class="server" data-server="<?=e($id)?>" data-local-status="<?=e($localStatus)?>">
-<div class="server-top"><div><div class="server-name"><?=e($a['name'])?></div><div class="muted"><?=e($a['description']?:'FoxNetwork game server')?></div></div><div class="status offline" data-status>LOADING...</div></div>
-<div class="metrics"><div class="metric"><span class="muted">CPU</span><b data-cpu>-</b></div><div class="metric"><span class="muted">Memory</span><b data-memory>-</b></div><div class="metric"><span class="muted">Disk</span><b data-disk>-</b></div></div>
-<div class="buttons">
-<button class="btn primary" data-power="start" <?=empty($u['ptero_client_key'])?'disabled title="Client API key required for live power controls"':''?>>Start</button>
-<button class="btn" data-power="restart" <?=empty($u['ptero_client_key'])?'disabled title="Client API key required for live power controls"':''?>>Restart</button>
-<button class="btn" data-power="stop" <?=empty($u['ptero_client_key'])?'disabled title="Client API key required for live power controls"':''?>>Stop</button>
-<a class="btn primary" href="/server.php?id=<?=e($id)?>">Manage Service</a>
-<?php if($serviceId>0):?><a class="btn" href="/upgrades.php?service=<?=$serviceId?>">Upgrade</a><?php endif?>
+        <div class="client-content">
+            <section class="client-hero">
+                <div class="hero-copy">
+                    <div class="client-eyebrow"><span></span> FOXNETWORK CONTROL CENTER</div>
+                    <h1><?=e(greeting())?>, <?=e($firstName)?></h1>
+                    <p>Everything you need to monitor, manage, and grow your services—without the clutter.</p>
+                </div>
+                <div class="hero-actions">
+                    <a class="client-btn client-btn-ghost" href="/support.php"><i class="far fa-comment-dots" aria-hidden="true"></i> Get support</a>
+                    <a class="client-btn client-btn-primary" href="/store.php"><i class="fas fa-plus" aria-hidden="true"></i> Add a service</a>
+                </div>
+                <div class="hero-orb" aria-hidden="true"></div>
+            </section>
+
+            <?php if(!$hasPteroLink): ?>
+                <div class="client-alert client-alert-info">
+                    <span class="alert-icon"><i class="fas fa-link" aria-hidden="true"></i></span>
+                    <div><b>Connect your server account</b><span>Link Pterodactyl in Account Settings to unlock live metrics and power controls.</span></div>
+                    <a href="/settings.php">Connect now <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                </div>
+            <?php endif ?>
+            <?php if($error): ?>
+                <div class="client-alert client-alert-error">
+                    <span class="alert-icon"><i class="fas fa-exclamation-triangle" aria-hidden="true"></i></span>
+                    <div><b>Live server data is temporarily unavailable</b><span><?=e($error)?></span></div>
+                </div>
+            <?php endif ?>
+
+            <section class="client-stats" aria-label="Account summary">
+                <article class="client-stat">
+                    <span class="stat-icon stat-icon-orange"><i class="fas fa-server" aria-hidden="true"></i></span>
+                    <div><small>Active services</small><strong><?=e($dashboard['active_services'])?></strong><span><?=e($dashboard['total_services'])?> total service<?=((int)$dashboard['total_services']===1?'':'s')?></span></div>
+                </article>
+                <article class="client-stat">
+                    <span class="stat-icon stat-icon-green"><i class="fas fa-heartbeat" aria-hidden="true"></i></span>
+                    <div><small>Infrastructure</small><strong class="stat-word"><?=$hasPteroLink?'Linked':'Setup'?></strong><span><?=$hasPteroLink?'Account connected':'Action required'?></span></div>
+                </article>
+                <article class="client-stat">
+                    <span class="stat-icon stat-icon-blue"><i class="fas fa-file-invoice" aria-hidden="true"></i></span>
+                    <div><small>Outstanding</small><strong><?=e(number_format((float)$dashboard['unpaid_total'], 2))?> <sup><?=e($dashboard['currency'])?></sup></strong><span><?=e($dashboard['unpaid_invoices'])?> open invoice<?=((int)$dashboard['unpaid_invoices']===1?'':'s')?></span></div>
+                </article>
+                <article class="client-stat">
+                    <span class="stat-icon stat-icon-purple"><i class="fas fa-life-ring" aria-hidden="true"></i></span>
+                    <div><small>Support</small><strong><?=e($dashboard['open_tickets'])?></strong><span>open ticket<?=((int)$dashboard['open_tickets']===1?'':'s')?></span></div>
+                </article>
+            </section>
+
+            <section class="dashboard-section provisioning-section" id="prov-section" hidden>
+                <div class="dashboard-section-head">
+                    <div><span class="section-kicker">Live activity</span><h2>Provisioning</h2><p>Follow new services from queue to completion.</p></div>
+                    <span class="section-count" id="prov-summary">Loading…</span>
+                </div>
+                <div id="prov-grid" class="client-provision-grid"><div class="client-empty compact"><span class="empty-loader"></span><p>Checking provisioning activity…</p></div></div>
+            </section>
+
+            <div class="client-dashboard-grid">
+                <section class="dashboard-section server-section">
+                    <div class="dashboard-section-head">
+                        <div><span class="section-kicker">Infrastructure</span><h2>Your servers</h2><p>Live performance and service controls.</p></div>
+                        <span class="section-count"><?=count($servers)?> server<?=count($servers)===1?'':'s'?></span>
+                    </div>
+
+                    <div class="client-server-grid">
+                        <?php if(!$servers): ?>
+                            <div class="client-empty">
+                                <span class="empty-illustration"><i class="fas fa-server" aria-hidden="true"></i></span>
+                                <h3>No servers here yet</h3>
+                                <p>Choose a plan and your new service will appear here automatically.</p>
+                                <a class="client-btn client-btn-primary" href="/store.php">Explore services</a>
+                            </div>
+                        <?php endif ?>
+
+                        <?php foreach($servers as $row):
+                            $a = (array)($row['attributes'] ?? []);
+                            $id = (string)($a['identifier'] ?? '');
+                            if ($id === '') continue;
+                            $service = (array)($serviceMap[$id] ?? []);
+                            $serviceId = (int)($service['id'] ?? 0);
+                            $localStatus = (string)($service['status'] ?? 'unknown');
+                        ?>
+                        <article class="client-server-card server" data-server="<?=e($id)?>" data-local-status="<?=e($localStatus)?>">
+                            <div class="client-server-head">
+                                <div class="server-identity">
+                                    <span class="server-icon"><i class="fas fa-cube" aria-hidden="true"></i></span>
+                                    <div><small>GAME SERVER</small><h3><?=e($a['name'] ?? 'FoxNetwork server')?></h3><p><?=e(($a['description'] ?? '') ?: 'FoxNetwork managed service')?></p></div>
+                                </div>
+                                <span class="client-server-status is-loading" data-status><i></i> Loading</span>
+                            </div>
+
+                            <div class="client-metrics">
+                                <div><span><i class="fas fa-microchip" aria-hidden="true"></i> CPU</span><b data-cpu>—</b></div>
+                                <div><span><i class="fas fa-memory" aria-hidden="true"></i> Memory</span><b data-memory>—</b></div>
+                                <div><span><i class="fas fa-hdd" aria-hidden="true"></i> Disk</span><b data-disk>—</b></div>
+                            </div>
+
+                            <div class="client-server-actions">
+                                <div class="power-actions" aria-label="Server power controls">
+                                    <button type="button" class="power-btn power-start" data-power="start" <?=!$hasClientKey?'disabled title="Client API key required for live power controls"':''?>><i class="fas fa-play" aria-hidden="true"></i><span>Start</span></button>
+                                    <button type="button" class="power-btn" data-power="restart" <?=!$hasClientKey?'disabled title="Client API key required for live power controls"':''?>><i class="fas fa-redo" aria-hidden="true"></i><span>Restart</span></button>
+                                    <button type="button" class="power-btn power-stop" data-power="stop" <?=!$hasClientKey?'disabled title="Client API key required for live power controls"':''?>><i class="fas fa-stop" aria-hidden="true"></i><span>Stop</span></button>
+                                </div>
+                                <div class="manage-actions">
+                                    <?php if($serviceId>0): ?><a href="/upgrades.php?service=<?=$serviceId?>" aria-label="Upgrade <?=e($a['name'] ?? 'server')?>"><i class="fas fa-level-up-alt" aria-hidden="true"></i> Upgrade</a><?php endif ?>
+                                    <a class="manage-link" href="/server.php?id=<?=e($id)?>">Manage <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                                </div>
+                            </div>
+                        </article>
+                        <?php endforeach ?>
+                    </div>
+                </section>
+
+                <aside class="client-dashboard-rail">
+                    <section class="rail-card">
+                        <div class="rail-head"><div><span class="section-kicker">Shortcuts</span><h2>Quick actions</h2></div><i class="fas fa-bolt" aria-hidden="true"></i></div>
+                        <div class="quick-actions">
+                            <a href="/store.php"><span class="quick-icon"><i class="fas fa-plus" aria-hidden="true"></i></span><span><b>New service</b><small>Browse hosting plans</small></span><i class="fas fa-chevron-right" aria-hidden="true"></i></a>
+                            <a href="/billing.php"><span class="quick-icon"><i class="fas fa-credit-card" aria-hidden="true"></i></span><span><b>Billing</b><small>Invoices and payments</small></span><i class="fas fa-chevron-right" aria-hidden="true"></i></a>
+                            <a href="/support.php"><span class="quick-icon"><i class="far fa-comment-alt" aria-hidden="true"></i></span><span><b>Open a ticket</b><small>Talk to our support team</small></span><i class="fas fa-chevron-right" aria-hidden="true"></i></a>
+                            <a href="/settings.php"><span class="quick-icon"><i class="fas fa-user-cog" aria-hidden="true"></i></span><span><b>Account</b><small>Security and connections</small></span><i class="fas fa-chevron-right" aria-hidden="true"></i></a>
+                        </div>
+                    </section>
+
+                    <section class="rail-card connection-card">
+                        <div class="connection-status <?=$hasPteroLink?'is-connected':'needs-setup'?>"><i class="fas <?=$hasPteroLink?'fa-check':'fa-link'?>" aria-hidden="true"></i></div>
+                        <div><span class="section-kicker">Server connection</span><h3><?=$hasPteroLink?'Everything is connected':'Connection required'?></h3><p><?=$hasClientKey?'Live metrics and power controls are ready.':($hasPteroLink?'Services are linked. Add a Client API key to enable live controls.':'Connect your Pterodactyl account to access server controls.')?></p></div>
+                        <a href="/settings.php"><?=$hasClientKey?'Review settings':'Complete setup'?> <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                    </section>
+
+                    <section class="rail-card renewal-card">
+                        <div class="rail-head"><div><span class="section-kicker">Next renewal</span><h2><?=e($nextRenewal['next_due_at'] ?? '')?date('d M Y', strtotime((string)$nextRenewal['next_due_at'])):'Nothing scheduled'?></h2></div><span class="calendar-icon"><i class="far fa-calendar-alt" aria-hidden="true"></i></span></div>
+                        <?php if($nextRenewal): ?><p><?=e($nextRenewal['name'])?> · <?=e(number_format((float)$nextRenewal['price_monthly'], 2))?> <?=e($nextRenewal['currency'])?></p><?php else: ?><p>Your next renewal date will appear here.</p><?php endif ?>
+                        <a href="/billing.php">View billing <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                    </section>
+                </aside>
+            </div>
+        </div>
+    </main>
 </div>
-</article>
-<?php endforeach?>
-</div>
-</section>
-</div>
-</main>
-</div>
+
+<div class="client-toast" id="client-toast" role="status" aria-live="polite"></div>
+
 <script>
 const CSRF=<?=json_encode(csrf())?>;
-const HAS_CLIENT_KEY=<?=json_encode(!empty($u['ptero_client_key']))?>;
-function em(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
-function mb(n){return (n/1024/1024).toFixed(1)+' MB'}
+const HAS_CLIENT_KEY=<?=json_encode($hasClientKey)?>;
 
+function escapeHtml(value){return String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));}
+function megabytes(bytes){return (Number(bytes||0)/1024/1024).toFixed(1)+' MB';}
+function notify(message,type='info'){
+    const toast=document.getElementById('client-toast');
+    toast.textContent=message;
+    toast.className='client-toast is-visible '+(type==='error'?'is-error':'');
+    clearTimeout(notify.timer);
+    notify.timer=setTimeout(()=>toast.classList.remove('is-visible'),3200);
+}
 function localStatusLabel(status){
-  const s=String(status||'').toLowerCase();
-  if(s==='active') return 'RUNNING';
-  if(s==='suspended') return 'SUSPENDED';
-  if(s==='failed') return 'FAILED';
-  if(s==='pending'||s==='provisioning') return 'PROVISIONING';
-  return 'UNKNOWN';
+    const value=String(status||'').toLowerCase();
+    if(value==='active')return 'Running';
+    if(value==='suspended')return 'Suspended';
+    if(value==='failed')return 'Failed';
+    if(value==='pending'||value==='provisioning')return 'Provisioning';
+    if(value==='cancelled')return 'Cancelled';
+    return 'Unavailable';
 }
-
 function localStatusClass(status){
-  const s=String(status||'').toLowerCase();
-  if(s==='active') return 'online';
-  if(s==='pending'||s==='provisioning') return 'starting';
-  return 'offline';
+    const value=String(status||'').toLowerCase();
+    if(value==='active')return 'is-online';
+    if(value==='pending'||value==='provisioning')return 'is-starting';
+    if(value==='failed')return 'is-error';
+    return 'is-offline';
 }
-
-async function refresh(card){
-  if(!HAS_CLIENT_KEY){
-    const st=card.querySelector('[data-status]');
-    const local=card.dataset.localStatus||'unknown';
-    st.textContent=localStatusLabel(local);
-    st.className='status '+localStatusClass(local);
-    card.querySelector('[data-cpu]').textContent='-';
-    card.querySelector('[data-memory]').textContent='-';
-    card.querySelector('[data-disk]').textContent='-';
-    return;
-  }
-  const id=card.dataset.server;
-  try{
-    const r=await fetch('/api/resources.php?id='+encodeURIComponent(id));
-    const j=await r.json();
-    if(!j.ok) throw Error(j.error||'Unavailable');
-    const a=j.data.attributes,s=a.current_state;
-    const st=card.querySelector('[data-status]');
-    st.textContent=s.toUpperCase();
-    st.className='status '+(s==='running'?'online':(s==='starting'?'starting':'offline'));
-    card.querySelector('[data-cpu]').textContent=(a.resources.cpu_absolute||0).toFixed(1)+'%';
-    card.querySelector('[data-memory]').textContent=mb(a.resources.memory_bytes||0);
-    card.querySelector('[data-disk]').textContent=mb(a.resources.disk_bytes||0);
-  }catch(e){card.querySelector('[data-status]').textContent='UNAVAILABLE';}
+function setServerStatus(card,label,state){
+    const status=card.querySelector('[data-status]');
+    status.innerHTML='<i></i>'+escapeHtml(label);
+    status.className='client-server-status '+state;
+    card.dataset.state=state;
 }
-
-async function power(card,signal){
-  const buttons=card.querySelectorAll('button');
-  buttons.forEach(b=>b.disabled=true);
-  try{
-    const r=await fetch('/api/power.php',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF},body:JSON.stringify({id:card.dataset.server,signal})});
-    const j=await r.json();
-    if(!j.ok) throw Error(j.error||'Power action failed');
-    setTimeout(()=>refresh(card),800);
-    setTimeout(()=>refresh(card),2500);
-  }catch(e){alert(e.message||String(e));}
-  finally{setTimeout(()=>buttons.forEach(b=>b.disabled=false),900);}
+async function refreshServer(card){
+    if(!HAS_CLIENT_KEY){
+        const local=card.dataset.localStatus||'unknown';
+        setServerStatus(card,localStatusLabel(local),localStatusClass(local));
+        return;
+    }
+    try{
+        const response=await fetch('/api/resources.php?id='+encodeURIComponent(card.dataset.server),{headers:{'Accept':'application/json'}});
+        const result=await response.json();
+        if(!result.ok)throw new Error(result.error||'Server data unavailable');
+        const attributes=result.data.attributes;
+        const state=String(attributes.current_state||'offline');
+        setServerStatus(card,state.charAt(0).toUpperCase()+state.slice(1),state==='running'?'is-online':(state==='starting'?'is-starting':'is-offline'));
+        card.querySelector('[data-cpu]').textContent=Number(attributes.resources.cpu_absolute||0).toFixed(1)+'%';
+        card.querySelector('[data-memory]').textContent=megabytes(attributes.resources.memory_bytes);
+        card.querySelector('[data-disk]').textContent=megabytes(attributes.resources.disk_bytes);
+    }catch(error){
+        setServerStatus(card,'Unavailable','is-error');
+    }
 }
-
+async function powerServer(card,signal){
+    const buttons=[...card.querySelectorAll('[data-power]')];
+    buttons.forEach(button=>button.disabled=true);
+    card.setAttribute('aria-busy','true');
+    try{
+        const response=await fetch('/api/power.php',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF},body:JSON.stringify({id:card.dataset.server,signal})});
+        const result=await response.json();
+        if(!result.ok)throw new Error(result.error||'Power action failed');
+        notify(signal.charAt(0).toUpperCase()+signal.slice(1)+' command sent.');
+        setTimeout(()=>refreshServer(card),800);
+        setTimeout(()=>refreshServer(card),2600);
+    }catch(error){
+        notify(error.message||String(error),'error');
+    }finally{
+        card.removeAttribute('aria-busy');
+        setTimeout(()=>buttons.forEach(button=>button.disabled=!HAS_CLIENT_KEY),900);
+    }
+}
 function renderProvisioning(items){
-  const section=document.getElementById('prov-section');
-  const box=document.getElementById('prov-grid');
-  const summary=document.getElementById('prov-summary');
-  if(!Array.isArray(items)||!items.length){
-    if(section) section.style.display='none';
-    box.innerHTML='';
-    summary.textContent='0 jobs';
-    return;
-  }
-  if(section) section.style.display='block';
-  let active=0;
-  const html=[];
-  for(const it of items){
-    const status=(it.status||'pending').toLowerCase();
-    if(status==='provisioning'||status==='pending') active++;
-    const logs=(it.logs||[]).slice(0,6).map(l=>`<div class="prov-log">${em(l.created_at||'')} · ${em(l.event_name||'')} ${l.message?(' - '+em(l.message)):''}</div>`).join('');
-    const timeline=(it.timeline||[]).slice(-5).map(t=>`<div class="prov-event"><span class="prov-dot"></span><div><b>${em(t.event||'event')}</b><div class="muted">${em(t.time||'')}</div></div></div>`).join('');
-    html.push(`<article class="prov-card">
-      <div class="prov-head"><div><div class="prov-title">${em(it.name)}</div><div class="prov-step">${em(it.step||'Queued')}</div></div><span class="status-chip ${em(status)}">${em(status)}</span></div>
-      <div class="prov-bar"><div class="prov-fill" style="width:${Math.max(0,Math.min(100,Number(it.progress||0)))}%"></div></div>
-      <div class="prov-meta"><span>${Math.max(0,Math.min(100,Number(it.progress||0)))}%</span><span>ETA ${it.eta?em(new Date(it.eta.replace(' ','T')).toLocaleTimeString()):'—'}</span></div>
-      ${it.last_error?`<div class="error" style="margin-top:8px">${em(it.last_error)}</div>`:''}
-      <div class="prov-logs">${logs||'<div class="muted">No log events yet.</div>'}</div>
-      <div class="prov-timeline">${timeline||'<div class="muted">Timeline will appear during execution.</div>'}</div>
-    </article>`);
-  }
-  box.innerHTML=html.join('');
-  summary.textContent=active+' active · '+items.length+' tracked';
-}
-
-async function refreshProvisioning(){
-  try{
-    const r=await fetch('/api/provisioning-status.php');
-    const j=await r.json();
-    if(!j.ok) throw Error(j.error||'Provisioning status unavailable');
-    renderProvisioning(j.items||[]);
-  }catch(e){
     const section=document.getElementById('prov-section');
-    if(section) section.style.display='block';
-    document.getElementById('prov-grid').innerHTML='<div class="error">'+em(e.message||String(e))+'</div>';
-    document.getElementById('prov-summary').textContent='Unavailable';
-  }
+    const grid=document.getElementById('prov-grid');
+    const summary=document.getElementById('prov-summary');
+    if(!Array.isArray(items)||!items.length){section.hidden=true;grid.innerHTML='';summary.textContent='0 jobs';return;}
+    section.hidden=false;
+    let active=0;
+    grid.innerHTML=items.map(item=>{
+        const status=String(item.status||'pending').toLowerCase();
+        const progress=Math.max(0,Math.min(100,Number(item.progress||0)));
+        if(status==='provisioning'||status==='pending')active++;
+        const logs=(item.logs||[]).slice(0,4).map(log=>`<div><time>${escapeHtml(log.created_at||'')}</time><span>${escapeHtml(log.event_name||'Update')}${log.message?' · '+escapeHtml(log.message):''}</span></div>`).join('');
+        return `<article class="client-provision-card">
+            <div class="provision-card-head"><div><small>${escapeHtml(item.step||'Queued')}</small><h3>${escapeHtml(item.name||'New service')}</h3></div><span class="provision-chip ${escapeHtml(status)}">${escapeHtml(status)}</span></div>
+            <div class="provision-progress"><span style="width:${progress}%"></span></div>
+            <div class="provision-meta"><span>${progress}% complete</span><span>ETA ${item.eta?escapeHtml(new Date(item.eta.replace(' ','T')).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})):'—'}</span></div>
+            ${item.last_error?`<div class="provision-error">${escapeHtml(item.last_error)}</div>`:''}
+            <div class="provision-log">${logs||'<p>No activity recorded yet.</p>'}</div>
+        </article>`;
+    }).join('');
+    summary.textContent=active+' active · '+items.length+' tracked';
 }
-
-document.querySelectorAll('.server').forEach(card=>{
-  card.querySelectorAll('[data-power]').forEach(b=>b.onclick=()=>power(card,b.dataset.power));
-});
-
-async function refreshAll(){
-  const cards=[...document.querySelectorAll('.server')];
-  await Promise.all(cards.map(c=>refresh(c)));
+async function refreshProvisioning(){
+    try{
+        const response=await fetch('/api/provisioning-status.php',{headers:{'Accept':'application/json'}});
+        const result=await response.json();
+        if(!result.ok)throw new Error(result.error||'Provisioning status unavailable');
+        renderProvisioning(result.items||[]);
+    }catch(error){
+        const section=document.getElementById('prov-section');
+        section.hidden=false;
+        document.getElementById('prov-grid').innerHTML='<div class="client-alert client-alert-error"><span class="alert-icon"><i class="fas fa-exclamation-triangle"></i></span><div><b>Provisioning status unavailable</b><span>'+escapeHtml(error.message||String(error))+'</span></div></div>';
+        document.getElementById('prov-summary').textContent='Unavailable';
+    }
 }
-
-refreshAll();
+async function refreshAllServers(){
+    if(document.hidden)return;
+    await Promise.all([...document.querySelectorAll('.client-server-card')].map(refreshServer));
+}
+document.querySelectorAll('.client-server-card').forEach(card=>card.querySelectorAll('[data-power]').forEach(button=>button.addEventListener('click',()=>powerServer(card,button.dataset.power))));
+refreshAllServers();
 refreshProvisioning();
-if(HAS_CLIENT_KEY) setInterval(refreshAll,10000);
-setInterval(refreshProvisioning,4000);
+if(HAS_CLIENT_KEY)setInterval(refreshAllServers,10000);
+setInterval(()=>{if(!document.hidden)refreshProvisioning();},5000);
 </script>
 </body>
 </html>

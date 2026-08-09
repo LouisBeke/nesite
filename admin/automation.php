@@ -22,7 +22,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         } elseif ($action === 'run') {
             @set_time_limit(120);
             $result = automation_run_worker(5);
-            $msg = $result['processed'].' processed, '.$result['failed'].' failed, '.$result['queued'].' still queued.';
+            $msg = $result['processed'].' processed, '.$result['skipped'].' skipped, '.$result['failed'].' failed, '.$result['queued'].' still queued.';
         } else {
             throw new RuntimeException('Unknown automation action.');
         }
@@ -31,7 +31,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     }
 }
 
-$stats = ['pending' => 0, 'retry_wait' => 0, 'running' => 0, 'completed' => 0, 'failed' => 0];
+$stats = ['pending' => 0, 'retry_wait' => 0, 'running' => 0, 'completed' => 0, 'skipped' => 0, 'failed' => 0];
 foreach (db()->query('SELECT status,COUNT(*) total FROM automation_jobs GROUP BY status')->fetchAll() as $row) {
     $stats[(string)$row['status']] = (int)$row['total'];
 }
@@ -46,12 +46,13 @@ admin_head($u, 'Automation', 'automation');
     <div class="stat"><span class="muted">Queued</span><strong><?=e($stats['pending'] + $stats['retry_wait'])?></strong></div>
     <div class="stat"><span class="muted">Running</span><strong><?=e($stats['running'])?></strong></div>
     <div class="stat"><span class="muted">Completed</span><strong><?=e($stats['completed'])?></strong></div>
+    <div class="stat"><span class="muted">Skipped</span><strong><?=e($stats['skipped'])?></strong></div>
     <div class="stat"><span class="muted">Failed</span><strong><?=e($stats['failed'])?></strong></div>
 </section>
 
 <section class="card" style="margin-top:18px">
     <div class="cardhead">
-        <div><b>AUTOMATION JOBS</b><div class="muted small">Zoho jobs retry automatically with exponential backoff.</div></div>
+        <div><b>AUTOMATION JOBS</b><div class="muted small">Temporary Zoho errors retry automatically. Jobs for deleted local records are skipped.</div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
             <form method="post"><input type="hidden" name="csrf" value="<?=e(csrf())?>"><button class="btn primary" name="action" value="run">Run queued jobs now</button></form>
             <form method="post"><input type="hidden" name="csrf" value="<?=e(csrf())?>"><button class="btn" name="action" value="retry_failed">Retry all failed</button></form>

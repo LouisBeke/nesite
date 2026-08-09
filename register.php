@@ -78,7 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width">
     <title>FoxNetwork Register</title>
-    <link rel="stylesheet" href="/assets/portal.css?v=9">
+    <link rel="stylesheet" href="/assets/portal.css?v=<?=rawurlencode((string)@filemtime(__DIR__.'/assets/portal.css'))?>">
 </head>
 <body>
 <div class="auth">
