@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /app/
+Disallow: /*webhook.php$
+
+Sitemap: https://foxnetwork.be/sitemap.xml
