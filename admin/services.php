@@ -11,36 +11,38 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
         $msg='Service already has a linked Pterodactyl server.';
         break;
       }
-      $dupQ=db()->prepare("SELECT * FROM services WHERE id<>? AND user_id=? AND ptero_server_id IS NOT NULL AND status IN ('active','suspended','provisioning') ORDER BY id DESC");
-      $dupQ->execute([$sid,(int)$main['user_id']]);
-      $dup=null;
-      $mainName=trim((string)($main['name']??''));
-      foreach($dupQ->fetchAll() as $cand){
-        $sameProduct=((int)($cand['product_id']??0)===(int)($main['product_id']??0));
-        $sameName=(strcasecmp(trim((string)($cand['name']??'')),$mainName)===0);
-        $sameOrder=((int)($cand['order_id']??0)>0 && (int)($cand['order_id']??0)===(int)($main['order_id']??0));
-        if($sameOrder||$sameProduct||$sameName){$dup=$cand;break;}
-      }
-      if($dup){
-        db()->beginTransaction();
-        try{
-          db()->prepare("UPDATE services SET ptero_server_id=?,ptero_identifier=?,status='active',last_error=NULL WHERE id=?")
-            ->execute([(int)$dup['ptero_server_id'],(string)($dup['ptero_identifier']??''),$sid]);
-          db()->prepare("UPDATE services SET ptero_server_id=NULL,ptero_identifier=NULL,status='cancelled',last_error=? WHERE id=?")
-            ->execute(['Merged into service #'.$sid.' from Admin Services duplicate resolver.',(int)$dup['id']]);
-          db()->commit();
-          service_log($sid,(int)$u['id'],'provision','Merged duplicate service #'.(int)$dup['id'].' into this main service and kept existing server link.');
-          $msg='Duplicate resolved: adopted existing server from service #'.(int)$dup['id'].' to this main service.';
-        }catch(Throwable $txe){
-          if(db()->inTransaction())db()->rollBack();
-          throw $txe;
-        }
-        break;
-      }
       $jid=provisioning_queue_service($sid,['source'=>'admin_services','admin_id'=>(int)$u['id']],85,true);
-      $run=provisioning_run_worker(1);
       service_log($sid,(int)$u['id'],'provision','Provisioning queued from Admin Center. Job #'.$jid);
-      $msg='Provisioning queued (job #'.$jid.'). Worker: '.$run['processed'].' processed, '.$run['failed'].' failed, '.$run['queued'].' still queued.';
+      $msg='Provisioning queued (job #'.$jid.'). The background cron worker will process it.';
+      break;
+   case 'undo_duplicate_merge':
+      $source=service_row($sid);
+      if(!preg_match('/^Merged into service #(\d+) from Admin Services duplicate resolver\.$/',(string)($source['last_error']??''),$match))throw new RuntimeException('This service does not contain a reversible Admin Services merge.');
+      $targetId=(int)$match[1];
+      $target=service_row($targetId);
+      if((int)$source['user_id']!==(int)$target['user_id'])throw new RuntimeException('The merged services have different owners; automatic recovery was stopped.');
+      if(!empty($source['ptero_server_id']))throw new RuntimeException('Service #'.$sid.' already has a Pterodactyl server link.');
+      if(empty($target['ptero_server_id']))throw new RuntimeException('Service #'.$targetId.' no longer has the server link needed to undo this merge.');
+      $logQ=db()->prepare("SELECT COUNT(*) FROM service_activity WHERE service_id=? AND action='provision' AND details LIKE ?");
+      $logQ->execute([$targetId,'Merged duplicate service #'.$sid.' into this main service%']);
+      if((int)$logQ->fetchColumn()<1)throw new RuntimeException('The matching merge audit record was not found; automatic recovery was stopped.');
+      db()->beginTransaction();
+      try{
+        db()->prepare("UPDATE services SET ptero_server_id=NULL,ptero_identifier=NULL,status='pending',last_error=? WHERE id=?")
+          ->execute(['Incorrect automatic duplicate merge undone. This service must be provisioned separately.',$targetId]);
+        db()->prepare("UPDATE services SET ptero_server_id=?,ptero_identifier=?,status='active',last_error=NULL WHERE id=?")
+          ->execute([(int)$target['ptero_server_id'],(string)($target['ptero_identifier']??''),$sid]);
+        if(!empty($source['order_id']))db()->prepare("UPDATE orders SET status='active' WHERE id=?")->execute([(int)$source['order_id']]);
+        if(!empty($target['order_id']))db()->prepare("UPDATE orders SET status='provisioning' WHERE id=?")->execute([(int)$target['order_id']]);
+        db()->commit();
+      }catch(Throwable $txe){
+        if(db()->inTransaction())db()->rollBack();
+        throw $txe;
+      }
+      $jid=provisioning_queue_service($targetId,['source'=>'undo_duplicate_merge','admin_id'=>(int)$u['id']],90,true);
+      service_log($sid,(int)$u['id'],'merge_undone','Restored server link from incorrectly merged service #'.$targetId.'.');
+      service_log($targetId,(int)$u['id'],'merge_undone','Returned server link to service #'.$sid.' and queued separate provisioning job #'.$jid.'.');
+      $msg='Incorrect merge undone. Service #'.$sid.' was restored and service #'.$targetId.' was queued separately (job #'.$jid.').';
       break;
    case 'suspend': suspend_service($sid,(int)$u['id']);$msg='Service suspended.';break;
    case 'unsuspend': unsuspend_service($sid,(int)$u['id']);$msg='Service unsuspended.';break;
@@ -74,6 +76,7 @@ admin_head($u,'Services','services');?>
 <?php foreach($rows as $r): $cfg=json_decode((string)($r['config_json']??''),true)?:[]; $displayProduct=$r['product_name']??($cfg['product_name']??'—');?><tr id="service-<?=e($r['id'])?>"><td><b><?=e($r['name'])?></b><small>#<?=e($r['id'])?></small><?php if($r['last_error']):?><small class="redtext"><?=e($r['last_error'])?></small><?php endif?></td><td><?=e($r['customer_name'])?><small><?=e($r['email'])?></small></td><td><?=e($displayProduct)?></td><td><?=e($r['next_due_at']?date('d M Y',strtotime($r['next_due_at'])):'—')?></td><td><?=e($r['ptero_identifier']??'Not provisioned')?></td><td><?=admin_badge($r['status'])?></td><td>
 <div class="service-actions">
 <?php if(!$r['ptero_server_id'] && !in_array($r['status'],['terminated','cancelled'],true)):?><form method="post"><input type="hidden" name="csrf" value="<?=e(csrf())?>"><input type="hidden" name="service_id" value="<?=e($r['id'])?>"><button class="btn primary" name="action" value="provision">Provision</button></form><?php endif?>
+<?php if($r['status']==='cancelled' && preg_match('/^Merged into service #\d+ from Admin Services duplicate resolver\.$/',(string)($r['last_error']??''))):?><form method="post" onsubmit="return confirm('Undo this incorrect service merge and queue the other service separately?');"><input type="hidden" name="csrf" value="<?=e(csrf())?>"><input type="hidden" name="service_id" value="<?=e($r['id'])?>"><button class="btn warning" name="action" value="undo_duplicate_merge">Undo incorrect merge</button></form><?php endif?>
 <?php if($r['ptero_server_id'] && $r['status']==='active'):?><form method="post"><input type="hidden" name="csrf" value="<?=e(csrf())?>"><input type="hidden" name="service_id" value="<?=e($r['id'])?>"><button class="btn warning" name="action" value="suspend">Suspend</button></form><?php endif?>
 <?php if($r['ptero_server_id'] && $r['status']==='suspended'):?><form method="post"><input type="hidden" name="csrf" value="<?=e(csrf())?>"><input type="hidden" name="service_id" value="<?=e($r['id'])?>"><button class="btn primary" name="action" value="unsuspend">Unsuspend</button></form><?php endif?>
 <?php if($r['ptero_server_id'] && !in_array($r['status'],['terminated'],true)):?><form method="post" onsubmit="return confirm('Reinstall <?=e($r['name'])?>? Server files may be changed by the egg install process.');"><input type="hidden" name="csrf" value="<?=e(csrf())?>"><input type="hidden" name="service_id" value="<?=e($r['id'])?>"><button class="btn" name="action" value="reinstall">Reinstall</button></form><?php endif?>

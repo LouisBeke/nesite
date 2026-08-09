@@ -48,6 +48,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         try {
+            zoho_crm_sync_customer($u);
+        } catch (Throwable $e) {
+            error_log('FoxNetwork registration Zoho CRM sync failed for user '.$uid.': '.$e->getMessage());
+        }
+
+        try {
             provision_ptero_client_key_for_new_user($uid);
         } catch (Throwable $e) {
             error_log('FoxNetwork registration Pterodactyl key setup failed for user '.$uid.': '.$e->getMessage());

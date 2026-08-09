@@ -505,52 +505,9 @@ function fox_v15c_migrate(): void {
 function fox_v15d_migrate(): void {
     static $ran=false; if($ran)return; $ran=true; $pdo=db();
     if (fox_migration_applied($pdo, 'v15d-merge-duplicate-services')) return;
-    if (!fox_table_exists($pdo, 'services')) {
-        $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15d-merge-duplicate-services']);
-        return;
-    }
-
-    $groups=$pdo->query("SELECT user_id,COALESCE(product_id,0) product_key,LOWER(TRIM(name)) name_key,COUNT(*) c
-                         FROM services
-                         WHERE name IS NOT NULL AND name<>''
-                         GROUP BY user_id,COALESCE(product_id,0),LOWER(TRIM(name))
-                         HAVING c>1")->fetchAll();
-    foreach($groups as $g){
-        $userId=(int)($g['user_id']??0);
-        $productKey=(int)($g['product_key']??0);
-        $nameKey=(string)($g['name_key']??'');
-        if($userId<1||$nameKey==='')continue;
-
-        $q=$pdo->prepare("SELECT * FROM services
-                          WHERE user_id=? AND COALESCE(product_id,0)=? AND LOWER(TRIM(name))=?
-                          ORDER BY id DESC");
-        $q->execute([$userId,$productKey,$nameKey]);
-        $rows=$q->fetchAll();
-        if(count($rows)<2)continue;
-
-        $main=$rows[0];
-        $mainId=(int)$main['id'];
-        $mainServer=(int)($main['ptero_server_id']??0);
-        if($mainServer>0)continue;
-
-        $donor=null;
-        foreach(array_slice($rows,1) as $r){
-            if((int)($r['ptero_server_id']??0)>0){$donor=$r;break;}
-        }
-        if(!$donor)continue;
-
-        $pdo->beginTransaction();
-        try{
-            $pdo->prepare("UPDATE services SET ptero_server_id=?,ptero_identifier=?,status='active',last_error=NULL WHERE id=?")
-                ->execute([(int)$donor['ptero_server_id'],(string)($donor['ptero_identifier']??''),$mainId]);
-            $pdo->prepare("UPDATE services SET ptero_server_id=NULL,ptero_identifier=NULL,status='cancelled',last_error=? WHERE id=?")
-                ->execute(['Merged into main duplicate service #'.$mainId.' by migration.',(int)$donor['id']]);
-            $pdo->commit();
-        }catch(Throwable $e){
-            if($pdo->inTransaction())$pdo->rollBack();
-        }
-    }
-
+    // Intentionally no-op. Matching by customer, product, or display name can
+    // collapse legitimate separate services. Exact same-order duplicates are
+    // handled by v15c and the unique services.order_id constraint.
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15d-merge-duplicate-services']);
 }
 
@@ -624,4 +581,24 @@ function fox_v15h_migrate(): void {
     }
 
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15h-smtp-ehlo-domain']);
+}
+
+function fox_v15i_migrate(): void {
+    static $ran=false; if($ran)return; $ran=true; $pdo=db();
+    if (fox_migration_applied($pdo, 'v15i-zoho-crm')) return;
+
+    if (fox_table_exists($pdo, 'app_settings')) {
+        $defaults=[
+            'zoho_crm_enabled'=>'0',
+            'zoho_crm_client_id'=>'',
+            'zoho_crm_client_secret'=>'',
+            'zoho_crm_refresh_token'=>'',
+            'zoho_crm_access_token'=>'',
+            'zoho_crm_access_token_expires_at'=>'0',
+        ];
+        $insert=$pdo->prepare('INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES(?,?)');
+        foreach($defaults as $key=>$value)$insert->execute([$key,$value]);
+    }
+
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15i-zoho-crm']);
 }

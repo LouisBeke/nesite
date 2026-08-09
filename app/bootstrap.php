@@ -127,11 +127,13 @@ try {
     if (function_exists('fox_v15f_migrate')) fox_v15f_migrate();
     if (function_exists('fox_v15g_migrate')) fox_v15g_migrate();
     if (function_exists('fox_v15h_migrate')) fox_v15h_migrate();
+    if (function_exists('fox_v15i_migrate')) fox_v15i_migrate();
 } catch (Throwable $e) {
     error_log('FoxNetwork migrations skipped: '.$e->getMessage());
 }
 function e($v):string{return htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');}
 require_once __DIR__.'/mail.php';
+require_once __DIR__.'/zoho-crm.php';
 require_once __DIR__.'/provisioning.php';
 function csrf():string{if(empty($_SESSION['csrf']))$_SESSION['csrf']=bin2hex(random_bytes(32));return $_SESSION['csrf'];}
 function verify_csrf():void{if(!hash_equals($_SESSION['csrf']??'',$_POST['csrf']??'')){http_response_code(419);die('Invalid request token');}}
@@ -498,6 +500,25 @@ function ensure_service_for_order(int $orderId): int {
 }
 function provision_service(int $serviceId, array &$runtime=[]): array {
     $q=db()->prepare('SELECT s.*,u.email,u.name customer_name,u.ptero_user_id,p.* FROM services s JOIN users u ON u.id=s.user_id LEFT JOIN store_products p ON p.id=s.product_id WHERE s.id=?');$q->execute([$serviceId]);$r=$q->fetch();if(!$r)throw new RuntimeException('Service not found.');
+    if(!empty($r['ptero_server_id'])){
+        $runtime['server_id']=(int)$r['ptero_server_id'];
+        db()->prepare("UPDATE services SET status='active',last_error=NULL WHERE id=?")->execute([$serviceId]);
+        if(!empty($r['order_id']))db()->prepare("UPDATE orders SET status='active' WHERE id=?")->execute([(int)$r['order_id']]);
+        return ['server_id'=>(int)$r['ptero_server_id'],'ptero_user_id'=>(int)($r['ptero_user_id']??0),'created_ptero_user'=>0,'node_id'=>0,'allocation_id'=>0];
+    }
+    $externalId='foxnetwork-service-'.$serviceId;
+    $existingServers=app_ptero('/servers?filter%5Bexternal_id%5D='.rawurlencode($externalId).'&per_page=10');
+    foreach(($existingServers['data']??[]) as $existingServer){
+        $existingAttributes=$existingServer['attributes']??[];
+        if((string)($existingAttributes['external_id']??'')!==$externalId)continue;
+        $existingServerId=(int)($existingAttributes['id']??0);
+        if($existingServerId<=0)continue;
+        $runtime['server_id']=$existingServerId;
+        db()->prepare("UPDATE services SET status='active',ptero_server_id=?,ptero_identifier=?,last_error=NULL WHERE id=?")
+          ->execute([$existingServerId,(string)($existingAttributes['identifier']??''),$serviceId]);
+        if(!empty($r['order_id']))db()->prepare("UPDATE orders SET status='active' WHERE id=?")->execute([(int)$r['order_id']]);
+        return ['server_id'=>$existingServerId,'ptero_user_id'=>(int)($r['ptero_user_id']??0),'created_ptero_user'=>0,'node_id'=>0,'allocation_id'=>0];
+    }
     if(empty($r['ptero_egg_id']))throw new RuntimeException('Product has no Pterodactyl Egg ID configured.');
     $forcedNodeId=(int)($runtime['node_id']??0);
     $forcedAllocationId=(int)($runtime['allocation_id']??0);
@@ -566,7 +587,7 @@ function provision_service(int $serviceId, array &$runtime=[]): array {
             if($missing) throw new RuntimeException('Missing required Egg variables: '.implode(', ',$missing).'. Configure them in Admin → Products.');
         }
     } catch(RuntimeException $e){ if(str_starts_with($e->getMessage(),'Missing required Egg variables:')) throw $e; }
-    $payload=['name'=>$r['name'],'user'=>$puid,'egg'=>(int)$r['ptero_egg_id'],'docker_image'=>$r['ptero_docker_image']?:'ghcr.io/pterodactyl/yolks:java_21','startup'=>$r['ptero_startup']?:'java -Xms128M -Xmx{{SERVER_MEMORY}}M -jar {{SERVER_JARFILE}}','environment'=>$env,'limits'=>['memory'=>(int)($cfg['ram_mb']??$r['ram_mb']),'swap'=>0,'disk'=>(int)($cfg['disk_mb']??$r['disk_mb']),'io'=>500,'cpu'=>(int)($cfg['cpu_percent']??$r['cpu_percent'])],'feature_limits'=>['databases'=>(int)$r['database_limit'],'allocations'=>(int)$r['allocation_limit'],'backups'=>(int)$r['backups']]];
+    $payload=['external_id'=>$externalId,'name'=>$r['name'],'user'=>$puid,'egg'=>(int)$r['ptero_egg_id'],'docker_image'=>$r['ptero_docker_image']?:'ghcr.io/pterodactyl/yolks:java_21','startup'=>$r['ptero_startup']?:'java -Xms128M -Xmx{{SERVER_MEMORY}}M -jar {{SERVER_JARFILE}}','environment'=>$env,'limits'=>['memory'=>(int)($cfg['ram_mb']??$r['ram_mb']),'swap'=>0,'disk'=>(int)($cfg['disk_mb']??$r['disk_mb']),'io'=>500,'cpu'=>(int)($cfg['cpu_percent']??$r['cpu_percent'])],'feature_limits'=>['databases'=>(int)$r['database_limit'],'allocations'=>(int)$r['allocation_limit'],'backups'=>(int)$r['backups']]];
     if($forcedAllocationId>0){
         $payload['allocation']=['default'=>$forcedAllocationId];
         $runtime['allocation_id']=$forcedAllocationId;

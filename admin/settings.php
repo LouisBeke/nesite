@@ -2,13 +2,15 @@
 require __DIR__.'/../app/bootstrap.php';
 require __DIR__.'/_layout.php';
 $u = require_admin();
-$msg = '';
-$err = '';
+$msg = (string)($_SESSION['zoho_crm_flash_message'] ?? '');
+$err = (string)($_SESSION['zoho_crm_flash_error'] ?? '');
+unset($_SESSION['zoho_crm_flash_message'], $_SESSION['zoho_crm_flash_error']);
 
 $keys = [
     'company_name','support_email','billing_email','invoice_prefix','currency','vat_rate','invoice_due_days',
     'renewal_days_before','grace_days','auto_suspend','auto_unsuspend','cron_token',
     'smtp_host','smtp_port','smtp_security','smtp_ehlo_domain','smtp_username','smtp_from_email','smtp_from_name','mail_provider',
+    'zoho_crm_enabled','zoho_crm_client_id',
     'hosting_allow_startup_variable_edit','hosting_allow_custom_startup_command','hosting_allow_docker_image_selection','hosting_allow_extra_allocations',
     'provisioning_smart_node_enabled','provisioning_node_cache_max_age_seconds','provisioning_allocation_lock_timeout_seconds',
     'provisioning_weight_cpu','provisioning_weight_ram','provisioning_weight_disk','provisioning_weight_servers',
@@ -18,6 +20,8 @@ $keys = [
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     try {
+        $settingsAction = (string)($_POST['settings_action'] ?? 'save');
+        $crmCredentialsChanged = false;
         foreach ($keys as $k) {
             if (array_key_exists($k, $_POST)) {
                 save_setting($k, (string)$_POST[$k]);
@@ -26,7 +30,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($_POST['smtp_password']) && trim((string)$_POST['smtp_password']) !== '') {
             save_setting('smtp_password', 'enc:' . enc(trim((string)$_POST['smtp_password'])));
         }
-        $msg = 'Settings saved.';
+        foreach (['zoho_crm_client_secret','zoho_crm_refresh_token'] as $secretKey) {
+            if (isset($_POST[$secretKey]) && trim((string)$_POST[$secretKey]) !== '') {
+                save_setting($secretKey, 'enc:' . enc(trim((string)$_POST[$secretKey])));
+                $crmCredentialsChanged = true;
+            }
+        }
+        if ($crmCredentialsChanged) {
+            save_setting('zoho_crm_access_token', '');
+            save_setting('zoho_crm_access_token_expires_at', '0');
+        }
+        if ($settingsAction === 'connect_zoho_crm') {
+            $state = bin2hex(random_bytes(24));
+            $_SESSION['zoho_crm_oauth_state'] = $state;
+            $_SESSION['zoho_crm_oauth_started_at'] = time();
+            header('Location: '.zoho_crm_authorization_url($state));
+            exit;
+        }
+        $crmGrantExchanged = false;
+        if (isset($_POST['zoho_crm_grant_code']) && trim((string)$_POST['zoho_crm_grant_code']) !== '') {
+            zoho_crm_exchange_grant_code(trim((string)$_POST['zoho_crm_grant_code']));
+            $crmGrantExchanged = true;
+        }
+        if ($settingsAction === 'test_zoho_crm') {
+            if (!$crmGrantExchanged) zoho_crm_access_token(true);
+            $msg = 'Settings saved. Zoho CRM OAuth connection successful.';
+        } else {
+            $msg = 'Settings saved.';
+        }
     } catch (Throwable $e) {
         $err = $e->getMessage();
     }
@@ -155,8 +186,35 @@ admin_head($u, 'Settings', 'settings');
     </div>
 </section>
 
+<section class="card settings-card" style="margin-bottom:18px">
+    <div class="cardhead"><b>ZOHO CRM</b><span class="muted"><?=zoho_crm_secret('zoho_crm_refresh_token')!==''?'Connected':'Not connected'?> · EU data centre</span></div>
+    <div class="admin-form-grid">
+        <label>CRM sync
+            <select name="zoho_crm_enabled">
+                <option value="0" <?=setting('zoho_crm_enabled','0')==='0'?'selected':''?>>Disabled</option>
+                <option value="1" <?=setting('zoho_crm_enabled','0')==='1'?'selected':''?>>Enabled</option>
+            </select>
+        </label>
+        <label>OAuth client ID<input name="zoho_crm_client_id" value="<?=e(setting('zoho_crm_client_id',''))?>" autocomplete="off"></label>
+        <label>OAuth client secret<input type="password" name="zoho_crm_client_secret" value="" placeholder="Leave empty to keep current secret" autocomplete="new-password"></label>
+        <label style="grid-column:1/-1">Redirect URI<input value="<?=e(zoho_crm_callback_url())?>" readonly onclick="this.select()"></label>
+        <div style="grid-column:1/-1;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <button class="btn primary" name="settings_action" value="connect_zoho_crm">Connect Zoho CRM</button>
+            <span class="muted">Create a Zoho Server-based client with the redirect URI above, enter its ID and secret, then click Connect.</span>
+        </div>
+        <details style="grid-column:1/-1">
+            <summary class="muted" style="cursor:pointer">Manual token setup</summary>
+            <div class="admin-form-grid" style="margin-top:12px">
+                <label>One-time grant code<input type="password" name="zoho_crm_grant_code" value="" placeholder="Optional manual setup" autocomplete="new-password"></label>
+                <label>OAuth refresh token<input type="password" name="zoho_crm_refresh_token" value="" placeholder="Leave empty to keep current token" autocomplete="new-password"></label>
+            </div>
+        </details>
+        <p class="muted" style="grid-column:1/-1;margin:0">The connection requests access only to Contacts and Leads. Portal customers sync to Contacts and public contact requests sync to Leads.</p>
+    </div>
+</section>
+
 <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px">
-    <button class="btn primary">Save Settings</button>
+    <button class="btn primary" name="settings_action" value="save">Save Settings</button>
 </div>
 </form>
 

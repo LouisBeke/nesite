@@ -9,15 +9,32 @@ $err = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     try {
-        $id = (int)($_POST['id'] ?? 0);
-        if ($id === (int)$u['id']) {
-            throw new RuntimeException('You cannot change your own administrator role here.');
+        $action = (string)($_POST['action'] ?? 'role');
+        if ($action === 'sync_zoho_all') {
+            if (!zoho_crm_enabled()) throw new RuntimeException('Enable Zoho CRM sync in Admin > Settings first.');
+            $customers = db()->query("SELECT * FROM users WHERE role='customer' ORDER BY id")->fetchAll();
+            $synced = 0;
+            $failed = 0;
+            foreach ($customers as $customer) {
+                try {
+                    zoho_crm_sync_customer($customer);
+                    $synced++;
+                } catch (Throwable $syncError) {
+                    $failed++;
+                    error_log('FoxNetwork bulk Zoho CRM sync failed for user '.(int)$customer['id'].': '.$syncError->getMessage());
+                }
+            }
+            $msg = 'Zoho CRM sync finished: '.$synced.' synced, '.$failed.' failed.';
+        } else {
+            $id = (int)($_POST['id'] ?? 0);
+            if ($id === (int)$u['id']) {
+                throw new RuntimeException('You cannot change your own administrator role here.');
+            }
+            $role = (($_POST['role'] ?? 'customer') === 'admin') ? 'admin' : 'customer';
+            $q = db()->prepare('UPDATE users SET role=? WHERE id=?');
+            $q->execute([$role, $id]);
+            $msg = 'Customer role updated.';
         }
-
-        $role = (($_POST['role'] ?? 'customer') === 'admin') ? 'admin' : 'customer';
-        $q = db()->prepare('UPDATE users SET role=? WHERE id=?');
-        $q->execute([$role, $id]);
-        $msg = 'Customer role updated.';
     } catch (Throwable $x) {
         $err = $x->getMessage();
     }
@@ -49,7 +66,14 @@ admin_head($u, 'Customers', 'customers');
 <section class="card">
     <div class="cardhead">
         <b>CUSTOMER ACCOUNTS</b>
-        <span class="muted"><?= count($rows) ?> shown</span>
+        <div style="display:flex;align-items:center;gap:10px">
+            <span class="muted"><?= count($rows) ?> shown</span>
+            <form method="post">
+                <input type="hidden" name="csrf" value="<?= e(csrf()) ?>">
+                <input type="hidden" name="action" value="sync_zoho_all">
+                <button class="btn">Sync all to Zoho CRM</button>
+            </form>
+        </div>
     </div>
 
     <div class="admin-table-wrap">
@@ -87,6 +111,7 @@ admin_head($u, 'Customers', 'customers');
                         <?php if ((int)$r['id'] !== (int)$u['id']): ?>
                         <form method="post" class="inline-form">
                             <input type="hidden" name="csrf" value="<?= e(csrf()) ?>">
+                            <input type="hidden" name="action" value="role">
                             <input type="hidden" name="id" value="<?= e($r['id']) ?>">
                             <select name="role">
                                 <option value="customer" <?= $r['role'] === 'customer' ? 'selected' : '' ?>>Customer</option>

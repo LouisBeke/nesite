@@ -19,9 +19,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!in_array($st, $allowed, true)) {
             throw new RuntimeException('Invalid order status.');
         }
-        $q = db()->prepare('UPDATE orders SET status=? WHERE id=?');
-        $q->execute([$st, $id]);
-        $msg = 'Order updated.';
+        if ($st === 'provisioning') {
+            $orderQ = db()->prepare('SELECT id,status,total FROM orders WHERE id=? LIMIT 1');
+            $orderQ->execute([$id]);
+            $order = $orderQ->fetch();
+            if (!$order) throw new RuntimeException('Order not found.');
+            if ((float)$order['total'] > 0) {
+                $paidQ = db()->prepare("SELECT COUNT(*) FROM invoices WHERE order_id=? AND status='paid'");
+                $paidQ->execute([$id]);
+                if ((int)$paidQ->fetchColumn() < 1) throw new RuntimeException('This order must have a paid invoice before provisioning.');
+            }
+            $queueId = provisioning_dispatch_order($id, ['source' => 'admin_orders']);
+            $serviceQ = db()->prepare('SELECT id FROM services WHERE order_id=? LIMIT 1');
+            $serviceQ->execute([$id]);
+            $serviceId = (int)$serviceQ->fetchColumn();
+            $msg = 'Service #'.$serviceId.' created and provisioning job #'.$queueId.' queued.';
+        } elseif ($st === 'active') {
+            $serviceQ = db()->prepare("SELECT id FROM services WHERE order_id=? AND status='active' LIMIT 1");
+            $serviceQ->execute([$id]);
+            if (!(int)$serviceQ->fetchColumn()) throw new RuntimeException('Provision this order first. It has no active service.');
+            db()->prepare("UPDATE orders SET status='active' WHERE id=?")->execute([$id]);
+            $msg = 'Order updated.';
+        } else {
+            $q = db()->prepare('UPDATE orders SET status=? WHERE id=?');
+            $q->execute([$st, $id]);
+            $msg = 'Order updated.';
+        }
     } catch (Throwable $x) {
         $err = $x->getMessage();
     }

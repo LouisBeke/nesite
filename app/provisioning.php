@@ -112,6 +112,29 @@ function provisioning_job_payload(array $job): array {
     return is_array($payload) ? $payload : [];
 }
 
+function provisioning_recover_stale_jobs(): int {
+    $timeout = max(60, (int)setting('provisioning_worker_timeout_seconds', '240'));
+    $q = db()->prepare("SELECT id FROM provisioning_queue WHERE status='running' AND started_at IS NOT NULL AND started_at<DATE_SUB(NOW(),INTERVAL ? SECOND)");
+    $q->execute([$timeout]);
+    $rows = $q->fetchAll();
+    if (!$rows) return 0;
+
+    $update = db()->prepare("UPDATE provisioning_queue
+        SET status='retry_wait',worker_id=NULL,started_at=NULL,run_at=NOW(),last_error='Recovered after an interrupted provisioning worker.'
+        WHERE id=? AND status='running'");
+    $recovered = 0;
+    foreach ($rows as $row) {
+        $id = (int)($row['id'] ?? 0);
+        if ($id <= 0) continue;
+        $update->execute([$id]);
+        if ($update->rowCount() > 0) {
+            $recovered++;
+            provisioning_emit_event('queue.stale_job_recovered', ['timeout_seconds' => $timeout], $id, 'warning');
+        }
+    }
+    return $recovered;
+}
+
 function provisioning_verify_online(int $serverId, int $tries = 20, int $sleepMs = 1500): bool {
     $tries = max(5, (int)setting('provisioning_online_check_tries', (string)$tries));
     $sleepMs = max(300, (int)setting('provisioning_online_check_sleep_ms', (string)$sleepMs));
@@ -336,7 +359,9 @@ function provisioning_process_service_job(array $job, array &$runtime = []): voi
     $runtime['service_id'] = $serviceId;
     $runtime['queue_id'] = (int)$job['id'];
 
-    $runtime = array_merge($runtime, provisioning_select_runtime_for_service($serviceBefore, (int)$job['id']));
+    if (empty($serviceBefore['ptero_server_id'])) {
+        $runtime = array_merge($runtime, provisioning_select_runtime_for_service($serviceBefore, (int)$job['id']));
+    }
 
     provisioning_emit_event('provisioning.started', ['service_id' => $serviceId, 'node_id' => (int)$runtime['node_id'], 'allocation_id' => (int)$runtime['allocation_id']], (int)$job['id']);
     provision_service($serviceId, $runtime);
@@ -429,6 +454,7 @@ function provisioning_run_worker(int $limit = 5): array {
     $workerId = provisioning_worker_id();
     $processed = 0;
     $failed = 0;
+    provisioning_recover_stale_jobs();
 
     for ($i = 0; $i < max(1, $limit); $i++) {
         provisioning_register_worker($workerId, 'idle', false);

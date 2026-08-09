@@ -55,6 +55,12 @@ try {
         db()->prepare('INSERT INTO support_messages(ticket_id,user_id,message) VALUES(?,?,?)')
             ->execute([$ticketId, (int)$u['id'], $fullMessage]);
 
+        try {
+            zoho_crm_sync_customer($u);
+        } catch (Throwable $crmError) {
+            error_log('FoxNetwork contact Zoho CRM customer sync failed: '.$crmError->getMessage());
+        }
+
         contact_out(true, 'Ticket created. Our team will reply shortly.', ['mode' => 'ticket', 'ticket_id' => $ticketId]);
     }
 
@@ -65,6 +71,11 @@ try {
         .'<p><b>Email:</b> '.e($email).'</p>'
         .'<p><b>Subject:</b> '.e($subject).'</p>'
         .'<p><b>Message:</b><br>'.nl2br(e($message)).'</p>';
+    try {
+        zoho_crm_sync_lead($name, $email, $subject, $message);
+    } catch (Throwable $crmError) {
+        error_log('FoxNetwork contact Zoho CRM lead sync failed: '.$crmError->getMessage());
+    }
     send_custom_email(null, $supportTo, $emailSubject, $body);
     contact_out(true, 'Thanks, your message has been sent by email.', ['mode' => 'email']);
 } catch (Throwable $e) {

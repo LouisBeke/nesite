@@ -102,6 +102,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: /billing.php?created=' . urlencode($num));
             exit;
          }
+         try {
+            provisioning_dispatch_order($oid, ['source' => 'free_checkout']);
+         } catch (Throwable $provisioningError) {
+            error_log('FoxNetwork free-order provisioning dispatch failed for order '.$oid.': '.$provisioningError->getMessage());
+         }
          header('Location: /orders.php?created=' . urlencode($num));
          exit;
       } catch (Throwable $e) {

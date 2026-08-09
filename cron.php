@@ -1,6 +1,9 @@
 <?php
 require __DIR__.'/app/bootstrap.php';
 $token=(string)($_GET['token']??($_SERVER['HTTP_X_CRON_TOKEN']??''));if($token===''||!hash_equals((string)setting('cron_token',''),$token)){http_response_code(403);die('Forbidden');}
+if(session_status()===PHP_SESSION_ACTIVE)session_write_close();
+ignore_user_abort(true);
+@set_time_limit(0);
 header('Content-Type: text/plain; charset=utf-8');$out=[];
 // Create renewal invoices once a service reaches the configured pre-renewal window.
 $days=max(1,(int)setting('renewal_days_before','7'));$q=db()->prepare("SELECT s.*,u.name customer_name,u.email,u.email_notifications FROM services s JOIN users u ON u.id=s.user_id WHERE s.status IN ('active','suspended') AND COALESCE(s.cancel_at_period_end,0)=0 AND s.next_due_at IS NOT NULL AND s.next_due_at<=DATE_ADD(NOW(),INTERVAL ? DAY)");$q->execute([$days]);
