@@ -20,6 +20,7 @@ function client_sidebar_icon(string $name): string
 
 function render_client_sidebar(array $user, string $active = 'overview', ?int $openTickets = null, string $variant = 'legacy'): void
 {
+    $appName=trim((string)cfg('app_name'))?:'FoxNetwork';
     $validSections = ['overview', 'store', 'orders', 'billing', 'support', 'settings'];
     if (!in_array($active, $validSections, true)) $active = 'overview';
 
@@ -55,7 +56,7 @@ function render_client_sidebar(array $user, string $active = 'overview', ?int $o
     ];
     ?>
     <aside class="<?=e($asideClass)?>">
-        <a class="<?=e($brandClass)?>" href="/client" aria-label="FoxNetwork dashboard">
+        <a class="<?=e($brandClass)?>" href="/client" aria-label="<?=e($appName)?> dashboard">
             <img src="/images/logo.png" alt="">
             <span>FOX<b>NETWORK</b></span>
         </a>

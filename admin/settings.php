@@ -7,6 +7,7 @@ $err = (string)($_SESSION['zoho_crm_flash_error'] ?? '');
 unset($_SESSION['zoho_crm_flash_message'], $_SESSION['zoho_crm_flash_error']);
 
 $keys = [
+    'app_name','app_url','pterodactyl_url','mollie_webhook_url','linode_api_url','linode_disk_encryption',
     'company_name','support_email','billing_email','invoice_prefix','currency','vat_rate','invoice_due_days',
     'renewal_days_before','grace_days','auto_suspend','auto_unsuspend','cron_token',
     'smtp_host','smtp_port','smtp_security','smtp_ehlo_domain','smtp_username','smtp_from_email','smtp_from_name','mail_provider',
@@ -15,13 +16,28 @@ $keys = [
     'hosting_allow_startup_variable_edit','hosting_allow_custom_startup_command','hosting_allow_docker_image_selection','hosting_allow_extra_allocations',
     'provisioning_smart_node_enabled','provisioning_node_cache_max_age_seconds','provisioning_allocation_lock_timeout_seconds',
     'provisioning_weight_cpu','provisioning_weight_ram','provisioning_weight_disk','provisioning_weight_servers',
-    'provisioning_remove_failed_queue_item'
+    'provisioning_remove_failed_queue_item','provisioning_enabled','provisioning_batch_size','provisioning_max_attempts',
+    'provisioning_worker_timeout_seconds','provisioning_retry_base_seconds','provisioning_retry_max_seconds',
+    'provisioning_online_check_tries','provisioning_online_check_sleep_ms','provisioning_strict_online_check',
+    'automation_batch_size','automation_worker_timeout_seconds',
+    'maintenance_mode','maintenance_message','portal_registration','security_session_hours'
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     try {
         $settingsAction = (string)($_POST['settings_action'] ?? 'save');
+        foreach (['app_url'=>'Portal URL','pterodactyl_url'=>'Pterodactyl URL','mollie_webhook_url'=>'Mollie webhook URL','linode_api_url'=>'Linode API URL'] as $urlKey=>$label) {
+            if (array_key_exists($urlKey,$_POST)) {
+                $url=trim((string)$_POST[$urlKey]);
+                if ($url==='' || !filter_var($url,FILTER_VALIDATE_URL) || !in_array(strtolower((string)parse_url($url,PHP_URL_SCHEME)),['http','https'],true)) throw new RuntimeException($label.' must be a complete HTTP or HTTPS URL.');
+                $_POST[$urlKey]=rtrim($url,'/');
+            }
+        }
+        if(isset($_POST['currency'])){
+            $_POST['currency']=strtoupper(trim((string)$_POST['currency']));
+            if(!preg_match('/^[A-Z]{3}$/',(string)$_POST['currency']))throw new RuntimeException('Currency must be a three-letter ISO code.');
+        }
         $crmCredentialsChanged = false;
         foreach ($keys as $k) {
             if (array_key_exists($k, $_POST)) {
@@ -31,16 +47,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($_POST['smtp_password']) && trim((string)$_POST['smtp_password']) !== '') {
             save_setting('smtp_password', 'enc:' . enc(trim((string)$_POST['smtp_password'])));
         }
-        foreach (['zoho_crm_client_secret','zoho_crm_refresh_token'] as $secretKey) {
+        foreach (['zoho_crm_client_secret','zoho_crm_refresh_token','pterodactyl_application_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token'] as $secretKey) {
             if (isset($_POST[$secretKey]) && trim((string)$_POST[$secretKey]) !== '') {
                 save_setting($secretKey, 'enc:' . enc(trim((string)$_POST[$secretKey])));
-                $crmCredentialsChanged = true;
+                if(str_starts_with($secretKey,'zoho_crm_'))$crmCredentialsChanged = true;
             }
+        }
+        $fallbackSecrets=['pterodactyl_application_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token'];
+        $clearableSecrets=array_merge($fallbackSecrets,['smtp_password','zoho_crm_client_secret','zoho_crm_refresh_token']);
+        foreach((array)($_POST['clear_secret']??[]) as $secretKey){
+            if(!in_array($secretKey,$clearableSecrets,true))continue;
+            save_setting($secretKey,in_array($secretKey,$fallbackSecrets,true)?'__EMPTY__':'');
+            if(str_starts_with($secretKey,'zoho_crm_'))$crmCredentialsChanged=true;
         }
         if ($crmCredentialsChanged) {
             save_setting('zoho_crm_access_token', '');
             save_setting('zoho_crm_access_token_expires_at', '0');
         }
+        audit_log('settings.update','settings',null,'Portal, integration, billing and worker settings updated.');
         if ($settingsAction === 'connect_zoho_crm') {
             $state = bin2hex(random_bytes(24));
             $_SESSION['zoho_crm_oauth_state'] = $state;
@@ -54,7 +78,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             save_setting('zoho_crm_scope_version', '2');
             $crmGrantExchanged = true;
         }
-        if ($settingsAction === 'test_zoho_crm') {
+        if ($settingsAction === 'test_linode') {
+            $instances = linode_api('/linode/instances?page_size=25');
+            $msg = 'Settings saved. Linode connected; '.count((array)($instances['data']??[])).' instance(s) returned on the first page.';
+        } elseif ($settingsAction === 'test_zoho_crm') {
             if (!$crmGrantExchanged) zoho_crm_access_token(true);
             $msg = 'Settings saved. Zoho CRM OAuth connection successful.';
         } else {
@@ -65,6 +92,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$pteroKeyConfigured=trim((string)cfg('pterodactyl.application_key'))!=='';
+$mollieKeyConfigured=trim((string)cfg('mollie.api_key'))!=='';
+$webhookSecretRaw=(string)setting('pterodactyl_webhook_secret','');
+$webhookSecretConfigured=$webhookSecretRaw!==''&&$webhookSecretRaw!=='__EMPTY__';
+$linodeTokenConfigured=linode_api_token()!=='';
 admin_head($u, 'Settings', 'settings');
 ?>
 <?php if($msg):?><div class="notice"><?=e($msg)?></div><?php endif?>
@@ -72,6 +104,30 @@ admin_head($u, 'Settings', 'settings');
 
 <form method="post">
 <input type="hidden" name="csrf" value="<?=e(csrf())?>">
+
+<section class="card settings-card" style="margin-bottom:18px">
+    <div class="cardhead"><b>PORTAL & API CONNECTIONS</b><span class="muted">Runtime configuration</span></div>
+    <div class="admin-form-grid">
+        <label>Application name<input name="app_name" value="<?=e(setting('app_name',(string)cfg('app_name')))?>" required></label>
+        <label>Portal URL<input type="url" name="app_url" value="<?=e(setting('app_url',(string)cfg('app_url')))?>" placeholder="https://example.com" required></label>
+        <label>Pterodactyl panel URL<input type="url" name="pterodactyl_url" value="<?=e(setting('pterodactyl_url',(string)cfg('pterodactyl.url')))?>" placeholder="https://panel.example.com" required></label>
+        <label>Pterodactyl Application API key<input type="password" name="pterodactyl_application_key" value="" placeholder="<?=$pteroKeyConfigured?'Configured — leave empty to keep':'Enter application API key'?>" autocomplete="new-password"></label>
+        <label>Mollie API key<input type="password" name="mollie_api_key" value="" placeholder="<?=$mollieKeyConfigured?'Configured — leave empty to keep':'Enter Mollie API key'?>" autocomplete="new-password"></label>
+        <label>Mollie webhook URL<input type="url" name="mollie_webhook_url" value="<?=e(setting('mollie_webhook_url',(string)cfg('mollie.webhook_url')))?>" required></label>
+        <label>Pterodactyl webhook secret<input type="password" name="pterodactyl_webhook_secret" value="" placeholder="<?=$webhookSecretConfigured?'Configured — leave empty to keep':'Optional shared webhook secret'?>" autocomplete="new-password"></label>
+        <label>Linode API URL<input type="url" name="linode_api_url" value="<?=e(setting('linode_api_url','https://api.linode.com/v4'))?>" required></label>
+        <label>Linode personal access token<input type="password" name="linode_api_token" value="" placeholder="<?=$linodeTokenConfigured?'Configured — leave empty to keep':'Token with Linodes read/write access'?>" autocomplete="new-password"></label>
+        <label>Linode disk encryption<select name="linode_disk_encryption"><option value="enabled" <?=setting('linode_disk_encryption','enabled')==='enabled'?'selected':''?>>Enabled</option><option value="disabled" <?=setting('linode_disk_encryption','enabled')==='disabled'?'selected':''?>>Disabled</option></select></label>
+        <div class="fullfield config-secret-actions">
+            <label><input type="checkbox" name="clear_secret[]" value="pterodactyl_application_key"> Disable stored Pterodactyl application key</label>
+            <label><input type="checkbox" name="clear_secret[]" value="mollie_api_key"> Disable stored Mollie API key</label>
+            <label><input type="checkbox" name="clear_secret[]" value="pterodactyl_webhook_secret"> Disable webhook signature secret</label>
+            <label><input type="checkbox" name="clear_secret[]" value="linode_api_token"> Disable stored Linode API token</label>
+        </div>
+        <div class="fullfield"><button class="btn" type="submit" name="settings_action" value="test_linode">Save &amp; test Linode</button></div>
+        <p class="muted fullfield" style="margin:0">Secrets are encrypted in the database. Database host, database name and database credentials remain startup-only because the portal must connect to that database before this Settings page can load.</p>
+    </div>
+</section>
 
 <section class="card settings-card" style="margin-bottom:18px">
     <div class="cardhead"><b>COMPANY & BILLING</b></div>
@@ -133,7 +189,38 @@ admin_head($u, 'Settings', 'settings');
                 <option value="0" <?=setting('auto_unsuspend','1')==='0'?'selected':''?>>Disabled</option>
             </select>
         </label>
-        <label>Cron token<input name="cron_token" value="<?=e(setting('cron_token',''))?>"></label>
+        <label>Provisioning worker
+            <select name="provisioning_enabled">
+                <option value="1" <?=setting('provisioning_enabled','1')==='1'?'selected':''?>>Enabled</option>
+                <option value="0" <?=setting('provisioning_enabled','1')==='0'?'selected':''?>>Disabled</option>
+            </select>
+        </label>
+        <label>Strict online verification
+            <select name="provisioning_strict_online_check">
+                <option value="1" <?=setting('provisioning_strict_online_check','0')==='1'?'selected':''?>>Enabled</option>
+                <option value="0" <?=setting('provisioning_strict_online_check','0')==='0'?'selected':''?>>Disabled</option>
+            </select>
+        </label>
+        <label>Provisioning batch size<input type="number" min="1" name="provisioning_batch_size" value="<?=e(setting('provisioning_batch_size','5'))?>"></label>
+        <label>Maximum provisioning attempts<input type="number" min="1" name="provisioning_max_attempts" value="<?=e(setting('provisioning_max_attempts','5'))?>"></label>
+        <label>Worker timeout (seconds)<input type="number" min="60" name="provisioning_worker_timeout_seconds" value="<?=e(setting('provisioning_worker_timeout_seconds','240'))?>"></label>
+        <label>Retry base delay (seconds)<input type="number" min="5" name="provisioning_retry_base_seconds" value="<?=e(setting('provisioning_retry_base_seconds','30'))?>"></label>
+        <label>Retry maximum delay (seconds)<input type="number" min="5" name="provisioning_retry_max_seconds" value="<?=e(setting('provisioning_retry_max_seconds','900'))?>"></label>
+        <label>Online check attempts<input type="number" min="5" name="provisioning_online_check_tries" value="<?=e(setting('provisioning_online_check_tries','20'))?>"></label>
+        <label>Online check delay (ms)<input type="number" min="300" name="provisioning_online_check_sleep_ms" value="<?=e(setting('provisioning_online_check_sleep_ms','1500'))?>"></label>
+        <label>Automation batch size<input type="number" min="1" name="automation_batch_size" value="<?=e(setting('automation_batch_size','20'))?>"></label>
+        <label>Automation timeout (seconds)<input type="number" min="60" name="automation_worker_timeout_seconds" value="<?=e(setting('automation_worker_timeout_seconds','300'))?>"></label>
+        <label class="fullfield">Cron token<input name="cron_token" value="<?=e(setting('cron_token',''))?>"></label>
+    </div>
+</section>
+
+<section class="card settings-card" style="margin-bottom:18px">
+    <div class="cardhead"><b>PRODUCTION & ACCESS</b></div>
+    <div class="admin-form-grid">
+        <label>Maintenance mode<select name="maintenance_mode"><option value="0" <?=setting('maintenance_mode','0')==='0'?'selected':''?>>Off</option><option value="1" <?=setting('maintenance_mode','0')==='1'?'selected':''?>>On — admins bypass</option></select></label>
+        <label>Customer registration<select name="portal_registration"><option value="1" <?=setting('portal_registration','1')==='1'?'selected':''?>>Enabled</option><option value="0" <?=setting('portal_registration','1')==='0'?'selected':''?>>Disabled</option></select></label>
+        <label>Session target (hours)<input type="number" min="1" max="168" name="security_session_hours" value="<?=e(setting('security_session_hours','24'))?>"></label>
+        <label class="fullfield">Maintenance message<textarea name="maintenance_message" rows="3"><?=e(setting('maintenance_message','FoxNetwork is undergoing maintenance.'))?></textarea></label>
     </div>
 </section>
 
@@ -182,6 +269,7 @@ admin_head($u, 'Settings', 'settings');
         </label>
         <label>Zoho mailbox<input type="email" name="smtp_username" value="<?=e(setting('smtp_username','info@foxnetwork.be'))?>"></label>
         <label>Zoho app password<input type="password" name="smtp_password" value="" placeholder="Leave empty to keep current password"></label>
+        <label class="config-clear-option"><input type="checkbox" name="clear_secret[]" value="smtp_password"> Clear saved SMTP password</label>
         <label>From email<input type="email" name="smtp_from_email" value="<?=e(setting('smtp_from_email','info@foxnetwork.be'))?>"></label>
         <label>From name<input name="smtp_from_name" value="<?=e(setting('smtp_from_name','FoxNetwork'))?>"></label>
         <p class="muted" style="grid-column:1/-1;margin:0">Use the exact SMTP host shown in Zoho Mail's Server Configuration. EU paid organization accounts commonly use smtppro.zoho.eu. Port 587 with TLS is recommended. The EHLO domain must be a complete domain such as foxnetwork.be.</p>
@@ -199,6 +287,7 @@ admin_head($u, 'Settings', 'settings');
         </label>
         <label>OAuth client ID<input name="zoho_crm_client_id" value="<?=e(setting('zoho_crm_client_id',''))?>" autocomplete="off"></label>
         <label>OAuth client secret<input type="password" name="zoho_crm_client_secret" value="" placeholder="Leave empty to keep current secret" autocomplete="new-password"></label>
+        <label class="config-clear-option"><input type="checkbox" name="clear_secret[]" value="zoho_crm_client_secret"> Clear OAuth client secret</label>
         <label style="grid-column:1/-1">Redirect URI<input value="<?=e(zoho_crm_callback_url())?>" readonly onclick="this.select()"></label>
         <label>Deal pipeline (optional)<input name="zoho_crm_pipeline" value="<?=e(setting('zoho_crm_pipeline',''))?>" placeholder="Exact Zoho pipeline name"></label>
         <label>Open deal stage<input name="zoho_crm_deal_stage_open" value="<?=e(setting('zoho_crm_deal_stage_open','Qualification'))?>"></label>
@@ -217,6 +306,7 @@ admin_head($u, 'Settings', 'settings');
             <div class="admin-form-grid" style="margin-top:12px">
                 <label>One-time grant code<input type="password" name="zoho_crm_grant_code" value="" placeholder="Optional manual setup" autocomplete="new-password"></label>
                 <label>OAuth refresh token<input type="password" name="zoho_crm_refresh_token" value="" placeholder="Leave empty to keep current token" autocomplete="new-password"></label>
+                <label class="config-clear-option"><input type="checkbox" name="clear_secret[]" value="zoho_crm_refresh_token"> Clear refresh token</label>
             </div>
         </details>
         <p class="muted" style="grid-column:1/-1;margin:0">The connection requests access to Contacts, Leads, Deals and Cases. Use the exact pipeline, stage and case picklist labels configured in your Zoho CRM. Reconnect once after this upgrade to grant the added Deals and Cases scopes.</p>

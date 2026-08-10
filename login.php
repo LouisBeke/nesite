@@ -4,7 +4,8 @@ require __DIR__ . '/app/bootstrap.php';
 $error = '';
 $email = strtolower(trim($_POST['email'] ?? ''));
 
-function login_public_error_message(Throwable $e): string {
+function login_public_error_message(Throwable $e): string
+{
 	if ($e instanceof PDOException) {
 		return 'Database connection/query failed. Please check database host, user, password, and schema.';
 	}
@@ -65,4 +66,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 		$error = login_public_error_message($e);
 	}
 }
-?><!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>FoxNetwork Login</title><link rel="stylesheet" href="/assets/portal.css?v=<?=rawurlencode((string)@filemtime(__DIR__.'/assets/portal.css'))?>"></head><body><div class="auth"><form class="authbox" method="post"><img src="/images/logo.png"><h1>Welcome back.</h1><p class="muted">Sign in to FoxNetwork Control Center.</p><?php if($error):?><div class="error"><?=e($error)?></div><?php endif?><input type="hidden" name="csrf" value="<?=csrf()?>"><div class="field"><label>Email</label><input type="email" name="email" required value="<?=e($email)?>"></div><div class="field"><label>Password</label><input type="password" name="password" required></div><button class="btn primary wide">Sign in</button><p><a class="link" href="/forgot-password.php">Forgot password?</a></p><p><a class="link" href="/register.php">Create a new account</a></p></form></div></body></html>
+?>
+<!doctype html>
+<html>
+
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width">
+	<title>FoxNetwork Login</title>
+	<link rel="stylesheet" href="/assets/portal.css?v=<?= rawurlencode((string)@filemtime(__DIR__ . '/assets/portal.css')) ?>">
+</head>
+
+<body>
+	<div class="auth">
+		<form class="authbox" method="post"><img src="/images/logo.png">
+			<h1>Welcome back.</h1>
+			<p class="muted">Sign in to FoxNetwork Control Center.</p><?php if ($error): ?><div class="error"><?= e($error) ?></div><?php endif ?><input type="hidden" name="csrf" value="<?= csrf() ?>">
+			<div class="field"><label>Email</label><input type="email" name="email" required value="<?= e($email) ?>"></div>
+			<div class="field"><label>Password</label><input type="password" name="password" required></div><button class="btn primary wide">Sign in</button>
+			<p><a class="link" href="/forgot-password.php">Forgot password?</a></p>
+			<p><a class="link" href="/register.php">Create a new account</a></p>
+		</form>
+	</div>
+</body>
+
+</html>

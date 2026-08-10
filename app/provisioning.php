@@ -360,6 +360,21 @@ function provisioning_process_service_job(array $job, array &$runtime = []): voi
     $runtime['service_id'] = $serviceId;
     $runtime['queue_id'] = (int)$job['id'];
 
+    if (linode_service_provider($serviceBefore) === 'linode') {
+        provisioning_emit_event('provisioning.started', ['service_id'=>$serviceId,'provider'=>'linode'], (int)$job['id']);
+        provision_service($serviceId, $runtime);
+        $serviceAfter = service_row($serviceId);
+        $instanceId = (int)($serviceAfter['linode_instance_id'] ?? 0);
+        if ($instanceId <= 0) throw new RuntimeException('Provisioning did not produce a Linode instance ID.');
+        provisioning_emit_event('provisioning.start_sent', ['service_id'=>$serviceId,'provider'=>'linode','instance_id'=>$instanceId], (int)$job['id']);
+        if (!empty($serviceAfter['order_id'])) db()->prepare("UPDATE orders SET status='active' WHERE id=?")->execute([(int)$serviceAfter['order_id']]);
+        $qu=db()->prepare('SELECT id,name,email,email_notifications FROM users WHERE id=?');$qu->execute([(int)$serviceAfter['user_id']]);$recipient=$qu->fetch();
+        if($recipient)send_template('service_ready',$recipient,['service_name'=>$serviceAfter['name']]);
+        zoho_crm_try_sync_service($serviceId);
+        provisioning_emit_event('provisioning.completed', ['service_id'=>$serviceId,'provider'=>'linode','instance_id'=>$instanceId], (int)$job['id']);
+        return;
+    }
+
     if (empty($serviceBefore['ptero_server_id'])) {
         $runtime = array_merge($runtime, provisioning_select_runtime_for_service($serviceBefore, (int)$job['id']));
     }
@@ -419,6 +434,14 @@ function provisioning_rollback_service_job(array $job, Throwable $error, array $
 
     try {
         $service = service_row($serviceId);
+        if (linode_service_provider($service) === 'linode') {
+            $instanceId=(int)($service['linode_instance_id']??$runtime['linode_instance_id']??0);
+            if($instanceId>0){try{linode_api('/linode/instances/'.$instanceId,'DELETE');provisioning_emit_event('provisioning.rollback_instance_deleted',['service_id'=>$serviceId,'instance_id'=>$instanceId],(int)$job['id'],'warning');}catch(Throwable $rollbackErr){provisioning_emit_event('provisioning.rollback_instance_delete_failed',['service_id'=>$serviceId,'instance_id'=>$instanceId,'error'=>$rollbackErr->getMessage()],(int)$job['id'],'error');}}
+            db()->prepare("UPDATE services SET status='failed',linode_instance_id=NULL,linode_ipv4=NULL,linode_ipv6=NULL,linode_root_password=NULL,last_error=? WHERE id=?")->execute([$error->getMessage(),$serviceId]);
+            if(!empty($service['order_id']))db()->prepare("UPDATE orders SET status='paid' WHERE id=? AND status='provisioning'")->execute([(int)$service['order_id']]);
+            zoho_crm_try_sync_service($serviceId);
+            return;
+        }
         $serverId = (int)($service['ptero_server_id'] ?? 0);
         if ($serverId > 0) {
             try {
@@ -606,6 +629,8 @@ function provisioning_refresh_node_cache(int $maxNodes = 50): int {
 
 function provisioning_handle_pterodactyl_webhook(array $payload, array $server = []): void {
     $secret = (string)setting('pterodactyl_webhook_secret', '');
+    if ($secret === '__EMPTY__') $secret='';
+    if (str_starts_with($secret, 'enc:')) $secret=(string)(dec(substr($secret,4))??'');
     if ($secret !== '') {
         $header = (string)($server['HTTP_X_PTERO_SIGNATURE'] ?? $server['HTTP_X_PTERODACTYL_SIGNATURE'] ?? '');
         if (!hash_equals($secret, $header)) {

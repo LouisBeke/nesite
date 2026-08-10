@@ -72,7 +72,32 @@ if (is_suspicious_request_path($_SERVER['REQUEST_URI'] ?? '')) {
 $configFile=__DIR__.'/../config.php';
 if(!file_exists($configFile)){http_response_code(500);die('Copy config.example.php to config.php and configure it.');}
 $config=require $configFile;
-function cfg(?string $key=null){global $config;if($key===null)return $config;$v=$config;foreach(explode('.',$key) as $p){$v=$v[$p]??null;}return $v;}
+function cfg(?string $key=null){
+    global $config;
+    if($key===null)return $config;
+    $v=$config;
+    foreach(explode('.',$key) as $p)$v=$v[$p]??null;
+    if(function_exists('setting')){
+        $runtimeKeys=[
+            'app_name'=>['app_name',false],
+            'app_url'=>['app_url',false],
+            'pterodactyl.url'=>['pterodactyl_url',false],
+            'pterodactyl.application_key'=>['pterodactyl_application_key',true],
+            'mollie.api_key'=>['mollie_api_key',true],
+            'mollie.webhook_url'=>['mollie_webhook_url',false],
+        ];
+        if(isset($runtimeKeys[$key])){
+            [$settingKey,$secret]=$runtimeKeys[$key];
+            $stored=(string)setting($settingKey,'');
+            if($stored==='__EMPTY__')return '';
+            if($stored!==''){
+                if($secret&&str_starts_with($stored,'enc:')&&function_exists('dec'))return dec(substr($stored,4))??'';
+                return $stored;
+            }
+        }
+    }
+    return $v;
+}
 function site_url(string $path='/'): string {
     $base=(string)cfg('app_url');
     if($base==='')return $path;
@@ -105,7 +130,6 @@ function enforce_https_redirect(): void {
     header('Location: '.$target, true, 301);
     exit;
 }
-enforce_https_redirect();
 require_once __DIR__.'/mollie.php';
 function db(): PDO {static $pdo;if(!$pdo){$d=cfg('db');$pdo=new PDO("mysql:host={$d['host']};port={$d['port']};dbname={$d['name']};charset=utf8mb4",$d['user'],$d['pass'],[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);}return $pdo;}
 require_once __DIR__.'/migrations.php';
@@ -131,12 +155,15 @@ try {
     if (function_exists('fox_v15j_migrate')) fox_v15j_migrate();
     if (function_exists('fox_v15k_migrate')) fox_v15k_migrate();
     if (function_exists('fox_v15l_migrate')) fox_v15l_migrate();
+    if (function_exists('fox_v15m_migrate')) fox_v15m_migrate();
+    if (function_exists('fox_v16_linode_migrate')) fox_v16_linode_migrate();
 } catch (Throwable $e) {
     error_log('FoxNetwork migrations skipped: '.$e->getMessage());
 }
 function e($v):string{return htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');}
 require_once __DIR__.'/client-layout.php';
 require_once __DIR__.'/mail.php';
+require_once __DIR__.'/linode.php';
 require_once __DIR__.'/zoho-crm.php';
 require_once __DIR__.'/automation.php';
 require_once __DIR__.'/provisioning.php';
@@ -157,6 +184,7 @@ function user():?array{
 function require_user():array{$u=user();if(!$u){header('Location: '.site_url('/login.php'));exit;}if(($u['account_status']??'active')==='disabled'){session_destroy();http_response_code(403);die('This FoxNetwork account has been disabled. Please contact support.');}return $u;}
 function enc(string $plain):string{$key=hash('sha256',cfg('db.pass'),true);$iv=random_bytes(12);$tag='';$ct=openssl_encrypt($plain,'aes-256-gcm',$key,OPENSSL_RAW_DATA,$iv,$tag);return base64_encode($iv.$tag.$ct);}
 function dec(?string $blob):?string{if(!$blob)return null;$raw=base64_decode($blob,true);if($raw===false||strlen($raw)<28)return null;$key=hash('sha256',cfg('db.pass'),true);$iv=substr($raw,0,12);$tag=substr($raw,12,16);$pt=openssl_decrypt(substr($raw,28),'aes-256-gcm',$key,OPENSSL_RAW_DATA,$iv,$tag);return $pt===false?null:$pt;}
+enforce_https_redirect();
 function ptero_cache_dir(): string { $dir=rtrim(sys_get_temp_dir(),'\\/').DIRECTORY_SEPARATOR.'foxnetwork-ptero-cache'; if(!is_dir($dir)) @mkdir($dir,0777,true); return $dir; }
 function ptero_cache_key(string $scope,string $token,string $path,string $method,?array $body): string { return sha1($scope.'|'.$token.'|'.$method.'|'.$path.'|'.($body===null?'':json_encode($body,JSON_UNESCAPED_SLASHES))); }
 function ptero_cache_get(string $key,int $ttl) { $file=ptero_cache_dir().DIRECTORY_SEPARATOR.$key.'.json'; if(!is_file($file)) return null; $raw=@file_get_contents($file); if($raw===false||$raw==='') return null; $data=json_decode($raw,true); if(!is_array($data)||($data['expires_at']??0)<time()) return null; return $data['value'] ?? null; }
@@ -164,29 +192,125 @@ function ptero_cache_set(string $key,$value,int $ttl): void { $file=ptero_cache_
 function ptero(string $path,string $method='GET',?array $body=null){$u=user();$token=dec($u['ptero_client_key']??null);if(!$token)throw new RuntimeException('Pterodactyl API key not configured.');$method=strtoupper($method);$cacheTtl=$method==='GET'?3:0;$cacheKey=$cacheTtl>0?ptero_cache_key('client',$token,$path,$method,$body):null;if($cacheKey){$cached=ptero_cache_get($cacheKey,$cacheTtl);if($cached!==null)return $cached;}$ch=curl_init(rtrim(cfg('pterodactyl.url'),'/').'/api/client'.$path);$headers=['Authorization: Bearer '.$token,'Accept: Application/vnd.pterodactyl.v1+json','Content-Type: application/json'];curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_HTTPHEADER=>$headers,CURLOPT_TIMEOUT=>12,CURLOPT_CUSTOMREQUEST=>$method]);if($body!==null)curl_setopt($ch,CURLOPT_POSTFIELDS,json_encode($body));$raw=curl_exec($ch);$code=curl_getinfo($ch,CURLINFO_HTTP_CODE);if($raw===false)throw new RuntimeException(curl_error($ch));curl_close($ch);$json=json_decode($raw,true);if($code<200||$code>=300)throw new RuntimeException($json['errors'][0]['detail']??('Pterodactyl HTTP '.$code));if($cacheKey)ptero_cache_set($cacheKey,$json,$cacheTtl);return $json;}
 function ptero_deleted_server_error(string $message): bool {
     $message = strtolower($message);
-    return str_contains($message, 'no query results for model')
-        || str_contains($message, 'pterodactyl\\models\\server')
-        || str_contains($message, 'pterodactyl\models\server')
-        || str_contains($message, 'server not found');
+    $serverModel=str_contains($message, 'pterodactyl\\models\\server')
+        || str_contains($message, 'pterodactyl\models\server');
+    return str_contains($message, 'server not found')
+        || (str_contains($message, 'no query results for model') && $serverModel);
 }
-function clear_deleted_ptero_service_link(int $serviceId, int $userId): void {
-    if ($serviceId <= 0 || $userId <= 0) return;
+function ptero_application_server_attributes(array $response): array {
+    if (isset($response['attributes']) && is_array($response['attributes'])) return $response['attributes'];
+    if (isset($response['data']['attributes']) && is_array($response['data']['attributes'])) return $response['data']['attributes'];
+    return [];
+}
+function ptero_application_find_server(int $serverId=0, string $identifier='', string $externalId=''): ?array {
+    $identifier=trim($identifier);
+    $externalId=trim($externalId);
+    if ($serverId>0) {
+        try {
+            $attributes=ptero_application_server_attributes(app_ptero('/servers/'.$serverId));
+            if ($attributes) return $attributes;
+        } catch (Throwable $e) {
+            if (!ptero_deleted_server_error($e->getMessage())) throw $e;
+        }
+    }
+    if ($externalId!=='') {
+        $response=app_ptero('/servers?filter%5Bexternal_id%5D='.rawurlencode($externalId).'&per_page=10');
+        foreach (($response['data']??[]) as $item) {
+            $attributes=is_array($item['attributes']??null)?$item['attributes']:[];
+            if ((string)($attributes['external_id']??'')===$externalId) return $attributes;
+        }
+    }
+    if ($identifier==='') return null;
+    $page=1;
+    do {
+        $response=app_ptero('/servers?per_page=100&page='.$page);
+        foreach (($response['data']??[]) as $item) {
+            $attributes=is_array($item['attributes']??null)?$item['attributes']:[];
+            if ((string)($attributes['identifier']??'')===$identifier || (string)($attributes['uuid']??'')===$identifier) return $attributes;
+        }
+        $pagination=$response['meta']['pagination']??[];
+        $totalPages=max(1,(int)($pagination['total_pages']??1));
+        $page++;
+    } while ($page<=$totalPages);
+    return null;
+}
+function repair_ptero_service_link(int $serviceId, string $lookup=''): array {
+    if ($serviceId<=0) throw new RuntimeException('Invalid service.');
+    $q=db()->prepare('SELECT s.*,u.ptero_user_id FROM services s JOIN users u ON u.id=s.user_id WHERE s.id=?');
+    $q->execute([$serviceId]);
+    $service=$q->fetch();
+    if (!$service) throw new RuntimeException('Service not found.');
+    $lookup=trim($lookup);
+    $serverId=ctype_digit($lookup)?(int)$lookup:(int)($service['ptero_server_id']??0);
+    $identifier=$lookup!==''&&!ctype_digit($lookup)?$lookup:(string)($service['ptero_identifier']??'');
+    $attributes=ptero_application_find_server($serverId,$identifier,'foxnetwork-service-'.$serviceId);
+    if (!$attributes) throw new RuntimeException('No matching Pterodactyl server was found. Enter its numeric server ID to relink it.');
+    $actualId=(int)($attributes['id']??0);
+    $actualIdentifier=trim((string)($attributes['identifier']??''));
+    if ($actualId<=0 || $actualIdentifier==='') throw new RuntimeException('Pterodactyl returned an incomplete server record.');
+    $duplicate=db()->prepare('SELECT id FROM services WHERE id<>? AND (ptero_server_id=? OR ptero_identifier=?) LIMIT 1');
+    $duplicate->execute([$serviceId,$actualId,$actualIdentifier]);
+    $duplicateId=(int)$duplicate->fetchColumn();
+    if ($duplicateId>0) throw new RuntimeException('That Pterodactyl server is already linked to service #'.$duplicateId.'.');
+    $currentStatus=(string)($service['status']??'active');
+    $status=!empty($attributes['suspended'])?'suspended':(in_array($currentStatus,['terminated','cancelled'],true)?$currentStatus:'active');
+    db()->prepare('UPDATE services SET ptero_server_id=?,ptero_identifier=?,status=?,last_error=NULL WHERE id=?')
+        ->execute([$actualId,$actualIdentifier,$status,$serviceId]);
+    $remoteOwner=(int)($attributes['user']??0);
+    $localOwner=(int)($service['ptero_user_id']??0);
+    return [
+        'server_id'=>$actualId,
+        'identifier'=>$actualIdentifier,
+        'owner_matches'=>$remoteOwner<=0||$localOwner<=0||$remoteOwner===$localOwner,
+        'remote_user_id'=>$remoteOwner,
+        'local_user_id'=>$localOwner,
+    ];
+}
+function ptero_service_is_confirmed_missing(int $serviceId, ?int $userId=null): bool {
+    if ($serviceId<=0) return false;
     try {
-        db()->prepare("UPDATE services SET ptero_identifier=NULL, ptero_server_id=NULL, last_error='Pterodactyl server was deleted or not found.' WHERE id=? AND user_id=?")
-            ->execute([$serviceId, $userId]);
+        if ($userId!==null) {
+            $q=db()->prepare('SELECT id FROM services WHERE id=? AND user_id=?');
+            $q->execute([$serviceId,$userId]);
+            if (!(int)$q->fetchColumn()) return false;
+        }
+        $service=service_row($serviceId);
+        $found=ptero_application_find_server((int)($service['ptero_server_id']??0),(string)($service['ptero_identifier']??''),'foxnetwork-service-'.$serviceId);
+        if ($found) {
+            repair_ptero_service_link($serviceId,(string)($found['id']??''));
+            return false;
+        }
+        return true;
     } catch (Throwable $e) {
+        // Never destroy a local link when the Application API cannot conclusively verify deletion.
+        return false;
     }
 }
-function clear_deleted_ptero_service_link_by_service_id(int $serviceId): void {
-    if ($serviceId <= 0) return;
+function clear_deleted_ptero_service_link(int $serviceId, int $userId): bool {
+    if ($serviceId<=0 || $userId<=0 || !ptero_service_is_confirmed_missing($serviceId,$userId)) return false;
     try {
-        db()->prepare("UPDATE services SET ptero_identifier=NULL, ptero_server_id=NULL, last_error='Pterodactyl server was deleted or not found.' WHERE id=?")
-            ->execute([$serviceId]);
+        $q=db()->prepare("UPDATE services SET ptero_identifier=NULL, ptero_server_id=NULL, last_error='Pterodactyl server was deleted or not found.' WHERE id=? AND user_id=?");
+        $q->execute([$serviceId,$userId]);
+        return $q->rowCount()>0;
     } catch (Throwable $e) {
+        return false;
+    }
+}
+function clear_deleted_ptero_service_link_by_service_id(int $serviceId): bool {
+    if ($serviceId<=0 || !ptero_service_is_confirmed_missing($serviceId)) return false;
+    try {
+        $q=db()->prepare("UPDATE services SET ptero_identifier=NULL, ptero_server_id=NULL, last_error='Pterodactyl server was deleted or not found.' WHERE id=?");
+        $q->execute([$serviceId]);
+        return $q->rowCount()>0;
+    } catch (Throwable $e) {
+        return false;
     }
 }
 function deleted_ptero_service_message(): string {
     return 'This server was deleted in Pterodactyl and is no longer linked. Recreate or relink the service in the panel.';
+}
+function inaccessible_ptero_service_message(): string {
+    return 'The local server link was kept because deletion could not be confirmed. Check that the customer API key belongs to the Pterodactyl server owner, then reconnect it or relink the service in Admin.';
 }
 function greeting():string{$h=(int)date('G');return $h<12?'Good morning':($h<18?'Good afternoon':'Good evening');}
 
@@ -260,7 +384,8 @@ function maintenance_guard(): void {
     $u=user(); if(($u['role']??'')==='admin') return;
     http_response_code(503); header('Retry-After: 900');
     $m=e(app_setting('maintenance_message','FoxNetwork is undergoing maintenance.'));
-    die('<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>FoxNetwork Maintenance</title><style>body{margin:0;background:#0d0f12;color:#fff;font:16px Arial;display:grid;place-items:center;min-height:100vh}.x{max-width:620px;padding:42px;background:#15181d;border:1px solid #2a2e35;border-radius:18px;text-align:center}b{color:#ff7417;font-size:28px}p{color:#aab1bc;line-height:1.6}</style><div class="x"><b>FOXNETWORK</b><h1>Maintenance</h1><p>'.$m.'</p></div>');
+    $name=e(trim((string)cfg('app_name'))?:'FoxNetwork');
+    die('<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>'.$name.' Maintenance</title><style>body{margin:0;background:#0d0f12;color:#fff;font:16px Arial;display:grid;place-items:center;min-height:100vh}.x{max-width:620px;padding:42px;background:#15181d;border:1px solid #2a2e35;border-radius:18px;text-align:center}b{color:#ff7417;font-size:28px}p{color:#aab1bc;line-height:1.6}</style><div class="x"><b>'.$name.'</b><h1>Maintenance</h1><p>'.$m.'</p></div>');
 }
 maintenance_guard();
 
@@ -523,7 +648,7 @@ function mark_invoice_paid(int $invoiceId,string $provider='manual',?string $ref
 }
 function ensure_service_for_order(int $orderId): int {
     $q=db()->prepare('SELECT id FROM services WHERE order_id=? LIMIT 1');$q->execute([$orderId]);$id=$q->fetchColumn();if($id)return (int)$id;
-    $q=db()->prepare('SELECT o.user_id,oi.product_id,oi.product_name,oi.unit_price,oi.config_json FROM orders o JOIN order_items oi ON oi.order_id=o.id WHERE o.id=? ORDER BY oi.id LIMIT 1');$q->execute([$orderId]);$r=$q->fetch();if(!$r)throw new RuntimeException('Order item not found.');
+    $q=db()->prepare("SELECT o.user_id,oi.product_id,oi.product_name,oi.unit_price,oi.config_json,COALESCE(p.provisioning_provider,'pterodactyl') provisioning_provider FROM orders o JOIN order_items oi ON oi.order_id=o.id LEFT JOIN store_products p ON p.id=oi.product_id WHERE o.id=? ORDER BY oi.id LIMIT 1");$q->execute([$orderId]);$r=$q->fetch();if(!$r)throw new RuntimeException('Order item not found.');
     $cfg=json_decode($r['config_json']?:'{}',true)?:[];$name=$cfg['server_name']??$r['product_name'];
     db()->beginTransaction();
     try{
@@ -532,8 +657,8 @@ function ensure_service_for_order(int $orderId): int {
         $existing=$chk->fetchColumn();
         if($existing){db()->commit();zoho_crm_try_sync_service((int)$existing);return (int)$existing;}
         $nextDueAt=(float)$r['unit_price']>0?date('Y-m-d H:i:s',strtotime('+1 month')):null;
-        $ins=db()->prepare("INSERT INTO services(user_id,order_id,product_id,name,status,price_monthly,next_due_at,config_json) VALUES(?,?,?,?, 'pending',?,?,?)");
-        $ins->execute([$r['user_id'],$orderId,$r['product_id'],$name,$r['unit_price'],$nextDueAt,$r['config_json']]);
+        $ins=db()->prepare("INSERT INTO services(user_id,order_id,product_id,name,status,price_monthly,next_due_at,config_json,provisioning_provider) VALUES(?,?,?,?, 'pending',?,?,?,?)");
+        $ins->execute([$r['user_id'],$orderId,$r['product_id'],$name,$r['unit_price'],$nextDueAt,$r['config_json'],$r['provisioning_provider']]);
         $newId=(int)db()->lastInsertId();
         db()->commit();
         zoho_crm_try_sync_service($newId);
@@ -548,7 +673,11 @@ function ensure_service_for_order(int $orderId): int {
     }
 }
 function provision_service(int $serviceId, array &$runtime=[]): array {
-    $q=db()->prepare('SELECT s.*,u.email,u.name customer_name,u.ptero_user_id,p.* FROM services s JOIN users u ON u.id=s.user_id LEFT JOIN store_products p ON p.id=s.product_id WHERE s.id=?');$q->execute([$serviceId]);$r=$q->fetch();if(!$r)throw new RuntimeException('Service not found.');
+    $q=db()->prepare('SELECT p.*,s.*,u.email,u.name customer_name,u.ptero_user_id FROM services s JOIN users u ON u.id=s.user_id LEFT JOIN store_products p ON p.id=s.product_id WHERE s.id=?');$q->execute([$serviceId]);$r=$q->fetch();if(!$r)throw new RuntimeException('Service not found.');
+    if(linode_service_provider($r)==='linode'){
+        $instance=provision_linode_service($r,$serviceId,$runtime);
+        return ['server_id'=>(int)($instance['id']??0),'linode_instance_id'=>(int)($instance['id']??0),'provider'=>'linode','node_id'=>0,'allocation_id'=>0];
+    }
     if(!empty($r['ptero_server_id'])){
         $runtime['server_id']=(int)$r['ptero_server_id'];
         db()->prepare("UPDATE services SET status='active',last_error=NULL WHERE id=?")->execute([$serviceId]);
@@ -679,32 +808,32 @@ function service_log(int $serviceId,int $adminId,string $action,string $details=
 function normalize_service_billing_schedule(int $serviceId): void {
     db()->prepare("UPDATE services SET
         next_due_at=CASE
-            WHEN price_monthly<=0 THEN NULL
+            WHEN price_monthly<=0 AND COALESCE(is_trial,0)=0 THEN NULL
             WHEN next_due_at IS NOT NULL THEN next_due_at
             WHEN COALESCE(renewal_unit,'month')='day' THEN DATE_ADD(NOW(),INTERVAL GREATEST(1,COALESCE(renewal_interval,1)) DAY)
             WHEN COALESCE(renewal_unit,'month')='week' THEN DATE_ADD(NOW(),INTERVAL GREATEST(1,COALESCE(renewal_interval,1)) WEEK)
             WHEN COALESCE(renewal_unit,'month')='year' THEN DATE_ADD(NOW(),INTERVAL GREATEST(1,COALESCE(renewal_interval,1)) YEAR)
             ELSE DATE_ADD(NOW(),INTERVAL GREATEST(1,COALESCE(renewal_interval,1)) MONTH)
         END,
-        cancel_at_period_end=IF(price_monthly<=0,0,cancel_at_period_end),
-        cancel_at=IF(price_monthly<=0,NULL,cancel_at)
+        cancel_at_period_end=IF(price_monthly<=0 AND COALESCE(is_trial,0)=0,0,cancel_at_period_end),
+        cancel_at=IF(price_monthly<=0 AND COALESCE(is_trial,0)=0,NULL,cancel_at)
         WHERE id=?")->execute([$serviceId]);
 }
 function require_ptero_server(array $service): int {
     $id=(int)($service['ptero_server_id']??0); if(!$id) throw new RuntimeException('This service has no Pterodactyl server yet.'); return $id;
 }
 function suspend_service(int $serviceId,int $adminId): void {
-    $s=service_row($serviceId);$pid=require_ptero_server($s);app_ptero('/servers/'.$pid.'/suspend','POST');
-    db()->prepare("UPDATE services SET status='suspended',last_error=NULL WHERE id=?")->execute([$serviceId]);service_log($serviceId,$adminId,'suspend','Pterodactyl server suspended.');
+    $s=service_row($serviceId);if(linode_service_provider($s)==='linode'){$id=linode_service_instance($s);linode_power_action($id,'stop');$details='Linode VPS shut down and suspended.';}else{$pid=require_ptero_server($s);app_ptero('/servers/'.$pid.'/suspend','POST');$details='Pterodactyl server suspended.';}
+    db()->prepare("UPDATE services SET status='suspended',last_error=NULL WHERE id=?")->execute([$serviceId]);service_log($serviceId,$adminId,'suspend',$details);
     zoho_crm_try_sync_service($serviceId);
 }
 function unsuspend_service(int $serviceId,int $adminId): void {
-    $s=service_row($serviceId);$pid=require_ptero_server($s);app_ptero('/servers/'.$pid.'/unsuspend','POST');
-    db()->prepare("UPDATE services SET status='active',last_error=NULL WHERE id=?")->execute([$serviceId]);service_log($serviceId,$adminId,'unsuspend','Pterodactyl server unsuspended.');
+    $s=service_row($serviceId);if(linode_service_provider($s)==='linode'){$id=linode_service_instance($s);linode_power_action($id,'start');$details='Linode VPS boot requested and service unsuspended.';}else{$pid=require_ptero_server($s);app_ptero('/servers/'.$pid.'/unsuspend','POST');$details='Pterodactyl server unsuspended.';}
+    db()->prepare("UPDATE services SET status='active',last_error=NULL WHERE id=?")->execute([$serviceId]);service_log($serviceId,$adminId,'unsuspend',$details);
     zoho_crm_try_sync_service($serviceId);
 }
 function reinstall_service(int $serviceId,int $adminId): void {
-    $s=service_row($serviceId);$pid=require_ptero_server($s);app_ptero('/servers/'.$pid.'/reinstall','POST');service_log($serviceId,$adminId,'reinstall','Pterodactyl reinstall requested.');
+    $s=service_row($serviceId);if(linode_service_provider($s)==='linode'){linode_rebuild_service($s);service_log($serviceId,$adminId,'reinstall','Linode VPS rebuild requested.');}else{$pid=require_ptero_server($s);app_ptero('/servers/'.$pid.'/reinstall','POST');service_log($serviceId,$adminId,'reinstall','Pterodactyl reinstall requested.');}
 }
 function cancel_service(int $serviceId,int $adminId): void {
     $s=service_row($serviceId);if($s['status']==='terminated')throw new RuntimeException('A terminated service cannot be cancelled.');
@@ -713,14 +842,14 @@ function cancel_service(int $serviceId,int $adminId): void {
 }
 function reactivate_service(int $serviceId,int $adminId): void {
     $s=service_row($serviceId);if($s['status']==='terminated')throw new RuntimeException('A terminated service cannot be reactivated.');
-    if(!empty($s['ptero_server_id'])){try{app_ptero('/servers/'.(int)$s['ptero_server_id'].'/unsuspend','POST');}catch(Throwable $e){/* already unsuspended is harmless for local reactivation */}}
+    if(linode_service_provider($s)==='linode'&&!empty($s['linode_instance_id'])){try{linode_power_action((int)$s['linode_instance_id'],'start');}catch(Throwable $e){/* already running */}}elseif(!empty($s['ptero_server_id'])){try{app_ptero('/servers/'.(int)$s['ptero_server_id'].'/unsuspend','POST');}catch(Throwable $e){/* already unsuspended is harmless for local reactivation */}}
     db()->prepare("UPDATE services SET status='active',last_error=NULL WHERE id=?")->execute([$serviceId]);service_log($serviceId,$adminId,'reactivate','Service reactivated.');
     zoho_crm_try_sync_service($serviceId);
 }
 function terminate_service(int $serviceId,int $adminId,string $confirmation): void {
     $s=service_row($serviceId);if(!hash_equals((string)$s['name'],trim($confirmation)))throw new RuntimeException('Confirmation does not match the service name.');
-    $pid=(int)($s['ptero_server_id']??0);if($pid)app_ptero('/servers/'.$pid,'DELETE');
-    db()->prepare("UPDATE services SET status='terminated',ptero_server_id=NULL,ptero_identifier=NULL,last_error=NULL WHERE id=?")->execute([$serviceId]);service_log($serviceId,$adminId,'terminate','Pterodactyl server permanently deleted and service terminated.');
+    if(linode_service_provider($s)==='linode'){$instanceId=(int)($s['linode_instance_id']??0);if($instanceId)linode_api('/linode/instances/'.$instanceId,'DELETE');$details='Linode VPS permanently deleted and service terminated.';}else{$pid=(int)($s['ptero_server_id']??0);if($pid)app_ptero('/servers/'.$pid,'DELETE');$details='Pterodactyl server permanently deleted and service terminated.';}
+    db()->prepare("UPDATE services SET status='terminated',ptero_server_id=NULL,ptero_identifier=NULL,linode_instance_id=NULL,linode_ipv4=NULL,linode_ipv6=NULL,linode_root_password=NULL,last_error=NULL WHERE id=?")->execute([$serviceId]);service_log($serviceId,$adminId,'terminate',$details);
     zoho_crm_try_sync_service($serviceId);
 }
 
@@ -761,6 +890,7 @@ function ptero_apply_limits(int $serviceId,array $limits): void {
 function create_upgrade_invoice(int $serviceId,int $newProductId,array $extras=[]): int {
     $q=db()->prepare('SELECT s.*,p.name product_name,p.price_monthly,p.ram_mb,p.disk_mb,p.cpu_percent,p.backups,p.database_limit,p.allocation_limit FROM services s LEFT JOIN store_products p ON p.id=s.product_id WHERE s.id=?');$q->execute([$serviceId]);$s=$q->fetch();if(!$s)throw new RuntimeException('Service not found.');
     $q=db()->prepare('SELECT * FROM store_products WHERE id=? AND active=1');$q->execute([$newProductId]);$np=$q->fetch();if(!$np)throw new RuntimeException('Selected product is unavailable.');
+    if(linode_service_provider($s)!==linode_product_provider($np))throw new RuntimeException('Choose a package that uses the same provisioning provider as this service.');
     $old=(float)$s['price_monthly'];$new=(float)$np['price_monthly'];
     $addon=(float)($extras['addon_monthly']??0);$newTotal=$new+$addon;$due=max(0,$newTotal-$old);
     $num='INV-'.date('ymd').'-'.strtoupper(bin2hex(random_bytes(3)));$dueAt=date('Y-m-d H:i:s',strtotime('+7 days'));
@@ -778,10 +908,16 @@ function apply_pending_service_change_for_invoice(int $invoiceId): void {
     db()->prepare("UPDATE service_changes SET status='applying',error_message=NULL WHERE id=?")->execute([$c['id']]);
     try{
       $cfg=json_decode((string)$c['new_config'],true)?:[];$limits=['memory'=>(int)($cfg['ram_mb']??2048),'disk'=>(int)($cfg['disk_mb']??10000),'cpu'=>(int)($cfg['cpu_percent']??100),'backups'=>(int)($cfg['backups']??1),'databases'=>(int)($cfg['database_limit']??1),'allocations'=>(int)($cfg['allocation_limit']??1)];
-      $s=service_row((int)$c['service_id']);if(!empty($s['ptero_server_id']))ptero_apply_limits((int)$c['service_id'],$limits);
+      $s=service_row((int)$c['service_id']);$npq=db()->prepare('SELECT * FROM store_products WHERE id=?');$npq->execute([(int)$c['new_product_id']]);$np=$npq->fetch();if(!$np)throw new RuntimeException('Upgrade product not found.');
+      if(linode_service_provider($s)!==linode_product_provider($np))throw new RuntimeException('Upgrade provider does not match this service.');
+      if(linode_service_provider($s)==='linode'&&!empty($s['linode_instance_id']))linode_resize_service($s,$np);elseif(!empty($s['ptero_server_id']))ptero_apply_limits((int)$c['service_id'],$limits);
       $newServiceCfg=json_decode((string)($s['config_json']??''),true)?:[];foreach(['ram_mb','disk_mb','cpu_percent','backups','database_limit','allocation_limit'] as $k)$newServiceCfg[$k]=$cfg[$k]??$newServiceCfg[$k]??null;
       db()->prepare('UPDATE services SET product_id=?,price_monthly=?,config_json=?,last_error=NULL WHERE id=?')->execute([$c['new_product_id'],$c['new_price'],json_encode($newServiceCfg),(int)$c['service_id']]);
       normalize_service_billing_schedule((int)$c['service_id']);
       db()->prepare("UPDATE service_changes SET status='completed',completed_at=NOW() WHERE id=?")->execute([$c['id']]);service_log((int)$c['service_id'],0,'upgrade','Service package/resources updated after invoice payment.');
     }catch(Throwable $e){db()->prepare("UPDATE service_changes SET status='failed',error_message=? WHERE id=?")->execute([$e->getMessage(),$c['id']]);db()->prepare('UPDATE services SET last_error=? WHERE id=?')->execute([$e->getMessage(),$c['service_id']]);throw $e;}
 }
+/* Removed a stale patch-tail fragment.
+age(),$c['service_id']]);throw $e;}
+}
+*/

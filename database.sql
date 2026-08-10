@@ -80,6 +80,13 @@ ALTER TABLE store_products ADD COLUMN IF NOT EXISTS ptero_node_id INT UNSIGNED N
 ALTER TABLE store_products ADD COLUMN IF NOT EXISTS ptero_docker_image VARCHAR(255) NULL;
 ALTER TABLE store_products ADD COLUMN IF NOT EXISTS ptero_startup TEXT NULL;
 ALTER TABLE store_products ADD COLUMN IF NOT EXISTS ptero_environment LONGTEXT NULL;
+ALTER TABLE store_products ADD COLUMN IF NOT EXISTS provisioning_provider VARCHAR(24) NOT NULL DEFAULT 'pterodactyl';
+ALTER TABLE store_products ADD COLUMN IF NOT EXISTS linode_type VARCHAR(80) NULL;
+ALTER TABLE store_products ADD COLUMN IF NOT EXISTS linode_region VARCHAR(80) NULL;
+ALTER TABLE store_products ADD COLUMN IF NOT EXISTS linode_image VARCHAR(160) NULL;
+ALTER TABLE store_products ADD COLUMN IF NOT EXISTS linode_backups TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE store_products ADD COLUMN IF NOT EXISTS linode_firewall_id BIGINT UNSIGNED NULL;
+ALTER TABLE store_products ADD COLUMN IF NOT EXISTS linode_cloud_init LONGTEXT NULL;
 
 CREATE TABLE IF NOT EXISTS invoices (
  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -116,10 +123,16 @@ CREATE TABLE IF NOT EXISTS services (
  name VARCHAR(160) NOT NULL,
  status ENUM('pending','provisioning','active','suspended','terminated','failed') NOT NULL DEFAULT 'pending',
  price_monthly DECIMAL(10,2) NOT NULL DEFAULT 0,
+ is_trial TINYINT(1) NOT NULL DEFAULT 0,
  currency CHAR(3) NOT NULL DEFAULT 'EUR',
  next_due_at DATETIME NULL,
  ptero_server_id BIGINT UNSIGNED NULL,
  ptero_identifier VARCHAR(32) NULL,
+ provisioning_provider VARCHAR(24) NOT NULL DEFAULT 'pterodactyl',
+ linode_instance_id BIGINT UNSIGNED NULL,
+ linode_ipv4 VARCHAR(45) NULL,
+ linode_ipv6 VARCHAR(128) NULL,
+ linode_root_password TEXT NULL,
  config_json LONGTEXT NULL,
  last_error TEXT NULL,
  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

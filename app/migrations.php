@@ -634,6 +634,15 @@ function fox_v15l_migrate(): void {
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15l-free-services-never-expire']);
 }
 
+function fox_v15m_migrate(): void {
+    static $ran=false; if($ran)return; $ran=true; $pdo=db();
+    if (fox_migration_applied($pdo, 'v15m-service-trials')) return;
+    if (fox_table_exists($pdo, 'services') && !fox_column_exists($pdo, 'services', 'is_trial')) {
+        $pdo->exec("ALTER TABLE services ADD COLUMN is_trial TINYINT(1) NOT NULL DEFAULT 0 AFTER price_monthly");
+    }
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15m-service-trials']);
+}
+
 function fox_v15k_migrate(): void {
     static $ran=false; if($ran)return; $ran=true; $pdo=db();
     if (fox_migration_applied($pdo, 'v15k-automation-jobs')) return;
@@ -666,6 +675,38 @@ function fox_v15k_migrate(): void {
     }
 
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15k-automation-jobs']);
+}
+
+function fox_v16_linode_migrate(): void {
+    static $ran=false; if($ran)return; $ran=true; $pdo=db();
+    if (fox_migration_applied($pdo, 'v16-linode-vps')) return;
+    if (fox_table_exists($pdo, 'store_products')) {
+        $columns = [
+            'provisioning_provider'=>"VARCHAR(24) NOT NULL DEFAULT 'pterodactyl'",
+            'linode_type'=>'VARCHAR(80) NULL',
+            'linode_region'=>'VARCHAR(80) NULL',
+            'linode_image'=>'VARCHAR(160) NULL',
+            'linode_backups'=>'TINYINT(1) NOT NULL DEFAULT 0',
+            'linode_firewall_id'=>'BIGINT UNSIGNED NULL',
+            'linode_cloud_init'=>'LONGTEXT NULL',
+        ];
+        foreach($columns as $column=>$definition) if(!fox_column_exists($pdo,'store_products',$column)) $pdo->exec("ALTER TABLE store_products ADD COLUMN `$column` $definition");
+    }
+    if (fox_table_exists($pdo, 'services')) {
+        $columns = [
+            'provisioning_provider'=>"VARCHAR(24) NOT NULL DEFAULT 'pterodactyl'",
+            'linode_instance_id'=>'BIGINT UNSIGNED NULL',
+            'linode_ipv4'=>'VARCHAR(45) NULL',
+            'linode_ipv6'=>'VARCHAR(128) NULL',
+            'linode_root_password'=>'TEXT NULL',
+        ];
+        foreach($columns as $column=>$definition) if(!fox_column_exists($pdo,'services',$column)) $pdo->exec("ALTER TABLE services ADD COLUMN `$column` $definition");
+        $pdo->exec("UPDATE services s JOIN store_products p ON p.id=s.product_id SET s.provisioning_provider=p.provisioning_provider WHERE p.provisioning_provider='linode' AND s.linode_instance_id IS NULL");
+    }
+    if (fox_table_exists($pdo, 'app_settings')) {
+        $pdo->prepare("INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES('linode_api_url','https://api.linode.com/v4'),('linode_disk_encryption','enabled')")->execute();
+    }
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v16-linode-vps']);
 }
 /* Removed malformed duplicate migration tail.
 ')) {

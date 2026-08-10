@@ -56,8 +56,7 @@ function clear_deleted_server_by_identifier(string $identifier, int $userId): bo
     $q->execute([$identifier, $userId]);
     $serviceId = (int)$q->fetchColumn();
     if ($serviceId <= 0) return false;
-    clear_deleted_ptero_service_link($serviceId, $userId);
-    return true;
+    return clear_deleted_ptero_service_link($serviceId, $userId);
 }
 
 function managed_file_parts(string $path): array {
@@ -593,8 +592,9 @@ try {
             outm(false, null, 'Unknown action.');
     }
 } catch (Throwable $e) {
-    if (ptero_deleted_server_error($e->getMessage()) && clear_deleted_server_by_identifier($id, (int)$u['id'])) {
-        outm(false, null, deleted_ptero_service_message());
+    if (ptero_deleted_server_error($e->getMessage())) {
+        if (clear_deleted_server_by_identifier($id, (int)$u['id'])) outm(false, null, deleted_ptero_service_message());
+        outm(false, null, inaccessible_ptero_service_message());
     }
     outm(false, null, $e->getMessage());
 }

@@ -13,25 +13,9 @@ function out(array $data): never {
     exit;
 }
 
-function power_deleted_server_error(string $message): bool {
-    $message = strtolower($message);
-    return str_contains($message, 'no query results for model')
-        || str_contains($message, 'pterodactyl\\models\\server')
-        || str_contains($message, 'pterodactyl\models\server')
-        || str_contains($message, 'server not found');
-}
-
 function power_broken_panel_installation_error(string $message): bool {
     $message = strtolower($message);
     return str_contains($message, 'pterodactyl\\models\\task::permissionforaction');
-}
-
-function power_clear_ptero_link(int $serviceId, int $userId): void {
-    try {
-        db()->prepare('UPDATE services SET ptero_identifier=NULL, ptero_server_id=NULL WHERE id=? AND user_id=?')
-            ->execute([$serviceId, $userId]);
-    } catch (Throwable $e) {
-    }
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -62,10 +46,21 @@ if ($id === '' || !in_array($signal, ['start','stop','restart','kill'], true)) {
 
 $localServiceId = ctype_digit($id) ? (int)$id : 0;
 if ($localServiceId > 0) {
-    $q = db()->prepare('SELECT id, ptero_identifier, ptero_server_id FROM services WHERE id=? AND user_id=? LIMIT 1');
+    $q = db()->prepare('SELECT id,status,provisioning_provider,linode_instance_id,ptero_identifier,ptero_server_id FROM services WHERE id=? AND user_id=? LIMIT 1');
     $q->execute([$localServiceId, (int)$u['id']]);
     $service = $q->fetch();
     if (!$service) out(['ok'=>false,'error'=>'Service not found']);
+    if (linode_service_provider($service) === 'linode') {
+        if (!in_array((string)$service['status'], ['active','provisioning'], true)) out(['ok'=>false,'error'=>'Power controls are unavailable while this service is '.(string)$service['status'].'.']);
+        try {
+            $instanceId=linode_service_instance($service);
+            linode_power_action($instanceId,$signal);
+            db()->prepare('INSERT INTO service_activity(service_id,admin_user_id,action,details) VALUES(?,?,?,?)')->execute([(int)$service['id'],null,'power_'.$signal,'Linode power action from customer portal']);
+            out(['ok'=>true,'signal'=>$signal,'provider'=>'linode']);
+        } catch(Throwable $e) {
+            out(['ok'=>false,'error'=>$e->getMessage()]);
+        }
+    }
     $id = (string)($service['ptero_identifier'] ?? '');
     $id = preg_replace('/[^a-zA-Z0-9_-]/', '', $id);
 
@@ -78,9 +73,9 @@ if ($localServiceId > 0) {
                     ->execute([$id, (int)$service['id'], (int)$u['id']]);
             }
         } catch (Throwable $e) {
-            if (power_deleted_server_error($e->getMessage())) {
-                power_clear_ptero_link((int)$service['id'], (int)$u['id']);
-                out(['ok'=>false,'error'=>'This server was deleted in Pterodactyl and is no longer linked. Recreate or relink the service in the panel.']);
+            if (ptero_deleted_server_error($e->getMessage())) {
+                $cleared=clear_deleted_ptero_service_link((int)$service['id'], (int)$u['id']);
+                out(['ok'=>false,'error'=>$cleared?deleted_ptero_service_message():inaccessible_ptero_service_message()]);
             }
             out(['ok'=>false,'error'=>$e->getMessage()]);
         }
@@ -158,8 +153,8 @@ if (power_broken_panel_installation_error((string)$detail)) {
         'http'=>$code,
     ]);
 }
-if ($localServiceId > 0 && power_deleted_server_error((string)$detail)) {
-    power_clear_ptero_link($localServiceId, (int)$u['id']);
-    out(['ok'=>false,'error'=>'This server was deleted in Pterodactyl and is no longer linked. Recreate or relink the service in the panel.','http'=>$code]);
+if ($localServiceId > 0 && ptero_deleted_server_error((string)$detail)) {
+    $cleared=clear_deleted_ptero_service_link($localServiceId, (int)$u['id']);
+    out(['ok'=>false,'error'=>$cleared?deleted_ptero_service_message():inaccessible_ptero_service_message(),'http'=>$code]);
 }
 out(['ok'=>false,'error'=>'Pterodactyl HTTP ' . $code . ': ' . $detail,'http'=>$code]);

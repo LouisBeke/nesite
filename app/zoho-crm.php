@@ -299,7 +299,7 @@ function zoho_crm_sync_order(int $orderId): ?array {
     $itemsQ = db()->prepare('SELECT product_name,unit_price,quantity,config_json FROM order_items WHERE order_id=? ORDER BY id');
     $itemsQ->execute([$orderId]);
     $items = $itemsQ->fetchAll();
-    $serviceQ = db()->prepare('SELECT id,name,status,price_monthly,currency,next_due_at,ptero_identifier FROM services WHERE order_id=? ORDER BY id LIMIT 1');
+    $serviceQ = db()->prepare('SELECT id,name,status,price_monthly,currency,next_due_at,provisioning_provider,ptero_identifier,linode_instance_id,linode_ipv4 FROM services WHERE order_id=? ORDER BY id LIMIT 1');
     $serviceQ->execute([$orderId]);
     $service = $serviceQ->fetch() ?: null;
     $invoiceQ = db()->prepare('SELECT invoice_number,status,paid_at,due_at FROM invoices WHERE order_id=? ORDER BY id DESC LIMIT 1');
@@ -322,7 +322,10 @@ function zoho_crm_sync_order(int $orderId): ?array {
         $lines[] = 'Service #'.$service['id'].': '.$service['name'].' ('.$service['status'].')';
         $lines[] = 'Monthly subscription: '.number_format((float)$service['price_monthly'], 2, '.', '').' '.$service['currency'];
         if (!empty($service['next_due_at'])) $lines[] = 'Next due: '.$service['next_due_at'];
-        if (!empty($service['ptero_identifier'])) $lines[] = 'Server identifier: '.$service['ptero_identifier'];
+        if (linode_service_provider($service)==='linode') {
+            if (!empty($service['linode_instance_id'])) $lines[] = 'Linode instance: #'.$service['linode_instance_id'];
+            if (!empty($service['linode_ipv4'])) $lines[] = 'VPS IPv4: '.$service['linode_ipv4'];
+        } elseif (!empty($service['ptero_identifier'])) $lines[] = 'Server identifier: '.$service['ptero_identifier'];
     }
     $status = (string)$order['status'];
     if ($invoice && $invoice['status'] === 'paid') $status = in_array($status, ['active', 'provisioning'], true) ? $status : 'paid';
@@ -353,7 +356,10 @@ function zoho_crm_sync_service(int $serviceId): ?array {
         'Monthly subscription: '.number_format((float)$service['price_monthly'], 2, '.', '').' '.$service['currency'],
     ];
     if (!empty($service['next_due_at'])) $lines[] = 'Next due: '.$service['next_due_at'];
-    if (!empty($service['ptero_identifier'])) $lines[] = 'Server identifier: '.$service['ptero_identifier'];
+    if (linode_service_provider($service)==='linode') {
+        if (!empty($service['linode_instance_id'])) $lines[] = 'Linode instance: #'.$service['linode_instance_id'];
+        if (!empty($service['linode_ipv4'])) $lines[] = 'VPS IPv4: '.$service['linode_ipv4'];
+    } elseif (!empty($service['ptero_identifier'])) $lines[] = 'Server identifier: '.$service['ptero_identifier'];
     $record = zoho_crm_deal_record(
         'FoxNetwork Service #'.$service['id'],
         (string)$service['status'],

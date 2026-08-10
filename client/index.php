@@ -20,13 +20,14 @@ $dashboard = [
 $nextRenewal = null;
 
 try {
-    $q = db()->prepare("SELECT id,name,ptero_identifier,ptero_server_id,status,price_monthly,currency,next_due_at FROM services WHERE user_id=? AND status<>'terminated' ORDER BY FIELD(status,'active','provisioning','pending','suspended','failed','cancelled'),id DESC");
+    $q = db()->prepare("SELECT id,name,provisioning_provider,linode_instance_id,linode_ipv4,linode_ipv6,ptero_identifier,ptero_server_id,status,price_monthly,currency,next_due_at,is_trial FROM services WHERE user_id=? AND status<>'terminated' ORDER BY FIELD(status,'active','provisioning','pending','suspended','failed','cancelled'),id DESC");
     $q->execute([(int)$u['id']]);
     $serviceRows = $q->fetchAll();
     $dashboard['total_services'] = count($serviceRows);
     foreach ($serviceRows as $svc) {
         if ((string)$svc['status'] === 'active') $dashboard['active_services']++;
         if (!empty($svc['ptero_identifier'])) $serviceMap[(string)$svc['ptero_identifier']] = $svc;
+        if (linode_service_provider($svc)==='linode') $serviceMap[(string)$svc['id']] = $svc;
         if (in_array((string)$svc['status'], ['active', 'suspended', 'provisioning', 'pending'], true) && !empty($svc['next_due_at']) && strtotime((string)$svc['next_due_at']) !== false) {
             if ($nextRenewal === null || strtotime((string)$svc['next_due_at']) < strtotime((string)$nextRenewal['next_due_at'])) {
                 $nextRenewal = $svc;
@@ -75,7 +76,18 @@ if (!$servers && !empty($u['ptero_user_id'])) {
                 }
             } catch (Throwable $e) {
                 if (ptero_deleted_server_error($e->getMessage())) {
-                    clear_deleted_ptero_service_link((int)$svc['id'], (int)$u['id']);
+                    $cleared=clear_deleted_ptero_service_link((int)$svc['id'], (int)$u['id']);
+                    if (!$cleared) {
+                        try {
+                            $fresh=service_row((int)$svc['id']);
+                            $identifier=(string)($fresh['ptero_identifier']??'');
+                            if ($identifier!=='') {
+                                $svc['ptero_identifier']=$identifier;
+                                $serviceMap[$identifier]=$svc;
+                            }
+                        } catch (Throwable $ignore) {
+                        }
+                    }
                 }
             }
         }
@@ -88,6 +100,11 @@ if (!$servers && !empty($u['ptero_user_id'])) {
             ],
         ];
     }
+}
+
+foreach($serviceRows as $svc){
+    if(linode_service_provider($svc)!=='linode')continue;
+    $servers[]=['attributes'=>['identifier'=>(string)$svc['id'],'name'=>(string)$svc['name'],'description'=>!empty($svc['linode_ipv4'])?'IPv4 '.$svc['linode_ipv4']:'Linode VPS provisioning','provider'=>'linode']];
 }
 
 $nameParts = preg_split('/\s+/', trim((string)$u['name'])) ?: [];
@@ -204,12 +221,14 @@ $initial = mb_strtoupper(mb_substr(trim((string)$u['name']), 0, 1));
                             $service = (array)($serviceMap[$id] ?? []);
                             $serviceId = (int)($service['id'] ?? 0);
                             $localStatus = (string)($service['status'] ?? 'unknown');
+                            $serviceProvider = linode_service_provider($service);
+                            $canPower = $serviceProvider==='linode'?!empty($service['linode_instance_id'])&&in_array($localStatus,['active','provisioning'],true):$hasClientKey;
                         ?>
-                        <article class="client-server-card server" data-server="<?=e($id)?>" data-local-status="<?=e($localStatus)?>">
+                        <article class="client-server-card server" data-server="<?=e($id)?>" data-provider="<?=e($serviceProvider)?>" data-can-power="<?=$canPower?'1':'0'?>" data-local-status="<?=e($localStatus)?>">
                             <div class="client-server-head">
                                 <div class="server-identity">
                                     <span class="server-icon"><i class="fas fa-cube" aria-hidden="true"></i></span>
-                                    <div><small>GAME SERVER</small><h3><?=e($a['name'] ?? 'FoxNetwork server')?></h3><p><?=e(($a['description'] ?? '') ?: 'FoxNetwork managed service')?></p></div>
+                                    <div><small><?=$serviceProvider==='linode'?'LINODE VPS':'GAME SERVER'?></small><h3><?=e($a['name'] ?? 'FoxNetwork server')?></h3><p><?=e(($a['description'] ?? '') ?: 'FoxNetwork managed service')?></p></div>
                                 </div>
                                 <span class="client-server-status is-loading" data-status><i></i> Loading</span>
                             </div>
@@ -222,13 +241,13 @@ $initial = mb_strtoupper(mb_substr(trim((string)$u['name']), 0, 1));
 
                             <div class="client-server-actions">
                                 <div class="power-actions" aria-label="Server power controls">
-                                    <button type="button" class="power-btn power-start" data-power="start" <?=!$hasClientKey?'disabled title="Client API key required for live power controls"':''?>><i class="fas fa-play" aria-hidden="true"></i><span>Start</span></button>
-                                    <button type="button" class="power-btn" data-power="restart" <?=!$hasClientKey?'disabled title="Client API key required for live power controls"':''?>><i class="fas fa-redo" aria-hidden="true"></i><span>Restart</span></button>
-                                    <button type="button" class="power-btn power-stop" data-power="stop" <?=!$hasClientKey?'disabled title="Client API key required for live power controls"':''?>><i class="fas fa-stop" aria-hidden="true"></i><span>Stop</span></button>
+                                    <button type="button" class="power-btn power-start" data-power="start" <?=!$canPower?'disabled title="Server connection required for power controls"':''?>><i class="fas fa-play" aria-hidden="true"></i><span>Start</span></button>
+                                    <button type="button" class="power-btn" data-power="restart" <?=!$canPower?'disabled title="Server connection required for power controls"':''?>><i class="fas fa-redo" aria-hidden="true"></i><span>Restart</span></button>
+                                    <button type="button" class="power-btn power-stop" data-power="stop" <?=!$canPower?'disabled title="Server connection required for power controls"':''?>><i class="fas fa-stop" aria-hidden="true"></i><span>Stop</span></button>
                                 </div>
                                 <div class="manage-actions">
                                     <?php if($serviceId>0): ?><a href="/upgrades.php?service=<?=$serviceId?>" aria-label="Upgrade <?=e($a['name'] ?? 'server')?>"><i class="fas fa-level-up-alt" aria-hidden="true"></i> Upgrade</a><?php endif ?>
-                                    <a class="manage-link" href="/server.php?id=<?=e($id)?>">Manage <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                                    <a class="manage-link" href="<?=$serviceProvider==='linode'?('/vps.php?id='.$serviceId):('/server.php?id='.rawurlencode($id))?>">Manage <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
                                 </div>
                             </div>
                         </article>
@@ -254,8 +273,8 @@ $initial = mb_strtoupper(mb_substr(trim((string)$u['name']), 0, 1));
                     </section>
 
                     <section class="rail-card renewal-card">
-                        <div class="rail-head"><div><span class="section-kicker">Next renewal</span><h2><?=e($nextRenewal['next_due_at'] ?? '')?date('d M Y', strtotime((string)$nextRenewal['next_due_at'])):'Nothing scheduled'?></h2></div><span class="calendar-icon"><i class="far fa-calendar-alt" aria-hidden="true"></i></span></div>
-                        <?php if($nextRenewal): ?><p><?=e($nextRenewal['name'])?> · <?=e(number_format((float)$nextRenewal['price_monthly'], 2))?> <?=e($nextRenewal['currency'])?></p><?php else: ?><p>Your next renewal date will appear here.</p><?php endif ?>
+                        <div class="rail-head"><div><span class="section-kicker"><?=!empty($nextRenewal['is_trial'])?'Trial expiration':'Next renewal'?></span><h2><?=e($nextRenewal['next_due_at'] ?? '')?date('d M Y', strtotime((string)$nextRenewal['next_due_at'])):'Nothing scheduled'?></h2></div><span class="calendar-icon"><i class="far fa-calendar-alt" aria-hidden="true"></i></span></div>
+                        <?php if($nextRenewal): ?><p><?=e($nextRenewal['name'])?> · <?=e(number_format((float)$nextRenewal['price_monthly'], 2))?> <?=e($nextRenewal['currency'])?><?=!empty($nextRenewal['is_trial'])?' after trial':''?></p><?php else: ?><p>Your next renewal date will appear here.</p><?php endif ?>
                         <a href="/billing.php">View billing <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
                     </section>
                 </aside>
@@ -302,7 +321,7 @@ function setServerStatus(card,label,state){
     card.dataset.state=state;
 }
 async function refreshServer(card){
-    if(!HAS_CLIENT_KEY){
+    if(!HAS_CLIENT_KEY&&card.dataset.provider!=='linode'){
         const local=card.dataset.localStatus||'unknown';
         setServerStatus(card,localStatusLabel(local),localStatusClass(local));
         return;
@@ -336,7 +355,7 @@ async function powerServer(card,signal){
         notify(error.message||String(error),'error');
     }finally{
         card.removeAttribute('aria-busy');
-        setTimeout(()=>buttons.forEach(button=>button.disabled=!HAS_CLIENT_KEY),900);
+        setTimeout(()=>buttons.forEach(button=>button.disabled=card.dataset.provider==='linode'?card.dataset.canPower!=='1':!HAS_CLIENT_KEY),900);
     }
 }
 function renderProvisioning(items){

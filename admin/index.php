@@ -24,6 +24,7 @@ try {
 }
 $maintenance = app_setting('maintenance_mode', '0') === '1';
 $mollieReady = (bool)cfg('mollie.api_key');
+$linodeReady = linode_api_token() !== '';
 $nameParts = preg_split('/\s+/', trim((string)$u['name'])) ?: [];
 $firstName = (string)($nameParts[0] ?? $u['name']);
 
@@ -99,6 +100,11 @@ admin_head($u, 'Dashboard', 'dashboard');
         <span class="health-icon <?=$mollieReady ? 'is-good' : 'is-warn'?>"><?=admin_icon('billing')?></span>
         <div><small>Mollie payments</small><b><?=$mollieReady ? 'Configured' : 'Setup required'?></b><span><?=$mollieReady ? 'Checkout provider is ready' : 'Add an API key to accept payments'?></span></div>
         <em class="health-state <?=$mollieReady ? 'is-good' : 'is-warn'?>"><i></i><?=$mollieReady ? 'Ready' : 'Action needed'?></em>
+    </a>
+    <a class="admin-health-card" href="/admin/settings.php">
+        <span class="health-icon <?=$linodeReady ? 'is-good' : 'is-warn'?>"><?=admin_icon('automation')?></span>
+        <div><small>Linode VPS</small><b><?=$linodeReady ? 'Configured' : 'Setup required'?></b><span><?=$linodeReady ? 'VPS provisioning token is stored' : 'Add a Linode API token to provision VPS products'?></span></div>
+        <em class="health-state <?=$linodeReady ? 'is-good' : 'is-warn'?>"><i></i><?=$linodeReady ? 'Ready' : 'Action needed'?></em>
     </a>
 </section>
 

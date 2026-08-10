@@ -13,6 +13,7 @@ if ($p['stock'] !== null && (int)$p['stock'] <= 0) {
    die('This product is currently out of stock.');
 }
 $isDeviceRepair = ((string)($p['slug'] ?? '') === 'device-repair');
+$isLinode = linode_product_provider($p) === 'linode';
 $displayPrice = $isDeviceRepair ? 0.00 : (float)$p['price_monthly'];
 $eggQ = db()->prepare("SELECT * FROM product_eggs WHERE product_id=? AND enabled=1 ORDER BY is_default DESC,sort_order,id");
 $eggQ->execute([(int)$p['id']]);
@@ -31,7 +32,7 @@ $varQ = db()->prepare('SELECT * FROM product_egg_variables WHERE product_id=? OR
 $varQ->execute([(int)$p['id']]);
 $varsByEgg = [];
 foreach ($varQ->fetchAll() as $v) $varsByEgg[(int)$v['egg_id']][(string)$v['env_variable']] = $v;
-if (!$isDeviceRepair) {
+if (!$isDeviceRepair && !$isLinode) {
    foreach ($allowedEggs as $allowedEgg) {
       $allowedEggId = (int)$allowedEgg['egg_id'];
       try {
@@ -68,8 +69,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
    $softwareLabel = '';
    $allowedIds = array_map(fn($x) => (int)$x['egg_id'], $allowedEggs);
    $customerEnv = [];
+   $sshPublicKey = trim((string)($_POST['ssh_public_key'] ?? ''));
    if ($name === '') $error = $isDeviceRepair ? 'Enter a device name or model.' : 'Choose a server name.';
-   if ($error === '' && !$isDeviceRepair) {
+   if ($error === '' && !$isDeviceRepair && !$isLinode) {
       if (!$eggId || !in_array($eggId, $allowedIds, true)) $error = 'Choose valid server software.';
       else {
          $softwareLabel = (string)($allowedEggLabels[$eggId] ?? 'Server software');
@@ -109,6 +111,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
          }
       }
    }
+   if ($error === '' && $isLinode) {
+      try {
+         linode_validate_product($p);
+         $sshPublicKey = linode_validate_ssh_key($sshPublicKey);
+      } catch (Throwable $x) {
+         $error = 'VPS configuration failed: '.$x->getMessage();
+      }
+   }
    if ($error === '') {
       db()->beginTransaction();
       try {
@@ -120,6 +130,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
          $oid = (int)db()->lastInsertId();
          if ($isDeviceRepair) {
             $cfg = json_encode(['service_type' => 'device_repair', 'device_name' => $name, 'repair_note' => $repairNote, 'intake_required' => true], JSON_UNESCAPED_SLASHES);
+         } elseif ($isLinode) {
+            $cfg = json_encode(['server_name'=>$name,'provisioning_provider'=>'linode','ssh_public_key'=>$sshPublicKey,'linode_type'=>(string)$p['linode_type'],'linode_region'=>(string)$p['linode_region'],'linode_image'=>(string)$p['linode_image'],'ram_mb'=>(int)$p['ram_mb'],'disk_mb'=>(int)$p['disk_mb'],'cpu_percent'=>(int)$p['cpu_percent']], JSON_UNESCAPED_SLASHES);
          } else {
             $cfg = json_encode(['server_name' => $name, 'egg_id' => $eggId, 'software_label' => $softwareLabel, 'environment' => $customerEnv, 'customer_environment_keys' => array_keys($customerEnv), 'ram_mb' => (int)$p['ram_mb'], 'disk_mb' => (int)$p['disk_mb'], 'cpu_percent' => (int)$p['cpu_percent']], JSON_UNESCAPED_SLASHES);
          }
@@ -187,16 +199,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="eyebrow">Advanced Configurator</div>
             <h1><?= e($p['name']) ?></h1>
             <div class="muted"><?= e($p['category_name']) ?> · €<?= number_format($displayPrice, 2) ?><?= $isDeviceRepair ? '' : ' / month' ?></div><?php if ($error): ?><div class="error"><?= e($error) ?></div><?php endif ?>
-            <div class="checkout-steps"><span class="active"><?= $isDeviceRepair ? '1 Intake' : '1 Software' ?></span><span><?= $isDeviceRepair ? '2 Details' : '2 Options' ?></span><span>3 Summary</span><span>4 Payment</span></div>
+            <div class="checkout-steps"><span class="active"><?= $isDeviceRepair ? '1 Intake' : ($isLinode ? '1 VPS' : '1 Software') ?></span><span><?= $isDeviceRepair ? '2 Details' : ($isLinode ? '2 Access' : '2 Options') ?></span><span>3 Summary</span><span>4 Payment</span></div>
             <div class="checkout-grid">
                <section class="card form-card">
                   <div class="cardhead"><b><?= $isDeviceRepair ? 'DEVICE REPAIR INTAKE' : 'SERVER CONFIGURATION' ?></b></div>
                   <form method="post" class="order-form" id="configForm"><input type="hidden" name="csrf" value="<?= e(csrf()) ?>"><input type="hidden" name="product" value="<?= e($p['slug']) ?>">
-                     <div class="field"><label><?= $isDeviceRepair ? 'Device name / model' : 'Server name' ?></label><input name="server_name" maxlength="60" required value="<?= e($_POST['server_name'] ?? '') ?>" placeholder="<?= $isDeviceRepair ? 'e.g. iPhone 13 Pro' : 'My server' ?>"></div><?php if ($isDeviceRepair): ?><div class="field"><label>Issue details</label><textarea name="repair_note" rows="5" placeholder="Describe the issue, damage, and anything we should know."><?= e($_POST['repair_note'] ?? '') ?></textarea></div><?php else: ?><div class="field"><label>Server software</label><select name="egg_id" id="eggSelect" required>
+                     <div class="field"><label><?= $isDeviceRepair ? 'Device name / model' : ($isLinode ? 'VPS hostname' : 'Server name') ?></label><input name="server_name" maxlength="60" required value="<?= e($_POST['server_name'] ?? '') ?>" placeholder="<?= $isDeviceRepair ? 'e.g. iPhone 13 Pro' : ($isLinode ? 'my-vps' : 'My server') ?>"></div><?php if ($isDeviceRepair): ?><div class="field"><label>Issue details</label><textarea name="repair_note" rows="5" placeholder="Describe the issue, damage, and anything we should know."><?= e($_POST['repair_note'] ?? '') ?></textarea></div><?php elseif ($isLinode): ?><div class="field"><label>SSH public key <span class="muted">(optional)</span></label><textarea name="ssh_public_key" rows="4" placeholder="ssh-ed25519 AAAA... you@example.com"><?=e($_POST['ssh_public_key']??'')?></textarea><div class="muted small">Add your public key for passwordless root access. A strong root password is generated automatically.</div></div><div class="field"><label>Operating system</label><input value="<?=e($p['linode_image'])?>" disabled></div><div class="field"><label>Region</label><input value="<?=e($p['linode_region'])?>" disabled></div><?php else: ?><div class="field"><label>Server software</label><select name="egg_id" id="eggSelect" required>
                               <option value="">— Choose software —</option><?php foreach ($allowedEggs as $ae): $label = (string)$ae['customer_label'];
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     $sel = (int)($_POST['egg_id'] ?? 0) === (int)$ae['egg_id'] || (!isset($_POST['egg_id']) && !empty($ae['is_default'])); ?><option value="<?= e($ae['egg_id']) ?>" <?= $sel ? 'selected' : '' ?>><?= e($label) ?><?= !empty($ae['is_default']) ? ' — Recommended' : '' ?></option><?php endforeach ?>
                            </select></div><?php endif ?>
-                     <?php if (!$isDeviceRepair): ?><?php foreach ($varsByEgg as $eid => $vars): ?><div class="egg-options" data-egg="<?= e($eid) ?>" style="display:none">
+                     <?php if (!$isDeviceRepair && !$isLinode): ?><?php foreach ($varsByEgg as $eid => $vars): ?><div class="egg-options" data-egg="<?= e($eid) ?>" style="display:none">
                         <h3>Software options</h3><?php foreach ($vars as $v): if (empty($v['customer_visible'])) continue;
                                                          $key = $v['env_variable'];
                                                          $label = $v['display_name'] ?: $key;
@@ -206,7 +218,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                            </div><?php endforeach ?>
                      </div><?php endforeach ?><?php endif ?>
                      <button class="btn primary wide" type="submit">Continue to payment</button>
-                     <div class="muted small checkout-note"><?= $isDeviceRepair ? 'A support ticket is created automatically and billing is confirmed later in that ticket.' : 'Stock and node capacity are checked before the invoice is created.' ?></div>
+                     <div class="muted small checkout-note"><?= $isDeviceRepair ? 'A support ticket is created automatically and billing is confirmed later in that ticket.' : ($isLinode ? 'Linode type, region and image availability are checked before the invoice is created.' : 'Stock and node capacity are checked before the invoice is created.') ?></div>
                   </form>
                </section>
                <aside class="card summary">
@@ -215,7 +227,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      <h3><?= e($p['name']) ?></h3><?php if ($isDeviceRepair): ?><div class="summary-row"><span>Service</span><b>Repair intake ticket</b></div>
                         <div class="summary-row"><span>Workflow</span><b>Order + ticket (invoice after confirmation)</b></div><?php else: ?><div class="summary-row"><span>RAM</span><b><?= e((string)round($p['ram_mb'] / 1024, 1)) ?> GB</b></div>
                         <div class="summary-row"><span>CPU</span><b><?= e($p['cpu_percent']) ?>%</b></div>
-                        <div class="summary-row"><span>Storage</span><b><?= e((string)round($p['disk_mb'] / 1000)) ?> GB</b></div><?php endif ?><div class="summary-row"><span>Stock</span><b><?= $p['stock'] === null ? 'Unlimited' : e($p['stock']) ?></b></div>
+                        <div class="summary-row"><span>Storage</span><b><?= e((string)round($p['disk_mb'] / 1000)) ?> GB</b></div><?php if($isLinode):?><div class="summary-row"><span>Provider</span><b>Linode</b></div><div class="summary-row"><span>Plan</span><b><?=e($p['linode_type'])?></b></div><div class="summary-row"><span>Region</span><b><?=e($p['linode_region'])?></b></div><?php endif?><?php endif ?><div class="summary-row"><span>Stock</span><b><?= $p['stock'] === null ? 'Unlimited' : e($p['stock']) ?></b></div>
                      <div class="summary-total"><span>Total</span><strong>€<?= number_format($displayPrice, 2) ?><small><?= $isDeviceRepair ? '' : '/mo' ?></small></strong></div>
                   </div>
                </aside>

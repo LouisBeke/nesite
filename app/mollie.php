@@ -21,7 +21,7 @@ function mollie_payment_for_invoice(int $invoiceId): array {
         try{$old=mollie_request('/payments/'.rawurlencode($i['mollie_payment_id']));if(!in_array($old['status']??'',['failed','canceled','expired'],true))return $old;}catch(Throwable $e){}
     }
     $base=rtrim((string)cfg('app_url'),'/');$webhook=(string)(cfg('mollie.webhook_url')??($base.'/mollie-webhook.php'));
-    $payload=['amount'=>['currency'=>$i['currency'],'value'=>number_format((float)$i['total'],2,'.','')],'description'=>'FoxNetwork '.$i['invoice_number'],'redirectUrl'=>$base.'/payment-return.php?invoice='.$invoiceId,'webhookUrl'=>$webhook,'metadata'=>['invoice_id'=>$invoiceId,'invoice_number'=>$i['invoice_number']]];
+    $payload=['amount'=>['currency'=>$i['currency'],'value'=>number_format((float)$i['total'],2,'.','')],'description'=>trim((string)cfg('app_name')).' '.$i['invoice_number'],'redirectUrl'=>$base.'/payment-return.php?invoice='.$invoiceId,'webhookUrl'=>$webhook,'metadata'=>['invoice_id'=>$invoiceId,'invoice_number'=>$i['invoice_number']]];
     $p=mollie_request('/payments','POST',$payload);
     db()->prepare('UPDATE invoices SET mollie_payment_id=? WHERE id=?')->execute([$p['id']??null,$invoiceId]);
     $exists=db()->prepare("SELECT id FROM payments WHERE provider='mollie' AND provider_reference=? LIMIT 1");$exists->execute([$p['id']??'']);
@@ -42,7 +42,7 @@ function process_mollie_payment(string $paymentId): void {
         if($oid){$sid=ensure_service_for_order($oid);$sv=service_row($sid);if(empty($sv['ptero_server_id']) && !in_array($sv['status'],['provisioning','active','terminated'],true)){provisioning_dispatch_order($oid,['source'=>'mollie','invoice_id'=>$iid,'payment_id'=>$paymentId]);}elseif($sv['status']==='suspended'){unsuspend_service($sid,0);send_template('service_unsuspended',$iv,['service_name'=>$sv['name']]);}}
                 elseif($sid){
                         $sv=service_row($sid);
-                        db()->prepare("UPDATE services SET next_due_at=
+                        db()->prepare("UPDATE services SET is_trial=0,next_due_at=
                                 CASE
                                     WHEN COALESCE(renewal_unit,'month')='day' THEN DATE_ADD(COALESCE(next_due_at,NOW()), INTERVAL GREATEST(1,COALESCE(renewal_interval,1)) DAY)
                                     WHEN COALESCE(renewal_unit,'month')='week' THEN DATE_ADD(COALESCE(next_due_at,NOW()), INTERVAL GREATEST(1,COALESCE(renewal_interval,1)) WEEK)

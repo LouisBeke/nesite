@@ -75,10 +75,10 @@ $days = $s['next_due_at'] ? (int)floor((strtotime($s['next_due_at']) - time()) /
         <h1><?= e($s['name']) ?></h1>
         <p><a class="btn" href="/billing.php">← Back to Billing</a></p><?php if ($msg): ?><div class="notice success"><?= e($msg) ?></div><?php endif ?><?php if ($err): ?><div class="error"><?= e($err) ?></div><?php endif ?><section class="card lifecycle-card">
             <div class="lifecycle-stats">
-                <div><span>Status</span><b><?= e(strtoupper($s['status'])) ?></b></div>
+                <div><span>Status</span><b><?= e(!empty($s['is_trial'])?'TRIAL':strtoupper($s['status'])) ?></b></div>
                 <div><span>Package</span><b><?= e($s['product_name'] ?? 'Unmapped') ?></b></div>
-                <div><span>Recurring price</span><b>€<?= number_format((float)$s['price_monthly'], 2) ?> / <?= e($s['renewal_unit'] ?? 'month') ?></b></div>
-                <div><span>Next renewal</span><b><?= e($s['next_due_at'] ? date('d M Y', strtotime($s['next_due_at'])) : 'Not set') ?></b><small><?= e($days === null ? '' : ($days >= 0 ? $days . ' days remaining' : abs($days) . ' days overdue')) ?></small></div>
+                <div><span>Recurring price</span><b>€<?= number_format((float)$s['price_monthly'], 2) ?> / <?= e($s['renewal_unit'] ?? 'month') ?></b><small><?=!empty($s['is_trial'])?'Charged after trial':''?></small></div>
+                <div><span><?=!empty($s['is_trial'])?'Trial expiration':'Next renewal'?></span><b><?= e($s['next_due_at'] ? date('d M Y', strtotime($s['next_due_at'])) : 'Not set') ?></b><small><?= e($days === null ? '' : ($days >= 0 ? $days . ' days remaining' : abs($days) . ' days overdue')) ?></small></div>
             </div>
             <div class="lifecycle-actions"><?php if ((float)$s['price_monthly'] > 0 && !$s['cancel_at_period_end']): ?><form method="post"><input type="hidden" name="csrf" value="<?= e(csrf()) ?>"><input type="hidden" name="service_id" value="<?= $sid ?>"><button class="btn primary" name="action" value="renew">Renew now</button></form><?php endif ?><a class="btn" href="/upgrades.php?service=<?= $sid ?>">Upgrade / Downgrade</a></div><?php if (!$s['cancel_at_period_end']): ?><div style="margin-top:22px;padding-top:20px;border-top:1px solid rgba(255,255,255,.08)">
                     <h3>Cancel service</h3>

@@ -27,6 +27,7 @@ function admin_icon(string $name): string
 function admin_head(array $u, string $title, string $active = 'dashboard'): void
 {
     header('Cache-Control: private, no-store, no-transform, max-age=0');
+    $appName=trim((string)cfg('app_name'))?:'FoxNetwork';
     $groups = [
         'Manage' => [
             'dashboard' => ['/admin/', 'Dashboard'],
@@ -58,14 +59,14 @@ function admin_head(array $u, string $title, string $active = 'dashboard'): void
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width,initial-scale=1">
         <meta name="theme-color" content="#0a0c0f">
-        <title>FoxNetwork Admin | <?=e($title)?></title>
+        <title><?=e($appName)?> Admin | <?=e($title)?></title>
         <link rel="stylesheet" href="/assets/portal.css?v=<?=rawurlencode($portalCssVersion)?>">
     </head>
     <body class="admin-body">
     <div class="admin-app admin-modern">
         <div class="admin-side-overlay" data-admin-menu-close></div>
         <aside class="admin-side" id="admin-sidebar">
-            <a class="admin-brand" href="/admin/" aria-label="FoxNetwork Admin dashboard">
+            <a class="admin-brand" href="/admin/" aria-label="<?=e($appName)?> Admin dashboard">
                 <img src="/images/logo.png" alt="">
                 <div><b>FOX<span>NETWORK</span></b><small>ADMIN CENTER</small></div>
             </a>

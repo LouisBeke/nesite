@@ -22,7 +22,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $err = $e->getMessage();
     }
 }
-$products = db()->query('SELECT * FROM store_products WHERE active=1 ORDER BY price_monthly,sort_order,id')->fetchAll();
+$productQ = db()->prepare('SELECT * FROM store_products WHERE active=1 AND provisioning_provider=? ORDER BY price_monthly,sort_order,id');
+$productQ->execute([linode_service_provider($s)]);
+$products = $productQ->fetchAll();
 $hist = db()->prepare('SELECT c.*,p.name new_product_name FROM service_changes c LEFT JOIN store_products p ON p.id=c.new_product_id WHERE c.service_id=? ORDER BY c.id DESC');
 $hist->execute([$sid]);
 $hist = $hist->fetchAll();

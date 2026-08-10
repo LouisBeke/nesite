@@ -45,16 +45,16 @@ foreach ($services as $s) if (!empty($s['next_due_at']) && (!$next || strtotime(
                     <div class="stat"><span class="muted">Next renewal</span><strong style="font-size:18px"><?= e($next ? date('d M Y', strtotime($next)) : '—') ?></strong></div>
                 </section>
                 <section class="card">
-                    <div class="cardhead"><b>YOUR SERVICES & RENEWALS</b><span class="muted"><?= count($services) ?> services</span></div><?php if (!$services): ?><div class="empty muted">No active services.</div><?php endif ?><?php foreach ($services as $s): $days = $s['next_due_at'] ? (int)floor((strtotime($s['next_due_at']) - time()) / 86400) : null; ?><div class="order-row">
+                    <div class="cardhead"><b>YOUR SERVICES & RENEWALS</b><span class="muted"><?= count($services) ?> services</span></div><?php if (!$services): ?><div class="empty muted">No active services.</div><?php endif ?><?php foreach ($services as $s): $isTrial=!empty($s['is_trial']); $days = $s['next_due_at'] ? (int)floor((strtotime($s['next_due_at']) - time()) / 86400) : null; ?><div class="order-row">
                             <div style="min-width:240px"><b><?= e($s['name']) ?></b>
                                 <div class="muted small"><?= e($s['product_name'] ?? 'Hosting service') ?> · <?= e(ucfirst($s['status'])) ?></div>
                             </div>
                             <div><b>€<?= number_format((float)$s['price_monthly'], 2) ?></b>
-                                <div class="muted small">/ <?= e($s['renewal_unit'] ?? 'month') ?></div>
+                                <div class="muted small"><?= e($isTrial?'After trial · per ':'Per ') ?><?= e($s['renewal_unit'] ?? 'month') ?></div>
                             </div>
                             <div><b><?= e($s['next_due_at'] ? date('d M Y', strtotime($s['next_due_at'])) : 'Not set') ?></b>
-                                <div class="muted small"><?= e($days === null ? 'No automatic renewal' : ($days >= 0 ? $days . ' days remaining' : abs($days) . ' days overdue')) ?></div>
-                            </div><span class="order-status status-<?= e($s['cancel_at_period_end'] ? 'cancelled' : $s['status']) ?>"><?= e($s['cancel_at_period_end'] ? 'CANCELS AT PERIOD END' : strtoupper($s['status'])) ?></span><a class="btn" href="/lifecycle.php?service=<?= (int)$s['id'] ?>">Billing & cancellation</a>
+                                <div class="muted small"><?= e($days === null ? 'No automatic renewal' : (($isTrial?'Trial · ':'').($days >= 0 ? $days . ' days remaining' : abs($days) . ' days overdue'))) ?></div>
+                            </div><span class="order-status status-<?= e($s['cancel_at_period_end'] ? 'cancelled' : ($isTrial?'pending':$s['status'])) ?>"><?= e($s['cancel_at_period_end'] ? 'CANCELS AT PERIOD END' : ($isTrial?'TRIAL':strtoupper($s['status']))) ?></span><a class="btn" href="/lifecycle.php?service=<?= (int)$s['id'] ?>">Billing & cancellation</a>
                         </div><?php endforeach ?>
                 </section>
                 <section class="card" style="margin-top:20px">

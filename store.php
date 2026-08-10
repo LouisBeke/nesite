@@ -48,7 +48,7 @@ $u = require_user(); ?>
                                     <div class="spec-list"><span><i class="fas fa-memory"></i><?= e((string)($p['ram_mb'] / 1024)) ?> GB RAM</span><span><i class="fas fa-microchip"></i><?= e($p['cpu_percent']) ?>% CPU</span><span><i class="fas fa-hdd"></i><?= e((string)round($p['disk_mb'] / 1000)) ?> GB storage</span><span><i class="fas fa-save"></i><?= e($p['backups']) ?> backup<?= ((int)$p['backups'] === 1 ? '' : 's') ?></span></div><?php if ($p['stock'] !== null && (int)$p['stock'] <= 0): ?><span class="btn wide center disabled" aria-disabled="true">Out of stock</span><?php else: ?><a class="btn primary wide center" href="/order.php?product=<?= e($p['slug']) ?>">Configure & Order</a><?php endif ?><?php if ($p['stock'] !== null && (int)$p['stock'] > 0 && (int)$p['stock'] <= 5): ?><div class="muted small" style="margin-top:8px">Only <?= e($p['stock']) ?> left</div><?php endif ?>
                                 </article><?php endforeach ?></div>
                     </section><?php endforeach ?>
-                <?php if ($u['role'] === 'admin'): ?><div class="admin-link"><a class="btn" href="/admin-store.php"><i class="fas fa-tools"></i> Manage Store</a></div><?php endif ?>
+                <?php if ($u['role'] === 'admin'): ?><div class="admin-link"><a class="btn" href="/admin/products.php"><i class="fas fa-tools"></i> Manage Products</a></div><?php endif ?>
             </div>
         </main>
     </div>
