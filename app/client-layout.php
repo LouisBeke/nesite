@@ -50,7 +50,7 @@ function render_client_sidebar(array $user, string $active = 'overview', ?int $o
         : 'nav bottom client-sidebar-footer portal-side-footer';
     $items = [
         'overview' => ['/client', 'Overview'],
-        'services' => ['/client#services', 'Services'],
+        'services' => ['/services.php', 'Services'],
         'store' => ['/store.php', 'Store'],
         'orders' => ['/orders.php', 'Orders'],
         'billing' => ['/billing.php', 'Billing'],
@@ -118,3 +118,5 @@ function render_client_page_end(): void
     </div>
     <?php
 }
+
+// End of client layout helpers.
