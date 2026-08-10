@@ -14,6 +14,12 @@ if ($p['stock'] !== null && (int)$p['stock'] <= 0) {
 }
 $isDeviceRepair = ((string)($p['slug'] ?? '') === 'device-repair');
 $isLinode = linode_product_provider($p) === 'linode';
+$linodeImages=[];$linodeImageError='';
+if($isLinode){
+   try{$linodeImages=linode_public_images();}catch(Throwable $imageError){$linodeImageError=$imageError->getMessage();}
+   $defaultImage=trim((string)($p['linode_image']??''));
+   if($defaultImage!==''&&!isset($linodeImages[$defaultImage]))$linodeImages[$defaultImage]=$defaultImage;
+}
 $displayPrice = $isDeviceRepair ? 0.00 : (float)$p['price_monthly'];
 $eggQ = db()->prepare("SELECT * FROM product_eggs WHERE product_id=? AND enabled=1 ORDER BY is_default DESC,sort_order,id");
 $eggQ->execute([(int)$p['id']]);
@@ -70,6 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
    $allowedIds = array_map(fn($x) => (int)$x['egg_id'], $allowedEggs);
    $customerEnv = [];
    $sshPublicKey = trim((string)($_POST['ssh_public_key'] ?? ''));
+   $selectedLinodeImage=trim((string)($_POST['linode_image']??$p['linode_image']??''));
    if ($name === '') $error = $isDeviceRepair ? 'Enter a device name or model.' : 'Choose a server name.';
    if ($error === '' && !$isDeviceRepair && !$isLinode) {
       if (!$eggId || !in_array($eggId, $allowedIds, true)) $error = 'Choose valid server software.';
@@ -113,7 +120,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
    }
    if ($error === '' && $isLinode) {
       try {
-         linode_validate_product($p);
+         if($selectedLinodeImage===''||!isset($linodeImages[$selectedLinodeImage]))throw new RuntimeException('Choose a valid operating system image.');
+         $selectedProduct=$p;$selectedProduct['linode_image']=$selectedLinodeImage;
+         linode_validate_product($selectedProduct);
          $sshPublicKey = linode_validate_ssh_key($sshPublicKey);
       } catch (Throwable $x) {
          $error = 'VPS configuration failed: '.$x->getMessage();
@@ -131,7 +140,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
          if ($isDeviceRepair) {
             $cfg = json_encode(['service_type' => 'device_repair', 'device_name' => $name, 'repair_note' => $repairNote, 'intake_required' => true], JSON_UNESCAPED_SLASHES);
          } elseif ($isLinode) {
-            $cfg = json_encode(['server_name'=>$name,'provisioning_provider'=>'linode','ssh_public_key'=>$sshPublicKey,'linode_type'=>(string)$p['linode_type'],'linode_region'=>(string)$p['linode_region'],'linode_image'=>(string)$p['linode_image'],'ram_mb'=>(int)$p['ram_mb'],'disk_mb'=>(int)$p['disk_mb'],'cpu_percent'=>(int)$p['cpu_percent']], JSON_UNESCAPED_SLASHES);
+            $cfg = json_encode(['server_name'=>$name,'provisioning_provider'=>'linode','ssh_public_key'=>$sshPublicKey,'linode_type'=>(string)$p['linode_type'],'linode_region'=>(string)$p['linode_region'],'linode_image'=>$selectedLinodeImage,'linode_image_label'=>(string)($linodeImages[$selectedLinodeImage]??$selectedLinodeImage),'ram_mb'=>(int)$p['ram_mb'],'disk_mb'=>(int)$p['disk_mb'],'cpu_percent'=>(int)$p['cpu_percent']], JSON_UNESCAPED_SLASHES);
          } else {
             $cfg = json_encode(['server_name' => $name, 'egg_id' => $eggId, 'software_label' => $softwareLabel, 'environment' => $customerEnv, 'customer_environment_keys' => array_keys($customerEnv), 'ram_mb' => (int)$p['ram_mb'], 'disk_mb' => (int)$p['disk_mb'], 'cpu_percent' => (int)$p['cpu_percent']], JSON_UNESCAPED_SLASHES);
          }
@@ -207,7 +216,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      <div class="field"><label><?= $isDeviceRepair ? 'Device name / model' : ($isLinode ? 'VPS hostname' : 'Server name') ?></label><input name="server_name" maxlength="60" required value="<?= e($_POST['server_name'] ?? '') ?>" placeholder="<?= $isDeviceRepair ? 'e.g. iPhone 13 Pro' : ($isLinode ? 'my-vps' : 'My server') ?>"></div><?php if ($isDeviceRepair): ?><div class="field"><label>Issue details</label><textarea name="repair_note" rows="5" placeholder="Describe the issue, damage, and anything we should know."><?= e($_POST['repair_note'] ?? '') ?></textarea></div><?php elseif ($isLinode): ?><div class="field"><label>SSH public key <span class="muted">(optional)</span></label><textarea name="ssh_public_key" rows="4" placeholder="ssh-ed25519 AAAA... you@example.com"><?=e($_POST['ssh_public_key']??'')?></textarea><div class="muted small">Add your public key for passwordless root access. A strong root password is generated automatically.</div></div><div class="field"><label>Operating system</label><input value="<?=e($p['linode_image'])?>" disabled></div><div class="field"><label>Region</label><input value="<?=e($p['linode_region'])?>" disabled></div><?php else: ?><div class="field"><label>Server software</label><select name="egg_id" id="eggSelect" required>
                               <option value="">— Choose software —</option><?php foreach ($allowedEggs as $ae): $label = (string)$ae['customer_label'];
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     $sel = (int)($_POST['egg_id'] ?? 0) === (int)$ae['egg_id'] || (!isset($_POST['egg_id']) && !empty($ae['is_default'])); ?><option value="<?= e($ae['egg_id']) ?>" <?= $sel ? 'selected' : '' ?>><?= e($label) ?><?= !empty($ae['is_default']) ? ' — Recommended' : '' ?></option><?php endforeach ?>
-                           </select></div><?php endif ?>
+                            </select></div><?php endif ?>
+                     <?php if($isLinode):?><div class="field customer-os-field"><label>Operating system image</label><select name="linode_image" required><option value="">— Choose operating system —</option><?php foreach($linodeImages as $imageId=>$imageLabel):$imageSelected=(string)($_POST['linode_image']??$p['linode_image']??'')===(string)$imageId;?><option value="<?=e($imageId)?>" <?=$imageSelected?'selected':''?>><?=e($imageLabel)?> (<?=e($imageId)?>)</option><?php endforeach?></select><div class="muted small">Choose the operating system that will be installed on your VPS.</div><?php if($linodeImageError):?><div class="muted small">The live image catalog is temporarily unavailable; the product default remains available.</div><?php endif?></div><script>document.querySelectorAll('#configForm .field').forEach(field=>{const label=field.querySelector('label');if(label&&label.textContent.trim()==='Operating system'&&field.querySelector('input[disabled]'))field.remove();});</script><?php endif?>
                      <?php if (!$isDeviceRepair && !$isLinode): ?><?php foreach ($varsByEgg as $eid => $vars): ?><div class="egg-options" data-egg="<?= e($eid) ?>" style="display:none">
                         <h3>Software options</h3><?php foreach ($vars as $v): if (empty($v['customer_visible'])) continue;
                                                          $key = $v['env_variable'];
@@ -228,6 +238,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="summary-row"><span>Workflow</span><b>Order + ticket (invoice after confirmation)</b></div><?php else: ?><div class="summary-row"><span>RAM</span><b><?= e((string)round($p['ram_mb'] / 1024, 1)) ?> GB</b></div>
                         <div class="summary-row"><span>CPU</span><b><?= e($p['cpu_percent']) ?>%</b></div>
                         <div class="summary-row"><span>Storage</span><b><?= e((string)round($p['disk_mb'] / 1000)) ?> GB</b></div><?php if($isLinode):?><div class="summary-row"><span>Provider</span><b>Linode</b></div><div class="summary-row"><span>Plan</span><b><?=e($p['linode_type'])?></b></div><div class="summary-row"><span>Region</span><b><?=e($p['linode_region'])?></b></div><?php endif?><?php endif ?><div class="summary-row"><span>Stock</span><b><?= $p['stock'] === null ? 'Unlimited' : e($p['stock']) ?></b></div>
+                     <?php if($isLinode):$summaryImage=(string)($_POST['linode_image']??$p['linode_image']??'');?><div class="summary-row"><span>Operating system</span><b data-linode-image-summary><?=e($linodeImages[$summaryImage]??$summaryImage)?></b></div><?php endif?>
                      <div class="summary-total"><span>Total</span><strong>€<?= number_format($displayPrice, 2) ?><small><?= $isDeviceRepair ? '' : '/mo' ?></small></strong></div>
                   </div>
                </aside>
@@ -249,6 +260,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       const eggSelect = document.getElementById('eggSelect');
       if (eggSelect) eggSelect.addEventListener('change', showEgg);
       showEgg();
+      const linodeImageSelect=document.querySelector('[name="linode_image"]');
+      const linodeImageSummary=document.querySelector('[data-linode-image-summary]');
+      if(linodeImageSelect&&linodeImageSummary)linodeImageSelect.addEventListener('change',()=>{linodeImageSummary.textContent=linodeImageSelect.selectedOptions[0]?.textContent||'—';});
    </script>
 </body>
 

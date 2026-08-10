@@ -1,7 +1,7 @@
 <?php
 require __DIR__.'/../app/bootstrap.php';
 require __DIR__.'/_layout.php';
-$u=require_admin();$msg='';$err='';$pteroErr='';$linodeErr='';$eggs=[];$locations=[];$nodes=[];$eggMeta=[];$linodeTypes=[];$linodeRegions=[];$linodeImages=[];
+$u=require_admin();$msg='';$err='';$pteroErr='';$linodeErr='';$eggs=[];$locations=[];$nodes=[];$eggMeta=[];$linodeTypes=[];$linodeTypeMeta=[];$linodeRegions=[];$linodeImages=[];
 function ptero_catalog_full(): array {
  $eggs=[];$locations=[];$nodes=[];$meta=[];
  $loc=app_ptero('/locations?per_page=100');foreach(($loc['data']??[]) as $row){$a=$row['attributes']??[];$id=(int)($a['id']??0);if($id)$locations[$id]=($a['short']??('Location '.$id)).(!empty($a['long'])?' — '.$a['long']:'');}
@@ -16,10 +16,10 @@ function egg_detail_vars(int $eggId,array $meta): array {
 }
 try{[$eggs,$locations,$nodes,$eggMeta]=ptero_catalog_full();}catch(Throwable $x){$pteroErr=$x->getMessage();}
 try{
- $typeResult=linode_api('/linode/types?page_size=500','GET',null,false);foreach((array)($typeResult['data']??[]) as $item){$id=(string)($item['id']??'');if($id!=='')$linodeTypes[$id]=(string)($item['label']??$id);}
+ $typeResult=linode_api('/linode/types?page_size=500','GET',null,false);foreach((array)($typeResult['data']??[]) as $item){$id=(string)($item['id']??'');if($id!==''){$linodeTypes[$id]=(string)($item['label']??$id);$linodeTypeMeta[$id]=['label'=>(string)($item['label']??$id),'memory'=>(int)($item['memory']??0),'disk'=>(int)($item['disk']??0),'vcpus'=>(int)($item['vcpus']??0),'transfer'=>(int)($item['transfer']??0),'monthly'=>(float)($item['price']['monthly']??0),'hourly'=>(float)($item['price']['hourly']??0),'class'=>(string)($item['class']??'')];}}
  $regionResult=linode_api('/regions?page_size=500','GET',null,false);foreach((array)($regionResult['data']??[]) as $item){$id=(string)($item['id']??'');if($id!=='')$linodeRegions[$id]=(string)($item['label']??$id);}
  $imageResult=linode_api('/images?page_size=500','GET',null,false);foreach((array)($imageResult['data']??[]) as $item){$id=(string)($item['id']??'');if($id!==''&&!empty($item['is_public']))$linodeImages[$id]=(string)($item['label']??$id);}
- asort($linodeTypes,SORT_NATURAL|SORT_FLAG_CASE);asort($linodeRegions,SORT_NATURAL|SORT_FLAG_CASE);asort($linodeImages,SORT_NATURAL|SORT_FLAG_CASE);
+ asort($linodeTypes,SORT_NATURAL|SORT_FLAG_CASE);$linodeTypeMeta=array_replace(array_fill_keys(array_keys($linodeTypes),[]),$linodeTypeMeta);asort($linodeRegions,SORT_NATURAL|SORT_FLAG_CASE);asort($linodeImages,SORT_NATURAL|SORT_FLAG_CASE);
 }catch(Throwable $x){$linodeErr=$x->getMessage();}
 if($_SERVER['REQUEST_METHOD']==='POST'){
  verify_csrf();try{$id=(int)($_POST['id']??0);$action=$_POST['action']??'';
@@ -27,8 +27,12 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
    $name=trim((string)($_POST['name']??''));$cat=(int)($_POST['category_id']??0);if($name===''||$cat<1)throw new RuntimeException('Name and category are required.');
    $base=strtolower(trim(preg_replace('/[^a-z0-9]+/i','-',$name),'-'));if($base==='')$base='product';$slug=$base;$n=2;$chk=db()->prepare('SELECT COUNT(*) FROM store_products WHERE slug=?');while(true){$chk->execute([$slug]);if(!(int)$chk->fetchColumn())break;$slug=$base.'-'.$n++;}
    $provider=($_POST['provisioning_provider']??'pterodactyl')==='linode'?'linode':'pterodactyl';
-   $q=db()->prepare('INSERT INTO store_products(category_id,name,slug,description,price_monthly,ram_mb,disk_mb,cpu_percent,backups,database_limit,allocation_limit,active,sort_order,provisioning_provider) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
-   $q->execute([$cat,$name,$slug,trim((string)($_POST['description']??'')),max(0,(float)($_POST['price']??0)),max(128,(int)($_POST['ram']??2048)),max(1000,(int)($_POST['disk']??10000)),max(10,(int)($_POST['cpu']??100)),max(0,(int)($_POST['backups']??1)),max(0,(int)($_POST['databases']??1)),max(1,(int)($_POST['allocations']??1)),1,0,$provider]);$newId=(int)db()->lastInsertId();$stockUnlimited=!empty($_POST['stock_unlimited']);$stock=$stockUnlimited?null:max(0,(int)($_POST['stock']??0));db()->prepare('UPDATE store_products SET stock=? WHERE id=?')->execute([$stock,$newId]);$msg='Product created.';
+   $linodeType=$provider==='linode'?trim((string)($_POST['linode_type']??'')):'';$linodeRegion=$provider==='linode'?trim((string)($_POST['linode_region']??'')):'';$linodeImage=$provider==='linode'?trim((string)($_POST['linode_image']??'')):'';
+   if($provider==='linode'&&($linodeType===''||$linodeRegion===''||$linodeImage===''))throw new RuntimeException('Choose a Linode type, region and operating system image.');
+   $typeMeta=$linodeTypeMeta[$linodeType]??[];$ram=$provider==='linode'&&!empty($typeMeta['memory'])?(int)$typeMeta['memory']:max(128,(int)($_POST['ram']??2048));$disk=$provider==='linode'&&!empty($typeMeta['disk'])?(int)$typeMeta['disk']:max(1000,(int)($_POST['disk']??10000));$cpu=$provider==='linode'&&!empty($typeMeta['vcpus'])?(int)$typeMeta['vcpus']*100:max(10,(int)($_POST['cpu']??100));
+   $q=db()->prepare('INSERT INTO store_products(category_id,name,slug,description,price_monthly,ram_mb,disk_mb,cpu_percent,backups,database_limit,allocation_limit,active,sort_order,provisioning_provider,linode_type,linode_region,linode_image,linode_backups,linode_firewall_id,linode_cloud_init) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+   $monthlyPrice=$provider==='linode'&&!empty($typeMeta['monthly'])?(float)$typeMeta['monthly']:max(0,(float)($_POST['price']??0));
+   $q->execute([$cat,$name,$slug,trim((string)($_POST['description']??'')),$monthlyPrice,$ram,$disk,$cpu,$provider==='pterodactyl'?max(0,(int)($_POST['backups']??1)):0,$provider==='pterodactyl'?max(0,(int)($_POST['databases']??1)):0,$provider==='pterodactyl'?max(1,(int)($_POST['allocations']??1)):1,1,0,$provider,$linodeType?:null,$linodeRegion?:null,$linodeImage?:null,$provider==='linode'&&!empty($_POST['linode_backups'])?1:0,$provider==='linode'&&((int)($_POST['linode_firewall_id']??0))>0?(int)$_POST['linode_firewall_id']:null,$provider==='linode'?(trim((string)($_POST['linode_cloud_init']??''))?:null):null]);$newId=(int)db()->lastInsertId();$stockUnlimited=!empty($_POST['stock_unlimited']);$stock=$stockUnlimited?null:max(0,(int)($_POST['stock']??0));db()->prepare('UPDATE store_products SET stock=? WHERE id=?')->execute([$stock,$newId]);$msg='Product created.';
     }elseif($action==='create_category'){
      $name=trim((string)($_POST['name']??''));
      if($name==='')throw new RuntimeException('Category name is required.');
@@ -56,12 +60,17 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     $provider=($_POST['provisioning_provider']??'pterodactyl')==='linode'?'linode':'pterodactyl';
     $currentQ=db()->prepare('SELECT provisioning_provider,(SELECT COUNT(*) FROM services WHERE product_id=store_products.id) service_count FROM store_products WHERE id=?');$currentQ->execute([$id]);$current=$currentQ->fetch();if(!$current)throw new RuntimeException('Product not found.');
     if((int)$current['service_count']>0&&linode_product_provider($current)!==$provider)throw new RuntimeException('This product already has services. Duplicate it to use a different provisioning provider.');
-    $q->execute([trim($_POST['name']),(int)$_POST['category_id'],trim((string)($_POST['description']??'')),max(0,(float)$_POST['price']),max(128,(int)$_POST['ram']),max(1000,(int)$_POST['disk']),max(10,(int)$_POST['cpu']),max(0,(int)$_POST['backups']),max(0,(int)$_POST['databases']),max(1,(int)$_POST['allocations']),$legacyEgg,($_POST['location_id']!==''?(int)$_POST['location_id']:null),trim($_POST['docker_image']??''),trim($_POST['startup']??''),json_encode($env,JSON_UNESCAPED_SLASHES),($_POST['node_id']!==''?(int)$_POST['node_id']:null),$provider,trim((string)($_POST['linode_type']??''))?:null,trim((string)($_POST['linode_region']??''))?:null,trim((string)($_POST['linode_image']??''))?:null,!empty($_POST['linode_backups'])?1:0,((int)($_POST['linode_firewall_id']??0))?:null,trim((string)($_POST['linode_cloud_init']??''))?:null,$id]);
+    $linodeType=$provider==='linode'?trim((string)($_POST['linode_type']??'')):'';$linodeRegion=$provider==='linode'?trim((string)($_POST['linode_region']??'')):'';$linodeImage=$provider==='linode'?trim((string)($_POST['linode_image']??'')):'';
+    if($provider==='linode'&&($linodeType===''||$linodeRegion===''||$linodeImage===''))throw new RuntimeException('Choose a Linode type, region and operating system image.');
+    $typeMeta=$linodeTypeMeta[$linodeType]??[];$ram=$provider==='linode'&&!empty($typeMeta['memory'])?(int)$typeMeta['memory']:max(128,(int)($_POST['ram']??2048));$disk=$provider==='linode'&&!empty($typeMeta['disk'])?(int)$typeMeta['disk']:max(1000,(int)($_POST['disk']??10000));$cpu=$provider==='linode'&&!empty($typeMeta['vcpus'])?(int)$typeMeta['vcpus']*100:max(10,(int)($_POST['cpu']??100));
+    if($provider==='linode'){$selectedEggs=[];$customerEggLabels=[];$legacyEgg=null;$env=[];}
+    $q->execute([trim((string)($_POST['name']??'')),(int)($_POST['category_id']??0),trim((string)($_POST['description']??'')),max(0,(float)($_POST['price']??0)),$ram,$disk,$cpu,$provider==='pterodactyl'?max(0,(int)($_POST['backups']??1)):0,$provider==='pterodactyl'?max(0,(int)($_POST['databases']??1)):0,$provider==='pterodactyl'?max(1,(int)($_POST['allocations']??1)):1,$provider==='pterodactyl'?$legacyEgg:null,$provider==='pterodactyl'&&($_POST['location_id']??'')!==''?(int)$_POST['location_id']:null,$provider==='pterodactyl'?(trim((string)($_POST['docker_image']??''))?:null):null,$provider==='pterodactyl'?(trim((string)($_POST['startup']??''))?:null):null,$provider==='pterodactyl'?json_encode($env,JSON_UNESCAPED_SLASHES):null,$provider==='pterodactyl'&&($_POST['node_id']??'')!==''?(int)$_POST['node_id']:null,$provider,$linodeType?:null,$linodeRegion?:null,$linodeImage?:null,$provider==='linode'&&!empty($_POST['linode_backups'])?1:0,$provider==='linode'&&((int)($_POST['linode_firewall_id']??0))>0?(int)$_POST['linode_firewall_id']:null,$provider==='linode'?(trim((string)($_POST['linode_cloud_init']??''))?:null):null,$id]);
+    if($provider==='linode')db()->prepare('UPDATE store_products SET ptero_nest_id=NULL WHERE id=?')->execute([$id]);
    db()->prepare('UPDATE store_products SET stock=? WHERE id=?')->execute([$stock,$id]);
    db()->prepare('DELETE FROM product_eggs WHERE product_id=?')->execute([$id]);
    $insEgg=db()->prepare('INSERT INTO product_eggs(product_id,egg_id,display_name,is_default,enabled,sort_order) VALUES(?,?,?,?,1,?)');
     foreach($selectedEggs as $sort=>$eid){$insEgg->execute([$id,$eid,$customerEggLabels[$eid],$eid===$defaultEgg?1:0,$sort]);}
-    $msg='Product and customer-facing software labels saved.';
+    $msg=$provider==='linode'?'Linode VPS product saved with provider specifications.':'Pterodactyl product and customer-facing software labels saved.';
   }elseif($action==='duplicate'){
    $q=db()->prepare('SELECT * FROM store_products WHERE id=?');$q->execute([$id]);$r=$q->fetch();if(!$r)throw new RuntimeException('Product not found.');$base=$r['slug'].'-copy';$slug=$base;$n=2;$chk=db()->prepare('SELECT COUNT(*) FROM store_products WHERE slug=?');while(true){$chk->execute([$slug]);if(!(int)$chk->fetchColumn())break;$slug=$base.'-'.$n++;}$cols=['category_id','name','description','price_monthly','ram_mb','disk_mb','cpu_percent','backups','database_limit','allocation_limit','active','sort_order','ptero_egg_id','ptero_location_id','ptero_docker_image','ptero_startup','ptero_environment','ptero_node_id','billing_period','billing_unit','setup_fee','stock','provisioning_provider','linode_type','linode_region','linode_image','linode_backups','linode_firewall_id','linode_cloud_init'];$vals=[];foreach($cols as $c)$vals[]=$r[$c]??null;$vals[1]=$r['name'].' Copy';$sql='INSERT INTO store_products('.implode(',',$cols).',slug) VALUES('.implode(',',array_fill(0,count($cols)+1,'?')).')';$vals[]=$slug;db()->prepare($sql)->execute($vals);$copyId=(int)db()->lastInsertId();db()->prepare('INSERT INTO product_eggs(product_id,egg_id,display_name,is_default,enabled,sort_order,docker_image,startup,environment) SELECT ?,egg_id,display_name,is_default,enabled,sort_order,docker_image,startup,environment FROM product_eggs WHERE product_id=?')->execute([$copyId,$id]);$msg='Product duplicated, including provisioning configuration.';
   }elseif($action==='delete'){
@@ -94,7 +103,15 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
    $msg='Category "'.$catName.'" deleted.'.($productCount>0?' '.$productCount.' product(s) were moved to Uncategorized.':'');
   }elseif($action==='toggle'){db()->prepare('UPDATE store_products SET active=1-active WHERE id=?')->execute([$id]);$msg='Product availability updated.';}
   elseif($action==='test'){$q=db()->prepare('SELECT * FROM store_products WHERE id=?');$q->execute([$id]);$r=$q->fetch();if(!$r)throw new RuntimeException('Product not found.');if(linode_product_provider($r)==='linode'){linode_validate_product($r);$msg='Linode product configuration and API access validated.';}else{if(empty($r['ptero_egg_id'])||empty($r['ptero_location_id']))throw new RuntimeException('Select and save an Egg and Location first.');$msg='Saved Pterodactyl product configuration is ready to validate during provisioning.';}}
- }catch(Throwable $x){$err=$x->getMessage();}
+   if($action==='duplicate'&&!empty($copyId)&&!empty($r)){
+    if(linode_product_provider($r)==='linode'){
+     db()->prepare('UPDATE store_products SET ptero_egg_id=NULL,ptero_nest_id=NULL,ptero_location_id=NULL,ptero_docker_image=NULL,ptero_startup=NULL,ptero_environment=NULL,ptero_node_id=NULL,backups=0,database_limit=0,allocation_limit=1 WHERE id=?')->execute([$copyId]);
+     db()->prepare('DELETE FROM product_eggs WHERE product_id=?')->execute([$copyId]);
+    }else{
+     db()->prepare('UPDATE store_products SET linode_type=NULL,linode_region=NULL,linode_image=NULL,linode_backups=0,linode_firewall_id=NULL,linode_cloud_init=NULL WHERE id=?')->execute([$copyId]);
+    }
+   }
+  }catch(Throwable $x){$err=$x->getMessage();}
 }
 $categories=db()->query('SELECT * FROM store_categories ORDER BY sort_order,name')->fetchAll();
 $categoryStats=[];
@@ -111,6 +128,7 @@ admin_head($u,'Products','products');
 <div class="product-manager-stats"><div><span>Products</span><b><?=count($rows)?></b></div><div><span>Active</span><b><?=count(array_filter($rows,fn($x)=>!empty($x['active'])))?></b></div><div><span>Customer services</span><b><?=array_sum(array_map(fn($x)=>(int)$x['service_count'],$rows))?></b></div><div><span>Categories</span><b><?=count($categories)?></b></div></div>
 <section class="card category-manager-card"><div class="cardhead"><b>CATEGORIES</b><span class="muted">Deleting a category moves its products to Uncategorized</span></div><div class="category-manager-list"><?php foreach($categories as $c): $catProducts=(int)($categoryStats[(int)$c['id']]??0); $confirmText='Delete category '.$c['name'].'? '.($catProducts>0?'Products will be moved to Uncategorized before deletion.':'This category is empty and will be deleted.'); ?><div class="category-row"><div><b><?=e($c['name'])?></b><small class="muted">#<?=e($c['id'])?> · <?=e($c['slug'])?> · <?=e($catProducts)?> product<?=($catProducts===1?'':'s')?></small></div><form method="post" onsubmit="return confirm('<?=e(addslashes($confirmText))?>');"><input type="hidden" name="csrf" value="<?=e(csrf())?>"><input type="hidden" name="action" value="delete_category"><input type="hidden" name="category_id" value="<?=e($c['id'])?>"><button class="btn danger"><?=($catProducts>0?'Delete & Move':'Delete')?></button></form></div><?php endforeach?></div></section>
 <?php if($pteroErr):?><div class="error"><b>Pterodactyl catalog unavailable:</b> <?=e($pteroErr)?></div><?php else:?><div class="notice">Pterodactyl connected. Eggs, locations and nodes are available in each product configuration.</div><?php endif?>
+<?php if($linodeErr):?><div class="error"><b>Linode catalog unavailable:</b> <?=e($linodeErr)?></div><?php else:?><div class="notice">Linode catalog loaded: <?=count($linodeTypes)?> types, <?=count($linodeRegions)?> regions and <?=count($linodeImages)?> public images.</div><?php endif?>
 <div class="product-manager-list">
 <?php foreach($rows as $r): $savedEnv=json_decode($r['ptero_environment']?:'{}',true)?:[];$eggAttrs=[];$vars=[];$peq=db()->prepare('SELECT * FROM product_eggs WHERE product_id=? ORDER BY is_default DESC,sort_order,id');$peq->execute([(int)$r['id']]);$productEggs=$peq->fetchAll();$productEggIds=array_map(fn($x)=>(int)$x['egg_id'],$productEggs);$defaultEggId=0;$eggLabels=[];foreach($productEggs as $pe){if(!empty($pe['is_default']))$defaultEggId=(int)$pe['egg_id'];$eggLabels[(int)$pe['egg_id']]=$pe['display_name']??'';}if(!$pteroErr&&!empty($r['ptero_egg_id'])){try{[$eggAttrs,$vars]=egg_detail_vars((int)$r['ptero_egg_id'],$eggMeta);}catch(Throwable $x){}} ?>
 <section class="card product-manager-card">
@@ -130,13 +148,34 @@ admin_head($u,'Products','products');
 <dialog class="product-editor-dialog" id="new-product"><form method="post" class="product-editor-form"><input type="hidden" name="csrf" value="<?=e(csrf())?>"><input type="hidden" name="action" value="create"><div class="dialog-title"><div><span class="admin-kicker">NEW PRODUCT</span><h2>Create hosting product</h2></div><button class="btn" type="button" onclick="this.closest('dialog').close()">✕</button></div><div class="product-form-grid"><label>Name<input name="name" required></label><label>Category<select name="category_id" required><?php foreach($categories as $c):?><option value="<?=e($c['id'])?>"><?=e($c['name'])?></option><?php endforeach?></select></label><label class="fullfield">Description<textarea name="description" rows="4"></textarea></label><label>Monthly price (€)<input type="number" step="0.01" name="price" value="0.00"></label><label>RAM (MB)<input type="number" name="ram" value="2048"></label><label>CPU (%)<input type="number" name="cpu" value="100"></label><label>Disk (MB)<input type="number" name="disk" value="10000"></label><label>Backups<input type="number" name="backups" value="1"></label><label>Databases<input type="number" name="databases" value="1"></label><label>Allocations<input type="number" name="allocations" value="1"></label><label>Stock<input type="number" min="0" name="stock" value="0"><small>0 = out of stock</small></label><label><span>Unlimited stock</span><input type="checkbox" name="stock_unlimited" value="1" checked></label></div><div class="dialog-actions"><button class="btn" type="button" onclick="this.closest('dialog').close()">Cancel</button><button class="btn primary">Create product</button></div></form></dialog>
 <script>
 (() => {
- const dialog=document.getElementById('new-product');
- const grid=dialog?.querySelector('.product-form-grid');
- if(!grid||grid.querySelector('[name="provisioning_provider"]'))return;
- const label=document.createElement('label');
- label.innerHTML='Provisioning provider<select name="provisioning_provider"><option value="pterodactyl">Pterodactyl</option><option value="linode">Linode VPS</option></select>';
- grid.prepend(label);
+ const typeMeta=<?=json_encode($linodeTypeMeta,JSON_UNESCAPED_SLASHES|JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT)?>;
+ const regions=<?=json_encode($linodeRegions,JSON_UNESCAPED_SLASHES|JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT)?>;
+ const images=<?=json_encode($linodeImages,JSON_UNESCAPED_SLASHES|JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT)?>;
  const saved=<?=json_encode(array_values(array_map(fn($row)=>['id'=>(int)$row['id'],'linode_type'=>(string)($row['linode_type']??''),'linode_region'=>(string)($row['linode_region']??''),'linode_image'=>(string)($row['linode_image']??'')],$rows)),JSON_UNESCAPED_SLASHES)?>;
+
+ const newDialog=document.getElementById('new-product');
+ const newGrid=newDialog?.querySelector('.product-form-grid');
+ if(newGrid&&!newGrid.querySelector('[name="provisioning_provider"]')){
+  const providerLabel=document.createElement('label');
+  providerLabel.innerHTML='Provisioning provider<select name="provisioning_provider"><option value="pterodactyl">Pterodactyl</option><option value="linode">Linode VPS</option></select>';
+  newGrid.prepend(providerLabel);
+ }
+
+ function appendOptions(select,items,formatter){
+  Object.entries(items).forEach(([value,item])=>select.add(new Option(formatter(item,value),value)));
+ }
+ function buildNewLinodePanel(){
+  if(!newGrid||newGrid.querySelector('.linode-provider-config'))return;
+  const panel=document.createElement('div');
+  panel.className='fullfield linode-provider-config';
+  panel.innerHTML='<div class="multi-egg-head"><b>Linode VPS configuration</b><small>Live options loaded from Linode.</small></div><div class="provider-config-grid"><label>Linode type<select name="linode_type"><option value="">— Select type —</option></select></label><label>Region<select name="linode_region"><option value="">— Select region —</option></select></label><label>Operating system image<select name="linode_image"><option value="">— Select image —</option></select></label><label>Firewall ID (optional)<input type="number" min="1" name="linode_firewall_id"></label><label><span>Linode backups</span><input type="checkbox" name="linode_backups" value="1"></label><label class="fullfield">Cloud-init (optional)<textarea name="linode_cloud_init" rows="8" placeholder="#cloud-config"></textarea></label></div><div class="linode-type-summary muted">Select a Linode type to import its resources.</div>';
+  appendOptions(panel.querySelector('[name="linode_type"]'),typeMeta,(item,id)=>item.label+' ('+id+')'+(item.monthly?' · $'+Number(item.monthly).toFixed(2)+'/mo':''));
+  appendOptions(panel.querySelector('[name="linode_region"]'),regions,(label,id)=>label+' ('+id+')');
+  appendOptions(panel.querySelector('[name="linode_image"]'),images,label=>label);
+  newGrid.append(panel);
+ }
+ buildNewLinodePanel();
+
  saved.forEach(product=>{
   const editor=document.getElementById('edit-product-'+product.id);
   if(!editor)return;
@@ -147,6 +186,43 @@ admin_head($u,'Products','products');
    if(![...select.options].some(option=>option.value===value))select.add(new Option(value+' (saved)',value));
    select.value=value;
   });
+ });
+
+ function setVisible(nodes,visible){
+  [...new Set(nodes.filter(Boolean))].forEach(node=>{
+   node.hidden=!visible;
+   node.querySelectorAll('input,select,textarea').forEach(field=>field.disabled=!visible);
+  });
+ }
+ function fillLinodeResources(editor,updatePrice=false){
+  const type=editor.querySelector('[name="linode_type"]')?.value||'';
+  const meta=typeMeta[type];
+  const summary=editor.querySelector('.linode-type-summary')||(()=>{const el=document.createElement('div');el.className='linode-type-summary muted';editor.querySelector('.linode-provider-config')?.append(el);return el;})();
+  ['ram','disk','cpu'].forEach(name=>{const input=editor.querySelector('[name="'+name+'"]');if(input)input.readOnly=Boolean(meta);});
+  if(!meta){if(summary)summary.textContent='Select a Linode type to import its resources.';return;}
+  const values={ram:Number(meta.memory||0),disk:Number(meta.disk||0),cpu:Number(meta.vcpus||0)*100};
+  Object.entries(values).forEach(([name,value])=>{const input=editor.querySelector('[name="'+name+'"]');if(input&&value>0)input.value=String(value);});
+  const priceInput=editor.querySelector('[name="price"]');
+  if(priceInput&&Number(meta.monthly||0)>0&&(updatePrice||Number(priceInput.value||0)<=0))priceInput.value=Number(meta.monthly).toFixed(2);
+  if(summary)summary.textContent=Number(meta.vcpus||0)+' vCPU · '+Number(meta.memory||0)+' MB RAM · '+Number(meta.disk||0)+' MB disk · '+Number(meta.transfer||0)+' GB transfer'+(meta.monthly?' · Linode base $'+Number(meta.monthly).toFixed(2)+'/month':'');
+ }
+ function syncProvider(editor,importResources=false){
+  const provider=editor.querySelector('[name="provisioning_provider"]')?.value||'pterodactyl';
+  const linode=provider==='linode';
+  const pteroNodes=[editor.querySelector('.multi-egg-box')];
+  ['backups','databases','allocations','location_id','node_id','docker_image','startup'].forEach(name=>pteroNodes.push(editor.querySelector('[name="'+name+'"]')?.closest('label')));
+  editor.querySelectorAll('[name^="env["]').forEach(input=>pteroNodes.push(input.closest('label')));
+  setVisible(pteroNodes,!linode);
+  setVisible([...editor.querySelectorAll('.linode-provider-config')],linode);
+  ['linode_type','linode_region','linode_image'].forEach(name=>{const field=editor.querySelector('[name="'+name+'"]');if(field)field.required=linode;});
+  if(linode)fillLinodeResources(editor,importResources);else ['ram','disk','cpu'].forEach(name=>{const input=editor.querySelector('[name="'+name+'"]');if(input)input.readOnly=false;});
+ }
+ document.querySelectorAll('.product-editor-dialog').forEach(editor=>{
+  const provider=editor.querySelector('[name="provisioning_provider"]');
+  if(!provider)return;
+  provider.addEventListener('change',()=>syncProvider(editor,true));
+  editor.querySelector('[name="linode_type"]')?.addEventListener('change',()=>fillLinodeResources(editor,true));
+  syncProvider(editor,false);
  });
 })();
 </script>
@@ -159,7 +235,7 @@ admin_head($u,'Products','products');
 .multi-egg-box{border:1px solid var(--line,#283248);border-radius:12px;padding:14px;background:rgba(255,255,255,.02)}
 .multi-egg-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px}.multi-egg-head small{color:#8d98ad}
 .multi-egg-list{max-height:330px;overflow:auto;display:grid;gap:7px}.multi-egg-row{display:grid;grid-template-columns:minmax(240px,1fr) 100px minmax(180px,.7fr);gap:10px;align-items:center;padding:9px 10px;border:1px solid rgba(255,255,255,.07);border-radius:9px}.multi-egg-row label{margin:0}.egg-check{display:flex;align-items:center;gap:9px}.egg-check input,.egg-default input{width:auto}.egg-default{display:flex;align-items:center;gap:6px}.egg-label-input{min-width:0}.egg-customer-label{display:grid;gap:5px}.egg-customer-label>span{color:#8d98ad;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em}@media(max-width:800px){.multi-egg-row{grid-template-columns:1fr}.multi-egg-head{align-items:flex-start;flex-direction:column}}
-.linode-provider-config{border:1px solid var(--line,#283248);border-radius:12px;padding:14px;background:rgba(255,255,255,.02)}.provider-config-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.provider-config-grid .fullfield{grid-column:1/-1}@media(max-width:800px){.provider-config-grid{grid-template-columns:1fr}}
+.linode-provider-config{border:1px solid var(--line,#283248);border-radius:12px;padding:14px;background:rgba(255,255,255,.02)}.provider-config-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.provider-config-grid .fullfield{grid-column:1/-1}.linode-type-summary{margin-top:12px;padding:11px 13px;border-radius:9px;background:rgba(64,154,255,.08);border:1px solid rgba(64,154,255,.16);font-size:12px}.product-editor-form input[readonly]{opacity:.72;cursor:not-allowed}@media(max-width:800px){.provider-config-grid{grid-template-columns:1fr}}
 </style>
 <?php admin_foot(); ?>
 <?php /* End product manager. */ ?>

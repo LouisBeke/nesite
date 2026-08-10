@@ -13,7 +13,8 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
       }
       $jid=provisioning_queue_service($sid,['source'=>'admin_services','admin_id'=>(int)$u['id']],85,true);
       service_log($sid,(int)$u['id'],'provision','Provisioning queued from Admin Center. Job #'.$jid);
-      $msg='Provisioning queued (job #'.$jid.'). The background cron worker will process it.';
+      $immediate=provisioning_maybe_run_linode_now($sid,$jid);
+      $msg=$immediate['status']==='completed'?'Linode VPS provisioned immediately (job #'.$jid.').':'Provisioning queued (job #'.$jid.').'.(!empty($immediate['error'])?' '.$immediate['error']:' The background cron worker will process it.');
       break;
    case 'undo_duplicate_merge':
       $source=service_row($sid);

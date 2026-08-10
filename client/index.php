@@ -198,7 +198,7 @@ $initial = mb_strtoupper(mb_substr(trim((string)$u['name']), 0, 1));
             </section>
 
             <div class="client-dashboard-grid">
-                <section class="dashboard-section server-section">
+                <section class="dashboard-section server-section" id="services">
                     <div class="dashboard-section-head">
                         <div><span class="section-kicker">Infrastructure</span><h2>Your servers</h2><p>Live performance and service controls.</p></div>
                         <span class="section-count"><?=count($servers)?> server<?=count($servers)===1?'':'s'?></span>

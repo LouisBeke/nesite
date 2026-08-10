@@ -708,6 +708,17 @@ function fox_v16_linode_migrate(): void {
     }
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v16-linode-vps']);
 }
+
+function fox_v16a_provider_config_cleanup_migrate(): void {
+    static $ran=false; if($ran)return; $ran=true; $pdo=db();
+    if(fox_migration_applied($pdo,'v16a-provider-config-cleanup'))return;
+    if(fox_table_exists($pdo,'store_products')&&fox_column_exists($pdo,'store_products','provisioning_provider')){
+        $pdo->exec("UPDATE store_products SET ptero_egg_id=NULL,ptero_nest_id=NULL,ptero_location_id=NULL,ptero_docker_image=NULL,ptero_startup=NULL,ptero_environment=NULL,ptero_node_id=NULL,backups=0,database_limit=0,allocation_limit=1 WHERE provisioning_provider='linode'");
+        $pdo->exec("UPDATE store_products SET linode_type=NULL,linode_region=NULL,linode_image=NULL,linode_backups=0,linode_firewall_id=NULL,linode_cloud_init=NULL WHERE provisioning_provider<>'linode'");
+        if(fox_table_exists($pdo,'product_eggs'))$pdo->exec("DELETE pe FROM product_eggs pe JOIN store_products p ON p.id=pe.product_id WHERE p.provisioning_provider='linode'");
+    }
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v16a-provider-config-cleanup']);
+}
 /* Removed malformed duplicate migration tail.
 ')) {
         $pdo->prepare("INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES('automation_batch_size','20'),('automation_worker_timeout_seconds','300')")->execute();

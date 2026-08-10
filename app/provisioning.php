@@ -70,7 +70,9 @@ function provisioning_dispatch_order(int $orderId, array $meta = []): int {
     $serviceId = ensure_service_for_order($orderId);
     db()->prepare("UPDATE orders SET status='provisioning' WHERE id=? AND status IN ('paid','awaiting_payment')")->execute([$orderId]);
     zoho_crm_try_sync_service($serviceId);
-    return provisioning_queue_service($serviceId, $meta, 70, false);
+    $queueId=provisioning_queue_service($serviceId, $meta, 70, false);
+    provisioning_maybe_run_linode_now($serviceId,$queueId);
+    return $queueId;
 }
 
 function provisioning_register_worker(string $workerId, string $status = 'idle', bool $failed = false): void {
@@ -472,6 +474,51 @@ function provisioning_process_job(array $job, array &$runtime = []): void {
         return;
     }
     throw new RuntimeException('Unknown provisioning job type: ' . $type);
+}
+
+function provisioning_run_job_now(int $queueId): array {
+    if(setting('provisioning_enabled','1')!=='1')return ['status'=>'disabled','error'=>'Provisioning worker is disabled.'];
+    $pdo=db();$workerId=provisioning_worker_id();
+    $pdo->beginTransaction();
+    try{
+        $q=$pdo->prepare("SELECT * FROM provisioning_queue WHERE id=? FOR UPDATE");$q->execute([$queueId]);$job=$q->fetch();
+        if(!$job){$pdo->commit();return ['status'=>'missing','error'=>'Provisioning job not found.'];}
+        if(!in_array((string)$job['status'],['pending','retry_wait'],true)){$pdo->commit();return ['status'=>(string)$job['status'],'error'=>$job['last_error']??null];}
+        $pdo->prepare("UPDATE provisioning_queue SET status='running',worker_id=?,attempts=attempts+1,started_at=NOW(),updated_at=NOW() WHERE id=?")->execute([$workerId,$queueId]);
+        $pdo->commit();
+        $q=$pdo->prepare('SELECT * FROM provisioning_queue WHERE id=?');$q->execute([$queueId]);$job=$q->fetch();
+    }catch(Throwable $e){if($pdo->inTransaction())$pdo->rollBack();throw $e;}
+    if(!$job)return ['status'=>'missing','error'=>'Provisioning job disappeared after claim.'];
+    provisioning_register_worker($workerId,'running',false);
+    provisioning_emit_event('queue.job_claimed',['worker_id'=>$workerId,'immediate'=>1],$queueId);
+    $runtime=[];
+    try{
+        provisioning_process_job($job,$runtime);
+        $pdo->prepare("UPDATE provisioning_queue SET status='completed',finished_at=NOW(),last_error=NULL,worker_id=NULL WHERE id=?")->execute([$queueId]);
+        provisioning_register_worker($workerId,'idle',false);
+        return ['status'=>'completed','error'=>null];
+    }catch(Throwable $e){
+        provisioning_emit_event('queue.job_failed',['error'=>$e->getMessage(),'immediate'=>1],$queueId,'error',$e->getMessage());
+        provisioning_rollback_service_job($job,$e,$runtime);
+        $attempts=(int)$job['attempts'];$maxAttempts=(int)$job['max_attempts'];
+        if($attempts<$maxAttempts){
+            $delay=provisioning_retry_delay($attempts);
+            $pdo->prepare("UPDATE provisioning_queue SET status='retry_wait',last_error=?,run_at=DATE_ADD(NOW(),INTERVAL ? SECOND),worker_id=NULL WHERE id=?")->execute([$e->getMessage(),$delay,$queueId]);
+            provisioning_emit_event('queue.job_retry_scheduled',['delay_seconds'=>$delay,'attempt'=>$attempts],$queueId,'warning');
+            $status='retry_wait';
+        }else{
+            $pdo->prepare("UPDATE provisioning_queue SET status='failed',last_error=?,finished_at=NOW(),worker_id=NULL WHERE id=?")->execute([$e->getMessage(),$queueId]);
+            $status='failed';
+        }
+        provisioning_register_worker($workerId,'idle',true);
+        return ['status'=>$status,'error'=>$e->getMessage()];
+    }
+}
+
+function provisioning_maybe_run_linode_now(int $serviceId,int $queueId): array {
+    $service=service_row($serviceId);
+    if(linode_service_provider($service)!=='linode'||setting('linode_immediate_provisioning','1')!=='1')return ['status'=>'queued','error'=>null];
+    return provisioning_run_job_now($queueId);
 }
 
 function provisioning_run_worker(int $limit = 5): array {

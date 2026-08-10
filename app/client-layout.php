@@ -5,6 +5,7 @@ function client_sidebar_icon(string $name): string
 {
     $paths = [
         'overview' => '<path d="M3 10.5 12 3l9 7.5v9A1.5 1.5 0 0 1 19.5 21H15v-6H9v6H4.5A1.5 1.5 0 0 1 3 19.5z"/>',
+        'services' => '<rect x="4" y="4" width="16" height="6" rx="2"/><rect x="4" y="14" width="16" height="6" rx="2"/><path d="M8 7h.01M8 17h.01M12 7h5M12 17h5"/>',
         'store' => '<path d="M5 8h14l-1 13H6L5 8Z"/><path d="M9 9V6a3 3 0 0 1 6 0v3"/>',
         'orders' => '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h4"/>',
         'billing' => '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/>',
@@ -21,7 +22,7 @@ function client_sidebar_icon(string $name): string
 function render_client_sidebar(array $user, string $active = 'overview', ?int $openTickets = null, string $variant = 'legacy'): void
 {
     $appName=trim((string)cfg('app_name'))?:'FoxNetwork';
-    $validSections = ['overview', 'store', 'orders', 'billing', 'support', 'settings'];
+    $validSections = ['overview', 'services', 'store', 'orders', 'billing', 'support', 'settings'];
     if (!in_array($active, $validSections, true)) $active = 'overview';
 
     if ($openTickets === null) {
@@ -49,6 +50,7 @@ function render_client_sidebar(array $user, string $active = 'overview', ?int $o
         : 'nav bottom client-sidebar-footer portal-side-footer';
     $items = [
         'overview' => ['/client', 'Overview'],
+        'services' => ['/client#services', 'Services'],
         'store' => ['/store.php', 'Store'],
         'orders' => ['/orders.php', 'Orders'],
         'billing' => ['/billing.php', 'Billing'],

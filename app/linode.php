@@ -64,6 +64,19 @@ function linode_service_provider(array $service): string {
     return 'pterodactyl';
 }
 
+function linode_public_images(): array {
+    $result=linode_api('/images?page_size=500','GET',null,false);
+    $images=[];
+    foreach((array)($result['data']??[]) as $image){
+        $id=trim((string)($image['id']??''));
+        $eol=trim((string)($image['eol']??''));
+        if($id===''||empty($image['is_public'])||!empty($image['deprecated'])||($eol!==''&&strtotime($eol)!==false&&strtotime($eol)<=time()))continue;
+        $images[$id]=(string)($image['label']??$id);
+    }
+    asort($images,SORT_NATURAL|SORT_FLAG_CASE);
+    return $images;
+}
+
 function linode_generate_root_password(): string {
     return 'Fx!'.bin2hex(random_bytes(12)).'aA7';
 }
@@ -111,14 +124,16 @@ function provision_linode_service(array $row, int $serviceId, array &$runtime = 
         $runtime['linode_instance_id'] = (int)$row['linode_instance_id'];
         return $instance;
     }
-    linode_validate_product($row);
     $cfg = json_decode((string)($row['config_json'] ?? ''), true) ?: [];
+    $selectedImage=trim((string)($cfg['linode_image']??$row['linode_image']??''));
+    $provisionProduct=$row;$provisionProduct['linode_image']=$selectedImage;
+    linode_validate_product($provisionProduct);
     $label = linode_instance_label($serviceId, (string)$row['name']);
     $existing = linode_find_instance_by_label($label);
     $rootPassword = linode_generate_root_password();
     if ($existing) {
         $instance = $existing;
-        $rebuild=['image'=>(string)$row['linode_image'],'root_pass'=>$rootPassword,'booted'=>true];
+        $rebuild=['image'=>$selectedImage,'root_pass'=>$rootPassword,'booted'=>true];
         $sshKey=linode_validate_ssh_key((string)($cfg['ssh_public_key']??''));
         if($sshKey!=='')$rebuild['authorized_keys']=[$sshKey];
         linode_api('/linode/instances/'.(int)$existing['id'].'/rebuild','POST',$rebuild);
@@ -126,7 +141,7 @@ function provision_linode_service(array $row, int $serviceId, array &$runtime = 
         $payload = [
             'type' => (string)$row['linode_type'],
             'region' => (string)$row['linode_region'],
-            'image' => (string)$row['linode_image'],
+            'image' => $selectedImage,
             'label' => $label,
             'group' => 'FoxNetwork VPS',
             'tags' => ['foxnetwork', 'service-'.$serviceId],
@@ -181,11 +196,11 @@ function linode_rebuild_service(array $service): void {
     $q = db()->prepare('SELECT p.linode_image,s.config_json FROM services s LEFT JOIN store_products p ON p.id=s.product_id WHERE s.id=?');
     $q->execute([(int)$service['id']]);
     $row = $q->fetch() ?: [];
-    $image = trim((string)($row['linode_image'] ?? ''));
-    if ($image === '') throw new RuntimeException('The Linode product has no rebuild image configured.');
+    $cfg = json_decode((string)($row['config_json'] ?? ''), true) ?: [];
+    $image = trim((string)($cfg['linode_image'] ?? $row['linode_image'] ?? ''));
+    if ($image === '') throw new RuntimeException('This VPS has no rebuild image configured.');
     $password = linode_generate_root_password();
     $payload = ['image'=>$image,'root_pass'=>$password,'booted'=>true];
-    $cfg = json_decode((string)($row['config_json'] ?? ''), true) ?: [];
     $sshKey = linode_validate_ssh_key((string)($cfg['ssh_public_key'] ?? ''));
     if ($sshKey !== '') $payload['authorized_keys'] = [$sshKey];
     linode_api('/linode/instances/'.$instanceId.'/rebuild', 'POST', $payload);

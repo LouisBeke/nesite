@@ -16,7 +16,7 @@ $keys = [
     'hosting_allow_startup_variable_edit','hosting_allow_custom_startup_command','hosting_allow_docker_image_selection','hosting_allow_extra_allocations',
     'provisioning_smart_node_enabled','provisioning_node_cache_max_age_seconds','provisioning_allocation_lock_timeout_seconds',
     'provisioning_weight_cpu','provisioning_weight_ram','provisioning_weight_disk','provisioning_weight_servers',
-    'provisioning_remove_failed_queue_item','provisioning_enabled','provisioning_batch_size','provisioning_max_attempts',
+    'provisioning_remove_failed_queue_item','provisioning_enabled','linode_immediate_provisioning','provisioning_batch_size','provisioning_max_attempts',
     'provisioning_worker_timeout_seconds','provisioning_retry_base_seconds','provisioning_retry_max_seconds',
     'provisioning_online_check_tries','provisioning_online_check_sleep_ms','provisioning_strict_online_check',
     'automation_batch_size','automation_worker_timeout_seconds',
@@ -193,6 +193,12 @@ admin_head($u, 'Settings', 'settings');
             <select name="provisioning_enabled">
                 <option value="1" <?=setting('provisioning_enabled','1')==='1'?'selected':''?>>Enabled</option>
                 <option value="0" <?=setting('provisioning_enabled','1')==='0'?'selected':''?>>Disabled</option>
+            </select>
+        </label>
+        <label>Linode provisioning speed
+            <select name="linode_immediate_provisioning">
+                <option value="1" <?=setting('linode_immediate_provisioning','1')==='1'?'selected':''?>>Immediate after checkout</option>
+                <option value="0" <?=setting('linode_immediate_provisioning','1')==='0'?'selected':''?>>Background cron only</option>
             </select>
         </label>
         <label>Strict online verification
