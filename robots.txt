@@ -5,3 +5,4 @@ Disallow: /app/
 Disallow: /*webhook.php$
 
 Sitemap: https://foxnetwork.be/sitemap.xml
+Sitemap: https://foxnetwork.be/blog-sitemap.php

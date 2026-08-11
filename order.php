@@ -217,7 +217,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                               <option value="">— Choose software —</option><?php foreach ($allowedEggs as $ae): $label = (string)$ae['customer_label'];
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     $sel = (int)($_POST['egg_id'] ?? 0) === (int)$ae['egg_id'] || (!isset($_POST['egg_id']) && !empty($ae['is_default'])); ?><option value="<?= e($ae['egg_id']) ?>" <?= $sel ? 'selected' : '' ?>><?= e($label) ?><?= !empty($ae['is_default']) ? ' — Recommended' : '' ?></option><?php endforeach ?>
                             </select></div><?php endif ?>
-                     <?php if($isLinode):?><div class="field customer-os-field"><label>Operating system image</label><select name="linode_image" required><option value="">— Choose operating system —</option><?php foreach($linodeImages as $imageId=>$imageLabel):$imageSelected=(string)($_POST['linode_image']??$p['linode_image']??'')===(string)$imageId;?><option value="<?=e($imageId)?>" <?=$imageSelected?'selected':''?>><?=e($imageLabel)?> (<?=e($imageId)?>)</option><?php endforeach?></select><div class="muted small">Choose the operating system that will be installed on your VPS.</div><?php if($linodeImageError):?><div class="muted small">The live image catalog is temporarily unavailable; the product default remains available.</div><?php endif?></div><script>document.querySelectorAll('#configForm .field').forEach(field=>{const label=field.querySelector('label');if(label&&label.textContent.trim()==='Operating system'&&field.querySelector('input[disabled]'))field.remove();});</script><?php endif?>
+                     <?php if($isLinode):?><div class="field customer-os-field"><label>Operating system image</label><select name="linode_image" required><option value="">— Choose operating system —</option><?php foreach($linodeImages as $imageId=>$imageLabel):$imageSelected=(string)($_POST['linode_image']??$p['linode_image']??'')===(string)$imageId;?><option value="<?=e($imageId)?>" <?=$imageSelected?'selected':''?>><?=e($imageLabel)?></option><?php endforeach?></select><div class="muted small">Choose the operating system that will be installed on your VPS.</div><?php if($linodeImageError):?><div class="muted small">The live image catalog is temporarily unavailable; the product default remains available.</div><?php endif?></div><script>document.querySelectorAll('#configForm .field').forEach(field=>{const label=field.querySelector('label');if(label&&label.textContent.trim()==='Operating system'&&field.querySelector('input[disabled]'))field.remove();});</script><?php endif?>
                      <?php if (!$isDeviceRepair && !$isLinode): ?><?php foreach ($varsByEgg as $eid => $vars): ?><div class="egg-options" data-egg="<?= e($eid) ?>" style="display:none">
                         <h3>Software options</h3><?php foreach ($vars as $v): if (empty($v['customer_visible'])) continue;
                                                          $key = $v['env_variable'];
@@ -228,7 +228,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                            </div><?php endforeach ?>
                      </div><?php endforeach ?><?php endif ?>
                      <button class="btn primary wide" type="submit">Continue to payment</button>
-                     <div class="muted small checkout-note"><?= $isDeviceRepair ? 'A support ticket is created automatically and billing is confirmed later in that ticket.' : ($isLinode ? 'Linode type, region and image availability are checked before the invoice is created.' : 'Stock and node capacity are checked before the invoice is created.') ?></div>
+                     <div class="muted small checkout-note"><?= $isDeviceRepair ? 'A support ticket is created automatically and billing is confirmed later in that ticket.' : ($isLinode ? 'VPS plan, region and image availability are checked before the invoice is created.' : 'Stock and node capacity are checked before the invoice is created.') ?></div>
                   </form>
                </section>
                <aside class="card summary">
@@ -237,7 +237,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      <h3><?= e($p['name']) ?></h3><?php if ($isDeviceRepair): ?><div class="summary-row"><span>Service</span><b>Repair intake ticket</b></div>
                         <div class="summary-row"><span>Workflow</span><b>Order + ticket (invoice after confirmation)</b></div><?php else: ?><div class="summary-row"><span>RAM</span><b><?= e((string)round($p['ram_mb'] / 1024, 1)) ?> GB</b></div>
                         <div class="summary-row"><span>CPU</span><b><?= e($p['cpu_percent']) ?>%</b></div>
-                        <div class="summary-row"><span>Storage</span><b><?= e((string)round($p['disk_mb'] / 1000)) ?> GB</b></div><?php if($isLinode):?><div class="summary-row"><span>Provider</span><b>Linode</b></div><div class="summary-row"><span>Plan</span><b><?=e($p['linode_type'])?></b></div><div class="summary-row"><span>Region</span><b><?=e($p['linode_region'])?></b></div><?php endif?><?php endif ?><div class="summary-row"><span>Stock</span><b><?= $p['stock'] === null ? 'Unlimited' : e($p['stock']) ?></b></div>
+                        <div class="summary-row"><span>Storage</span><b><?= e((string)round($p['disk_mb'] / 1000)) ?> GB</b></div><?php if($isLinode):?><div class="summary-row"><span>Platform</span><b>FoxNetwork Cloud</b></div><div class="summary-row"><span>Plan</span><b><?=e($p['linode_type'])?></b></div><div class="summary-row"><span>Region</span><b><?=e($p['linode_region'])?></b></div><?php endif?><?php endif ?><div class="summary-row"><span>Stock</span><b><?= $p['stock'] === null ? 'Unlimited' : e($p['stock']) ?></b></div>
                      <?php if($isLinode):$summaryImage=(string)($_POST['linode_image']??$p['linode_image']??'');?><div class="summary-row"><span>Operating system</span><b data-linode-image-summary><?=e($linodeImages[$summaryImage]??$summaryImage)?></b></div><?php endif?>
                      <div class="summary-total"><span>Total</span><strong>€<?= number_format($displayPrice, 2) ?><small><?= $isDeviceRepair ? '' : '/mo' ?></small></strong></div>
                   </div>
@@ -264,6 +264,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       const linodeImageSummary=document.querySelector('[data-linode-image-summary]');
       if(linodeImageSelect&&linodeImageSummary)linodeImageSelect.addEventListener('change',()=>{linodeImageSummary.textContent=linodeImageSelect.selectedOptions[0]?.textContent||'—';});
    </script>
+</body>
+
+</html>
 </body>
 
 </html>

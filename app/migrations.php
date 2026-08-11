@@ -719,6 +719,34 @@ function fox_v16a_provider_config_cleanup_migrate(): void {
     }
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v16a-provider-config-cleanup']);
 }
+
+function fox_v17_blog_migrate(): void {
+    static $ran=false; if($ran)return; $ran=true; $pdo=db();
+    if(fox_migration_applied($pdo,'v17-blog'))return;
+    $pdo->exec("CREATE TABLE IF NOT EXISTS blog_posts (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        external_id VARCHAR(190) NULL,
+        slug VARCHAR(190) NOT NULL UNIQUE,
+        title VARCHAR(255) NOT NULL,
+        excerpt TEXT NULL,
+        content_html LONGTEXT NOT NULL,
+        meta_title VARCHAR(255) NULL,
+        meta_description VARCHAR(320) NULL,
+        category VARCHAR(120) NULL,
+        author_name VARCHAR(160) NULL,
+        hero_image VARCHAR(500) NULL,
+        status VARCHAR(24) NOT NULL DEFAULT 'draft',
+        published_at DATETIME NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_blog_external_id(external_id),
+        INDEX idx_blog_public(status,published_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    if(fox_table_exists($pdo,'app_settings')){
+        $pdo->prepare("INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES('soro_webhook_secret',''),('blog_author_name','FoxNetwork Team')")->execute();
+    }
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v17-blog']);
+}
 /* Removed malformed duplicate migration tail.
 ')) {
         $pdo->prepare("INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES('automation_batch_size','20'),('automation_worker_timeout_seconds','300')")->execute();

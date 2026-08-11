@@ -19,7 +19,7 @@ $keys = [
     'provisioning_remove_failed_queue_item','provisioning_enabled','linode_immediate_provisioning','provisioning_batch_size','provisioning_max_attempts',
     'provisioning_worker_timeout_seconds','provisioning_retry_base_seconds','provisioning_retry_max_seconds',
     'provisioning_online_check_tries','provisioning_online_check_sleep_ms','provisioning_strict_online_check',
-    'automation_batch_size','automation_worker_timeout_seconds',
+    'automation_batch_size','automation_worker_timeout_seconds','blog_author_name',
     'maintenance_mode','maintenance_message','portal_registration','security_session_hours'
 ];
 
@@ -47,14 +47,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($_POST['smtp_password']) && trim((string)$_POST['smtp_password']) !== '') {
             save_setting('smtp_password', 'enc:' . enc(trim((string)$_POST['smtp_password'])));
         }
-        foreach (['zoho_crm_client_secret','zoho_crm_refresh_token','pterodactyl_application_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token'] as $secretKey) {
+        foreach (['zoho_crm_client_secret','zoho_crm_refresh_token','pterodactyl_application_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token','soro_webhook_secret'] as $secretKey) {
             if (isset($_POST[$secretKey]) && trim((string)$_POST[$secretKey]) !== '') {
                 save_setting($secretKey, 'enc:' . enc(trim((string)$_POST[$secretKey])));
                 if(str_starts_with($secretKey,'zoho_crm_'))$crmCredentialsChanged = true;
             }
         }
         $fallbackSecrets=['pterodactyl_application_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token'];
-        $clearableSecrets=array_merge($fallbackSecrets,['smtp_password','zoho_crm_client_secret','zoho_crm_refresh_token']);
+        $clearableSecrets=array_merge($fallbackSecrets,['smtp_password','zoho_crm_client_secret','zoho_crm_refresh_token','soro_webhook_secret']);
         foreach((array)($_POST['clear_secret']??[]) as $secretKey){
             if(!in_array($secretKey,$clearableSecrets,true))continue;
             save_setting($secretKey,in_array($secretKey,$fallbackSecrets,true)?'__EMPTY__':'');
@@ -97,6 +97,8 @@ $mollieKeyConfigured=trim((string)cfg('mollie.api_key'))!=='';
 $webhookSecretRaw=(string)setting('pterodactyl_webhook_secret','');
 $webhookSecretConfigured=$webhookSecretRaw!==''&&$webhookSecretRaw!=='__EMPTY__';
 $linodeTokenConfigured=linode_api_token()!=='';
+$soroSecretRaw=(string)setting('soro_webhook_secret','');
+$soroSecretConfigured=$soroSecretRaw!==''&&$soroSecretRaw!=='__EMPTY__';
 admin_head($u, 'Settings', 'settings');
 ?>
 <?php if($msg):?><div class="notice"><?=e($msg)?></div><?php endif?>
@@ -118,11 +120,14 @@ admin_head($u, 'Settings', 'settings');
         <label>Linode API URL<input type="url" name="linode_api_url" value="<?=e(setting('linode_api_url','https://api.linode.com/v4'))?>" required></label>
         <label>Linode personal access token<input type="password" name="linode_api_token" value="" placeholder="<?=$linodeTokenConfigured?'Configured — leave empty to keep':'Token with Linodes read/write access'?>" autocomplete="new-password"></label>
         <label>Linode disk encryption<select name="linode_disk_encryption"><option value="enabled" <?=setting('linode_disk_encryption','enabled')==='enabled'?'selected':''?>>Enabled</option><option value="disabled" <?=setting('linode_disk_encryption','enabled')==='disabled'?'selected':''?>>Disabled</option></select></label>
+        <label>Blog author name<input name="blog_author_name" value="<?=e(setting('blog_author_name','FoxNetwork Team'))?>" maxlength="160"></label>
+        <label>Soro webhook secret<input type="password" name="soro_webhook_secret" value="" placeholder="<?=$soroSecretConfigured?'Configured — leave empty to keep':'Paste or generate from Blog admin'?>" autocomplete="new-password"></label>
         <div class="fullfield config-secret-actions">
             <label><input type="checkbox" name="clear_secret[]" value="pterodactyl_application_key"> Disable stored Pterodactyl application key</label>
             <label><input type="checkbox" name="clear_secret[]" value="mollie_api_key"> Disable stored Mollie API key</label>
             <label><input type="checkbox" name="clear_secret[]" value="pterodactyl_webhook_secret"> Disable webhook signature secret</label>
             <label><input type="checkbox" name="clear_secret[]" value="linode_api_token"> Disable stored Linode API token</label>
+            <label><input type="checkbox" name="clear_secret[]" value="soro_webhook_secret"> Clear Soro webhook secret</label>
         </div>
         <div class="fullfield"><button class="btn" type="submit" name="settings_action" value="test_linode">Save &amp; test Linode</button></div>
         <p class="muted fullfield" style="margin:0">Secrets are encrypted in the database. Database host, database name and database credentials remain startup-only because the portal must connect to that database before this Settings page can load.</p>

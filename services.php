@@ -45,8 +45,8 @@ $initial=mb_strtoupper(mb_substr(trim((string)$user['name']),0,1));
      $due=$isFree?'Never expires':(!empty($service['next_due_at'])?date('d M Y',strtotime((string)$service['next_due_at'])):'Not scheduled');
     ?>
     <article class="service-tile is-<?=e($status)?>">
-     <div class="service-tile-head"><div class="service-identity"><span><i class="fas <?=$provider==='linode'?'fa-cloud':'fa-cube'?>"></i></span><div><small><?=$provider==='linode'?'LINODE VPS':'GAME SERVER'?></small><h2><?=e((string)$service['name'])?></h2><p><?=e((string)($service['product_name']??'FoxNetwork service'))?></p></div></div><span class="service-state is-<?=e($status)?>"><?=e($status)?></span></div>
-     <div class="service-facts"><div class="service-fact"><span>Address</span><b><?=e($address)?></b></div><div class="service-fact"><span>Next due</span><b><?=e($due)?></b></div><div class="service-fact"><span>Provider</span><b><?=$provider==='linode'?'Linode':'Pterodactyl'?></b></div></div>
+     <div class="service-tile-head"><div class="service-identity"><span><i class="fas <?=$provider==='linode'?'fa-cloud':'fa-cube'?>"></i></span><div><small><?=$provider==='linode'?'CLOUD VPS':'GAME SERVER'?></small><h2><?=e((string)$service['name'])?></h2><p><?=e((string)($service['product_name']??'FoxNetwork service'))?></p></div></div><span class="service-state is-<?=e($status)?>"><?=e($status)?></span></div>
+     <div class="service-facts"><div class="service-fact"><span>Address</span><b><?=e($address)?></b></div><div class="service-fact"><span>Next due</span><b><?=e($due)?></b></div><div class="service-fact"><span>Platform</span><b><?=$provider==='linode'?'FoxNetwork Cloud':'Game panel'?></b></div></div>
      <div class="service-actions"><div class="service-price"><b><?=$isFree?'Free':e(number_format($price,2).' '.(string)($service['currency']??'EUR'))?></b><small><?=$isFree?'No renewal charge':'per month'?></small></div><a class="service-open<?=$manageUrl===''?' disabled':''?>" href="<?=e($manageUrl?:'#')?>"><?=$provider==='linode'?'Open VPS dashboard':'Manage server'?> <i class="fas fa-arrow-right"></i></a></div>
     </article>
     <?php endforeach?>

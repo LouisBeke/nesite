@@ -104,13 +104,13 @@ if (!$servers && !empty($u['ptero_user_id'])) {
 
 foreach($serviceRows as $svc){
     if(linode_service_provider($svc)!=='linode')continue;
-    $servers[]=['attributes'=>['identifier'=>(string)$svc['id'],'name'=>(string)$svc['name'],'description'=>!empty($svc['linode_ipv4'])?'IPv4 '.$svc['linode_ipv4']:'Linode VPS provisioning','provider'=>'linode']];
+    $servers[]=['attributes'=>['identifier'=>(string)$svc['id'],'name'=>(string)$svc['name'],'description'=>!empty($svc['linode_ipv4'])?'IPv4 '.$svc['linode_ipv4']:'Cloud VPS provisioning','provider'=>'linode']];
 }
 
 $nameParts = preg_split('/\s+/', trim((string)$u['name'])) ?: [];
 $firstName = (string)($nameParts[0] ?? $u['name']);
 $hasClientKey = !empty($u['ptero_client_key']);
-$hasPteroLink = $hasClientKey || !empty($u['ptero_user_id']);
+$hasPteroLink = $hasClientKey;
 $initial = mb_strtoupper(mb_substr(trim((string)$u['name']), 0, 1));
 ?>
 <!doctype html>
@@ -158,9 +158,9 @@ $initial = mb_strtoupper(mb_substr(trim((string)$u['name']), 0, 1));
 
             <?php if(!$hasPteroLink): ?>
                 <div class="client-alert client-alert-info">
-                    <span class="alert-icon"><i class="fas fa-link" aria-hidden="true"></i></span>
-                    <div><b>Connect your server account</b><span>Link Pterodactyl in Account Settings to unlock live metrics and power controls.</span></div>
-                    <a href="/settings.php">Connect now <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                    <span class="alert-icon"><i class="fas fa-cog" aria-hidden="true"></i></span>
+                    <div><b>Server controls are being configured</b><span>FoxNetwork connects game-server controls automatically. Contact support if this message remains visible.</span></div>
+                    <a href="/support.php">Get support <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
                 </div>
             <?php endif ?>
             <?php if($error): ?>
@@ -228,7 +228,7 @@ $initial = mb_strtoupper(mb_substr(trim((string)$u['name']), 0, 1));
                             <div class="client-server-head">
                                 <div class="server-identity">
                                     <span class="server-icon"><i class="fas fa-cube" aria-hidden="true"></i></span>
-                                    <div><small><?=$serviceProvider==='linode'?'LINODE VPS':'GAME SERVER'?></small><h3><?=e($a['name'] ?? 'FoxNetwork server')?></h3><p><?=e(($a['description'] ?? '') ?: 'FoxNetwork managed service')?></p></div>
+                                    <div><small><?=$serviceProvider==='linode'?'CLOUD VPS':'GAME SERVER'?></small><h3><?=e($a['name'] ?? 'FoxNetwork server')?></h3><p><?=e(($a['description'] ?? '') ?: 'FoxNetwork managed service')?></p></div>
                                 </div>
                                 <span class="client-server-status is-loading" data-status><i></i> Loading</span>
                             </div>
@@ -268,8 +268,8 @@ $initial = mb_strtoupper(mb_substr(trim((string)$u['name']), 0, 1));
 
                     <section class="rail-card connection-card">
                         <div class="connection-status <?=$hasPteroLink?'is-connected':'needs-setup'?>"><i class="fas <?=$hasPteroLink?'fa-check':'fa-link'?>" aria-hidden="true"></i></div>
-                        <div><span class="section-kicker">Server connection</span><h3><?=$hasPteroLink?'Everything is connected':'Connection required'?></h3><p><?=$hasClientKey?'Live metrics and power controls are ready.':($hasPteroLink?'Services are linked. Add a Client API key to enable live controls.':'Connect your Pterodactyl account to access server controls.')?></p></div>
-                        <a href="/settings.php"><?=$hasClientKey?'Review settings':'Complete setup'?> <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                        <div><span class="section-kicker">Server connection</span><h3><?=$hasPteroLink?'Everything is connected':'Automatic setup pending'?></h3><p><?=$hasClientKey?'Live metrics and power controls are ready.':'FoxNetwork is configuring the secure server connection automatically.'?></p></div>
+                        <a href="<?=$hasClientKey?'/services.php':'/support.php'?>"><?=$hasClientKey?'View services':'Get support'?> <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
                     </section>
 
                     <section class="rail-card renewal-card">
@@ -358,7 +358,7 @@ async function powerServer(card,signal){
         setTimeout(()=>buttons.forEach(button=>button.disabled=card.dataset.provider==='linode'?card.dataset.canPower!=='1':!HAS_CLIENT_KEY),900);
     }
 }
-function renderProvisioning(items){
+function renderProvisioning(items,stats={}){
     const section=document.getElementById('prov-section');
     const grid=document.getElementById('prov-grid');
     const summary=document.getElementById('prov-summary');
@@ -367,25 +367,26 @@ function renderProvisioning(items){
     let active=0;
     grid.innerHTML=items.map(item=>{
         const status=String(item.status||'pending').toLowerCase();
+        const queueStatus=String(item.queue?.status||status).toLowerCase();
         const progress=Math.max(0,Math.min(100,Number(item.progress||0)));
         if(status==='provisioning'||status==='pending')active++;
-        const logs=(item.logs||[]).slice(0,4).map(log=>`<div><time>${escapeHtml(log.created_at||'')}</time><span>${escapeHtml(log.event_name||'Update')}${log.message?' · '+escapeHtml(log.message):''}</span></div>`).join('');
+        const logs=(item.logs||[]).slice(0,4).map(log=>`<div><time>${escapeHtml(log.created_at||'')}</time><span>${escapeHtml(String(log.event_name||'Update').replace(/linode/ig,'cloud'))}${log.message?' · '+escapeHtml(String(log.message).replace(/linode/ig,'cloud provider')):''}</span></div>`).join('');
         return `<article class="client-provision-card">
-            <div class="provision-card-head"><div><small>${escapeHtml(item.step||'Queued')}</small><h3>${escapeHtml(item.name||'New service')}</h3></div><span class="provision-chip ${escapeHtml(status)}">${escapeHtml(status)}</span></div>
+            <div class="provision-card-head"><div><small>${escapeHtml(item.step||'Queued')}</small><h3>${escapeHtml(item.name||'New service')}</h3></div><span class="provision-chip ${escapeHtml(queueStatus)}">${item.queue?.position?'QUEUE #'+Number(item.queue.position):escapeHtml(queueStatus)}</span></div>
             <div class="provision-progress"><span style="width:${progress}%"></span></div>
-            <div class="provision-meta"><span>${progress}% complete</span><span>ETA ${item.eta?escapeHtml(new Date(item.eta.replace(' ','T')).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})):'—'}</span></div>
-            ${item.last_error?`<div class="provision-error">${escapeHtml(item.last_error)}</div>`:''}
+            <div class="provision-meta"><span>${progress}% complete</span><span>${item.queue?.position?'Position '+Number(item.queue.position)+' of '+Number(item.queue.waiting_total||item.queue.position):'ETA '+(item.eta?escapeHtml(new Date(item.eta.replace(' ','T')+'Z').toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})):'—')}</span></div>
+            ${item.last_error?`<div class="provision-error">${escapeHtml(String(item.last_error).replace(/linode/ig,'cloud provider'))}</div>`:''}
             <div class="provision-log">${logs||'<p>No activity recorded yet.</p>'}</div>
         </article>`;
     }).join('');
-    summary.textContent=active+' active · '+items.length+' tracked';
+    summary.textContent=active+' active · '+Number(stats.waiting||0)+' waiting'+(Number(stats.worker_online||0)>0?' · worker online':'');
 }
 async function refreshProvisioning(){
     try{
         const response=await fetch('/api/provisioning-status.php',{headers:{'Accept':'application/json'}});
         const result=await response.json();
         if(!result.ok)throw new Error(result.error||'Provisioning status unavailable');
-        renderProvisioning(result.items||[]);
+        renderProvisioning(result.items||[],result.stats||{});
     }catch(error){
         const section=document.getElementById('prov-section');
         section.hidden=false;
@@ -405,3 +406,14 @@ setInterval(()=>{if(!document.hidden)refreshProvisioning();},5000);
 </script>
 </body>
 </html>
+
+<?php /* Legacy truncated markup intentionally suppressed.
+tml>
+
+pt>
+</body>
+</html>
+
+tml>
+
+*/ ?>

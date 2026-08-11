@@ -532,11 +532,10 @@ if ($hasClientKey) {
           <div class="manage-card">
             <div class="cardhead"><b>SERVICE CONTROLS</b></div>
             <div class="control-grid">
-              <button class="btn primary" data-power="start" <?= $hasClientKey ? '' : 'disabled title="Client API key required (admin key cannot be used here)"' ?>>Start</button>
-              <button class="btn" data-power="restart" <?= $hasClientKey ? '' : 'disabled title="Client API key required (admin key cannot be used here)"' ?>>Restart</button>
-              <button class="btn" data-power="stop" <?= $hasClientKey ? '' : 'disabled title="Client API key required (admin key cannot be used here)"' ?>>Stop</button>
-              <button class="btn warning" id="reinstall" <?= $hasClientKey ? '' : 'disabled title="Client API key required (admin key cannot be used here)"' ?>>Reinstall</button>
-              <a class="btn" href="<?= e(rtrim(cfg('pterodactyl.url'), '/') . '/server/' . $id) ?>" target="_blank">Advanced Panel</a>
+              <button class="btn primary" data-power="start" <?= $hasClientKey ? '' : 'disabled title="Server controls are still being configured"' ?>>Start</button>
+              <button class="btn" data-power="restart" <?= $hasClientKey ? '' : 'disabled title="Server controls are still being configured"' ?>>Restart</button>
+              <button class="btn" data-power="stop" <?= $hasClientKey ? '' : 'disabled title="Server controls are still being configured"' ?>>Stop</button>
+              <button class="btn warning" id="reinstall" <?= $hasClientKey ? '' : 'disabled title="Server controls are still being configured"' ?>>Reinstall</button>
             </div>
           </div>
         </section>
@@ -603,7 +602,7 @@ if ($hasClientKey) {
                   <div class="sftp-copy"><input id="sftpcommand" readonly value=""><button class="btn" type="button" data-copy="sftpcommand">Copy</button></div>
                 </div>
               </div>
-              <p class="muted small">Use your Pterodactyl account password. FoxNetwork does not display or store that password here.</p>
+              <p class="muted small">SFTP authentication is separate from your FoxNetwork login. Contact support if you need access credentials.</p>
               <div class="sftp-actions"><button class="btn" type="button" id="reloadsftp">Reload details</button><a class="btn primary" id="opensftp" href="#">Open SFTP application</a></div>
             </div>
           </div>
@@ -658,7 +657,7 @@ if ($hasClientKey) {
           <div class="manage-card">
             <div class="cardhead"><b>SERVER SETTINGS</b></div>
             <form class="manage-form" id="serveridentityform"><label>Server name<input id="servername" value="<?= e($srv['name'] ?? 'Server') ?>" required></label><label>Description<input id="serverdescription" value="<?= e($srv['description'] ?? '') ?>"></label><button class="btn primary">Save identity</button></form>
-            <div class="control-grid"><button class="btn warning" id="settingsreinstall">Reinstall server</button><a class="btn" href="<?= e(rtrim(cfg('pterodactyl.url'), '/') . '/server/' . $id) ?>" target="_blank" rel="noopener">Open advanced Pterodactyl panel</a></div>
+            <div class="control-grid"><button class="btn warning" id="settingsreinstall">Reinstall server</button></div>
             <div class="error" style="margin:0 16px 16px">Reinstalling can replace files created by the server software. Back up important data first.</div>
           </div>
         </section>
@@ -787,7 +786,7 @@ if ($hasClientKey) {
 
     document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
       if (!HAS_CLIENT_KEY && b.dataset.tab !== 'overview' && b.dataset.tab !== 'activity') {
-        alert('This section uses Pterodactyl client endpoints and requires a Client API key. The admin/application key cannot be used for this section.');
+        alert('Server controls are still being configured automatically. Contact FoxNetwork support if this message remains visible.');
         return;
       }
       document.querySelectorAll('.tab,.pane').forEach(x => x.classList.remove('active'));
@@ -1895,7 +1894,7 @@ if ($hasClientKey) {
     };
     async function editSubuser(encodedUser, encodedPermissions) {
       const current = JSON.parse(decodeURIComponent(encodedPermissions));
-      const value = prompt('Comma-separated Pterodactyl permissions', current.join(','));
+      const value = prompt('Comma-separated server permissions', current.join(','));
       if (value === null) return;
       const permissions = value.split(',').map(item => item.trim()).filter(Boolean);
       try {
@@ -2006,6 +2005,24 @@ if ($hasClientKey) {
     loadActivity();
     if (HAS_CLIENT_KEY) loadFiles('/');
   </script>
+</body>
+
+</html>
+mpty muted">No activity yet.</div>';
+      } catch (e) {
+        q('#activitylog').innerHTML = '<div class="error">' + em(e.message) + '</div>';
+      }
+    }
+
+    resources();
+    if (HAS_CLIENT_KEY) setInterval(resources, 10000);
+    loadActivity();
+    if (HAS_CLIENT_KEY) loadFiles('/');
+  </script>
+</body>
+
+</html>
+ript>
 </body>
 
 </html>

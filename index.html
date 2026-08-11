@@ -1,840 +1,141 @@
 <!doctype html>
-<html>
+<html lang="en-BE">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0,maximum-scale=1.0, user-scalable=no">
-    <meta name="description" content="Fast, reliable European VPS hosting, Discord bot hosting, and game server hosting with 99.9% uptime, DDoS protection, and 24/7 support.">
-    <meta name="keywords" content="VPS hosting, Discord bot hosting, Minecraft hosting, game servers, European hosting, cheap VPS">
-    <meta property="og:title" content="FoxNetwork - Premium European Hosting">
-    <meta property="og:description" content="Fast and reliable VPS, Discord bot, and game server hosting in Europe.">
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://foxnetwork.be/">
-    <title>FoxNetwork - European VPS, Discord Bot & Game Server Hosting</title>
-    <link rel="canonical" href="https://foxnetwork.be/">
-    <link rel="stylesheet" type="text/css" href="css/bootstrap.min.css">
-    <link rel="preload" as="image" href="images/graphic1.png" fetchpriority="high">
-    <link rel="stylesheet" type="text/css" href="css/fontawesome-all.min.css?v=20260805b" media="print" onload="this.media='all'">
-    <link rel="stylesheet" type="text/css" href="css/style.css">
-    <link rel="stylesheet" type="text/css" href="css/custom.css">
-    <link rel="stylesheet" type="text/css" href="css/styles-modified.css?v=20260810a">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FoxNetwork | European Hosting with Personal Support</title>
+  <meta name="description" content="Independent Belgian hosting for game servers, VPS, websites and Discord bots. European infrastructure, automated deployment, transparent pricing and personal support.">
+  <link rel="canonical" href="https://foxnetwork.be/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="FoxNetwork | European Hosting. Personal Support.">
+  <meta property="og:description" content="Game servers, cloud VPS, web hosting and free Discord bot hosting from an independent Belgian provider.">
+  <meta property="og:url" content="https://foxnetwork.be/">
+  <meta name="theme-color" content="#080b10">
+  <link rel="icon" href="/images/logo.png">
+  <link rel="stylesheet" href="/css/fontawesome-all.min.css">
+  <link rel="stylesheet" href="/assets/marketing.css?v=20260811a">
+  <script type="application/ld+json">
+  {
+    "@context":"https://schema.org",
+    "@type":"Organization",
+    "name":"FoxNetwork BV",
+    "url":"https://foxnetwork.be/",
+    "logo":"https://foxnetwork.be/images/logo.png",
+    "email":"info@foxnetwork.be",
+    "telephone":"+32 2 615 76 80",
+    "address":{"@type":"PostalAddress","streetAddress":"Dokter Spitaelslaan 438","postalCode":"1502","addressLocality":"Lembeek (Halle)","addressCountry":"BE"}
+  }
+  </script>
 </head>
-
-<body class="page-home">
-<script>
-(function () {
-    try {
-        var theme = localStorage.getItem('foxnetwork-theme');
-        if (!theme && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) theme = 'dark';
-        if (theme === 'dark') document.body.classList.add('dark-mode');
-    } catch (e) {}
-})();
-</script>
-<header id="header-holder" class="header-holder main-header container-fluid">
-    <div class="bg-animation">
+<body class="marketing-body">
+<nav class="mk-nav" data-nav>
+  <div class="mk-wrap mk-nav-inner">
+    <a class="mk-brand" href="/"><img src="/images/logo.png" alt="FoxNetwork"><span>FOX<b>NETWORK</b></span></a>
+    <button class="mk-mobile-toggle" type="button" data-nav-toggle aria-label="Open navigation"><i class="fas fa-bars"></i></button>
+    <div class="mk-links">
+      <a href="#hosting">Hosting</a>
+      <a href="/game-hosting/minecraft/">Game servers</a>
+      <a href="/vps-hosting/">Cloud VPS</a>
+      <a href="/discord-bot-hosting/">Free Discord hosting</a>
+      <a href="/blog/">Blog</a>
+      <a href="/contact.html">Contact</a>
     </div>
-    <nav id="nav" class="navbar navbar-expand-lg container">
-        <a class="navbar-brand" href="/">
-            <img class="logo" src="images/logo.png" alt="FoxNetwork" decoding="async" fetchpriority="high">
-        </a>
-        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        
-        <div class="collapse navbar-collapse" id="navbarSupportedContent">
-            <ul class="navbar-nav ml-auto">
-                <li class="nav-item"><a class="nav-link active" href="/">Home</a></li>
-                <li class="nav-item"><a class="nav-link" href="/contact.html">Contact us</a></li>
-                <li class="nav-item"><a class="nav-link login-button" href="/login.php">Login</a></li>
-                <li class="nav-item theme-toggle-holder">
-                    <button class="theme-toggle" type="button" aria-label="Switch to dark mode" title="Toggle dark mode">Dark mode</button>
-                </li>
-                <li class="nav-item support-button-holder support-dropdown">
-                    <a class="nav-link dropdown-toggle support-button" href="#" id="supportDropdown" role="button" data-toggle="dropdown" aria-expanded="false">Support</a>
-                    <div class="dropdown-menu dropdown-menu-right" aria-labelledby="supportDropdown">
-                        <a class="dropdown-item" href="tel:+3226157680"><i class="fas fa-phone"></i>+32 (0)2 615 76 80</a>
-                        <a class="dropdown-item" href="https://discord.gg/JSMMJc2kY3"><i class="fab fa-discord"></i>Join Discord</a>
-                        <a class="dropdown-item" href="/support.php"><i class="fas fa-ticket-alt"></i>Open a ticket</a>
-                        <a class="dropdown-item" href="https://billing.foxnetwork.be/knowledgebase"><i class="fas fa-book"></i>Knowledge base</a>
-                    </div>
-                </li>
-            </ul>
+    <div class="mk-actions"><a class="mk-button" href="/login.php">Sign in</a><a class="mk-button primary" href="/register.php">Create account</a></div>
+  </div>
+</nav>
+
+<main>
+  <header class="mk-hero">
+    <div class="mk-wrap mk-hero-grid">
+      <div>
+        <span class="mk-kicker">Independent hosting from Belgium</span>
+        <h1>European hosting.<br><span>Personal support.</span></h1>
+        <p class="mk-hero-copy">High-performance game servers, cloud VPS, web hosting and Discord bot hosting on European infrastructure—with automated deployment and support from people who know the platform.</p>
+        <div class="mk-hero-buttons"><a class="mk-button primary" href="#hosting">Explore hosting <i class="fas fa-arrow-right"></i></a><a class="mk-button" href="/discord-bot-hosting/">Try Discord hosting free</a></div>
+        <div class="mk-proofline"><span><i class="fas fa-check-circle"></i> Belgian company</span><span><i class="fas fa-check-circle"></i> European regions</span><span><i class="fas fa-check-circle"></i> Automated setup</span><span><i class="fas fa-check-circle"></i> DDoS protected</span></div>
+      </div>
+      <div class="mk-console" aria-label="FoxNetwork control panel preview">
+        <div class="mk-console-bar"><div class="mk-console-dots"><i></i><i></i><i></i></div><span>FOXNETWORK CONTROL CENTER</span></div>
+        <div class="mk-console-body">
+          <div class="mk-console-state"><b>EU Cloud Server</b><span>RUNNING</span></div>
+          <div class="mk-console-specs"><div><small>CPU</small><strong>Dedicated resources</strong></div><div><small>Storage</small><strong>NVMe SSD</strong></div><div><small>Network</small><strong>DDoS protected</strong></div><div><small>Deployment</small><strong>Automatic</strong></div></div>
+          <div class="mk-console-log"><span>10:31:04</span> Payment confirmed<br><span>10:31:06</span> Creating service<br><span>10:31:18</span> Server online ✓</div>
         </div>
-    </nav>
-    <div class="top-content container">
-        <div class="row">
-            <div class="col-lg-6">
-                <div class="noti-holder">
-                    <a href="#">
-                        <div class="noti">
-                            <span class="badge">New</span><span class="text">Welcome to our new site.</span>
-                        </div>
-                    </a>
-                </div>
-                <div class="spacer"></div>
-                <div class="big-title">European VPS, Discord Bot<span> &</span><br>Game Server Hosting</div>
-                <p class="hero-benefits" style="font-size: 18px; color: #ccc; margin-bottom: 30px; line-height: 1.6;">Fast deployment | DDoS protection | Expert support | NVMe SSD storage</p>
-                <div class="btn-holder">
-                    <a href="/register.php" class="ybtn ybtn-header-color" style="padding: 12px 35px; font-size: 16px;">Register Now</a>
-                    <a href="#pricing-plans" class="ybtn" style="padding: 12px 35px; font-size: 16px; background: rgba(255,255,255,0.1); border: 2px solid white; color: white; margin-left: 15px;">View Pricing</a>
-                </div>
-                <p class="hero-proof" style="font-size: 12px; color: #999; margin-top: 20px;">No credit card required | Instant activation | 24/7 support</p>
-            </div>
-            <div class="col-lg-6">
-                <img class="header-graphic" src="images/graphic1.png" alt="" decoding="async" fetchpriority="high" />
-            </div>
-        </div>
+      </div>
     </div>
-</header>
-<div id="info" class="info-section container-fluid" style="background: white; padding: 60px 0; border-top: 1px solid #e0e0e0; border-bottom: 1px solid #e0e0e0;">
-    <div class="container">
-        <div class="row align-items-center">
-            <div class="col-md-12">
-                <h3 style="font-size: 28px; color: #333; text-align: center; margin-bottom: 20px;"> Trusted by Thousands of Users Worldwide</h3>
-                <div class="info-text" style="text-align: center; font-size: 16px; color: #666; margin-bottom: 40px; max-width: 800px; margin-left: auto; margin-right: auto; line-height: 1.8;">Whether you're launching a website, hosting a game server, or running a Discord community, FoxNetwork delivers <strong>fast, reliable hosting</strong> with the performance and support you need to stay online.</div>
-                
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 30px;">
-                    <div style="text-align: center; padding: 20px; background: #f8f9fa; border-radius: 8px;">
-                        <div class="stat-number" style="font-size: 32px; font-weight: bold; color: #667eea;">500+</div>
-                        <div style="color: #666;">Active Customers</div>
-                    </div>
-                    <div style="text-align: center; padding: 20px; background: #f8f9fa; border-radius: 8px;">
-                        <div class="stat-number" style="font-size: 32px; font-weight: bold; color: #667eea;">99.9%</div>
-                        <div style="color: #666;">Uptime Guarantee</div>
-                    </div>
-                    <div style="text-align: center; padding: 20px; background: #f8f9fa; border-radius: 8px;">
-                        <div class="stat-number" style="font-size: 32px; font-weight: bold; color: #667eea;">6+</div>
-                        <div style="color: #666;">Years in Hosting</div>
-                    </div>
-                    <div style="text-align: center; padding: 20px; background: #f8f9fa; border-radius: 8px;">
-                        <div class="stat-number" style="font-size: 32px; font-weight: bold; color: #667eea;">24/7</div>
-                        <div style="color: #666;">Support Available</div>
-                    </div>
-                </div>
-                
-                <div style="text-align: center;">
-                    <a href="/register.php" class="ybtn" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 40px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block; font-size: 16px;">Start Your Free Trial Today</a>
-                </div>
-            </div>
-        </div>
+  </header>
+
+  <section class="mk-trust" aria-label="Why choose FoxNetwork">
+    <div class="mk-wrap mk-trust-grid">
+      <div class="mk-trust-item"><span class="mk-trust-icon"><i class="fas fa-building"></i></span><div><b>Belgian company</b><small>FoxNetwork BV, based in Halle</small></div></div>
+      <div class="mk-trust-item"><span class="mk-trust-icon"><i class="fas fa-globe-europe"></i></span><div><b>European hosting</b><small>Low-latency regional infrastructure</small></div></div>
+      <div class="mk-trust-item"><span class="mk-trust-icon"><i class="fas fa-bolt"></i></span><div><b>Automated deployment</b><small>Services created after checkout</small></div></div>
+      <div class="mk-trust-item"><span class="mk-trust-icon"><i class="fas fa-headset"></i></span><div><b>Human support</b><small>Direct help from the people operating it</small></div></div>
     </div>
-</div>
-<div id="services" class="services container-fluid">
-    <div class="container">
-        <div class="row">
-            <div class="col-md-12">
-                <div class="row-title">Our Services</div>
-                <div class="row-subtitle">Designed to satisfy your creative needs.</div>
-            </div>
-        </div>
-        <div class="row">
-            <div class="col-md-12 col-lg-6">
-                <div class="service-box">
-                    <div class="service-icon">
-                        <img src="images/service-icon1.svg" alt="" loading="lazy" decoding="async">
-                    </div>
-                    <div class="service-title"><a href="/store.php">VPS Hosting</a></div>
-                    <div class="service-details">
-                        <p>Fast and reliable virtual private servers with scalable resources, strong performance, and full control for your projects.</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-12 col-lg-6">
-                <div class="service-box">
-                    <div class="service-icon">
-                        <img src="images/service-icon2.svg" alt="" loading="lazy" decoding="async">
-                    </div>
-                    <div class="service-title"><a href="/store.php">Discord Bot Hosting</a></div>
-                    <div class="service-details">
-                        <p>Keep your Discord bots online 24/7 with stable hosting, smooth performance, and automatic restart support.</p>
-                        <div class="service-price" style="margin-top: 15px; font-weight: bold; color: #22A6FE; font-size: 18px;">Free</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-12 col-lg-6">
-                <div class="service-box">
-                    <div class="service-icon">
-                        <img src="images/service-icon3.svg" alt="" loading="lazy" decoding="async">
-                    </div>
-                    <div class="service-title"><a href="/store.php">Minecraft Hosting</a></div>
-                    <div class="service-details">
-                        <p>Launch powerful Minecraft servers with fast setup, mod support, low latency, and reliable uptime for your community.</p>
-                        <div class="service-price" style="margin-top: 15px; font-weight: bold; color: #22A6FE; font-size: 18px;">From EUR 5.00/month</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-12 col-lg-6">
-                <div class="service-box">
-                    <div class="service-icon">
-                        <img src="images/service-icon4.svg" alt="" loading="lazy" decoding="async">
-                    </div>
-                    <div class="service-title"><a href="/store.php">Game Server Hosting</a></div>
-                    <div class="service-details">
-                        <p>Reliable hosting for Rust, Astroneer, ARK, and other games with strong performance and smooth multiplayer gameplay.</p>
-                        <div class="service-price" style="margin-top: 15px; font-weight: bold; color: #22A6FE; font-size: 18px;">From EUR 15.00/month</div>
-                    </div>
-                </div>
-            </div>
-        </div>
+  </section>
+
+  <section class="mk-section" id="hosting">
+    <div class="mk-wrap">
+      <div class="mk-section-head"><span class="mk-kicker">Choose your platform</span><h2>Three clear ways to host.</h2><p>No inflated claims and no maze of products. Start with the platform that fits what you want to run.</p></div>
+      <div class="mk-category-grid">
+        <article class="mk-category"><span class="mk-category-icon"><i class="fas fa-gamepad"></i></span><h3>Game hosting</h3><p>Managed game servers with a control panel, backups and fast European connectivity.</p><div class="mk-category-links"><a href="/game-hosting/minecraft/">Minecraft</a><a href="/game-hosting/rust/">Rust</a><a href="/game-hosting/palworld/">Palworld</a><a href="/game-hosting/ark/">ARK</a><a href="/game-hosting/astroneer/">Astroneer</a></div></article>
+        <article class="mk-category"><span class="mk-category-icon"><i class="fas fa-cloud"></i></span><h3>Cloud</h3><p>Flexible VPS and developer hosting with root access, live metrics and customer-managed controls.</p><div class="mk-category-links"><a href="/vps-hosting/">Cloud VPS</a><a href="/discord-bot-hosting/">Discord bots</a><a href="/store.php">All cloud plans</a></div></article>
+        <article class="mk-category"><span class="mk-category-icon"><i class="fas fa-globe"></i></span><h3>Web</h3><p>Simple hosting for websites and projects, backed by direct support when you need a real person.</p><div class="mk-category-links"><a href="/web-hosting/">Web hosting</a><a href="/contact.html">Business enquiries</a><a href="/store.php">View plans</a></div></article>
+      </div>
     </div>
-</div>
+  </section>
 
-<div id="pricing-plans" class="pricing-plans container-fluid" style="background: #f8f9fa; padding: 80px 0;">
-    <div class="container">
-        <div class="row">
-            <div class="col-md-12 text-center">
-                <h2 style="font-size: 42px; color: #333; margin-bottom: 15px;">Our Hosting Plans</h2>
-                <p style="color: #666; font-size: 16px; margin-bottom: 50px;">Simple and transparent pricing for all your hosting needs</p>
-            </div>
-        </div>
-        <div class="row">
-            <!-- Discord Bot - Free -->
-            <div class="col-md-6 col-lg-4" style="margin-bottom: 30px;">
-                <div style="background: white; border-radius: 10px; padding: 35px 25px; box-shadow: 0 5px 20px rgba(0,0,0,0.08); height: 100%; text-align: center; transition: transform 0.3s, box-shadow 0.3s;" class="pricing-card">
-                    <div style="font-size: 40px; margin-bottom: 15px;"><i class="fab fa-discord" style="font-family:'Font Awesome 5 Brands' !important;font-weight:400 !important;"></i></div>
-                    <h3 style="color: #333; margin: 0 0 10px 0; font-size: 20px;">Discord Bot</h3>
-                    <p style="color: #666; font-size: 14px; margin: 0 0 20px 0;">24/7 Uptime</p>
-                    <div style="margin: 25px 0;">
-                        <div style="font-size: 36px; font-weight: bold; color: #667eea;">Free</div>
-                    </div>
-                    <a href="/store.php" class="ybtn" style="background: #667eea; display: inline-block; margin-top: 20px;">Get Started</a>
-                </div>
-            </div>
-
-            <!-- Minecraft - EUR 5 -->
-            <div class="col-md-6 col-lg-4" style="margin-bottom: 30px;">
-                <div style="background: white; border-radius: 10px; padding: 35px 25px; box-shadow: 0 8px 25px rgba(34, 166, 254, 0.15); height: 100%; text-align: center; transition: transform 0.3s, box-shadow 0.3s; border-top: 4px solid #22A6FE;" class="pricing-card featured">
-                    <span style="background: #22A6FE; color: white; padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: bold;">POPULAR</span>
-                    <div style="font-size: 40px; margin: 15px 0;"><i class="fas fa-cube" style="font-family:'Font Awesome 5 Free' !important;font-weight:900 !important;"></i></div>
-                    <h3 style="color: #333; margin: 0 0 10px 0; font-size: 20px;">Minecraft</h3>
-                    <p style="color: #666; font-size: 14px; margin: 0 0 20px 0;">4 Plan Tiers</p>
-                    <div style="margin: 25px 0;">
-                        <div style="font-size: 36px; font-weight: bold; color: #22A6FE;">EUR 5.00</div>
-                        <div style="font-size: 12px; color: #999;">/month</div>
-                    </div>
-                    <a href="/store.php" class="ybtn" style="background: #22A6FE; display: inline-block; margin-top: 20px;">View Plans</a>
-                </div>
-            </div>
-
-            <!-- Web Hosting - Free -->
-            <div class="col-md-6 col-lg-4" style="margin-bottom: 30px;">
-                <div style="background: white; border-radius: 10px; padding: 35px 25px; box-shadow: 0 5px 20px rgba(0,0,0,0.08); height: 100%; text-align: center; transition: transform 0.3s, box-shadow 0.3s;" class="pricing-card">
-                    <div style="font-size: 40px; margin-bottom: 15px;"><i class="fas fa-globe" style="font-family:'Font Awesome 5 Free' !important;font-weight:900 !important;"></i></div>
-                    <h3 style="color: #333; margin: 0 0 10px 0; font-size: 20px;">Web Hosting</h3>
-                    <p style="color: #666; font-size: 14px; margin: 0 0 20px 0;">Starter Plan</p>
-                    <div style="margin: 25px 0;">
-                        <div style="font-size: 36px; font-weight: bold; color: #f5576c;">From EUR 3.99</div>
-                        <div style="font-size: 12px; color: #999;">/month</div>
-                    </div>
-                    <a href="/store.php" class="ybtn" style="background: #f5576c; display: inline-block; margin-top: 20px;">Get Started</a>
-                </div>
-            </div>
-
-            <!-- Rust - EUR 5 -->
-            <div class="col-md-6 col-lg-4" style="margin-bottom: 30px;">
-                <div style="background: white; border-radius: 10px; padding: 35px 25px; box-shadow: 0 5px 20px rgba(0,0,0,0.08); height: 100%; text-align: center; transition: transform 0.3s, box-shadow 0.3s;" class="pricing-card">
-                    <div style="font-size: 40px; margin-bottom: 15px;"><i class="fas fa-fire" style="font-family:'Font Awesome 5 Free' !important;font-weight:900 !important;"></i></div>
-                    <h3 style="color: #333; margin: 0 0 10px 0; font-size: 20px;">Rust Server</h3>
-                    <p style="color: #666; font-size: 14px; margin: 0 0 20px 0;">Multiplayer Gaming</p>
-                    <div style="margin: 25px 0;">
-                        <div style="font-size: 36px; font-weight: bold; color: #ff6b6b;">EUR 5.00</div>
-                        <div style="font-size: 12px; color: #999;">/month</div>
-                    </div>
-                    <a href="/store.php" class="ybtn" style="background: #ff6b6b; display: inline-block; margin-top: 20px;">View Plans</a>
-                </div>
-            </div>
-
-            <!-- Astroneer - EUR 5 -->
-            <div class="col-md-6 col-lg-4" style="margin-bottom: 30px;">
-                <div style="background: white; border-radius: 10px; padding: 35px 25px; box-shadow: 0 5px 20px rgba(0,0,0,0.08); height: 100%; text-align: center; transition: transform 0.3s, box-shadow 0.3s;" class="pricing-card">
-                    <div style="font-size: 40px; margin-bottom: 15px;"><i class="fas fa-rocket" style="font-family:'Font Awesome 5 Free' !important;font-weight:900 !important;"></i></div>
-                    <h3 style="color: #333; margin: 0 0 10px 0; font-size: 20px;">Astroneer</h3>
-                    <p style="color: #666; font-size: 14px; margin: 0 0 20px 0;">Co-op Adventure</p>
-                    <div style="margin: 25px 0;">
-                        <div style="font-size: 36px; font-weight: bold; color: #4facfe;">EUR 13.00</div>
-                        <div style="font-size: 12px; color: #999;">/month</div>
-                    </div>
-                    <a href="/store.php" class="ybtn" style="background: #4facfe; display: inline-block; margin-top: 20px;">View Plans</a>
-                </div>
-            </div>
-
-            <!-- ARK - EUR 5 -->
-            <div class="col-md-6 col-lg-4" style="margin-bottom: 30px;">
-                <div style="background: white; border-radius: 10px; padding: 35px 25px; box-shadow: 0 5px 20px rgba(0,0,0,0.08); height: 100%; text-align: center; transition: transform 0.3s, box-shadow 0.3s;" class="pricing-card">
-                    <div style="font-size: 40px; margin-bottom: 15px;"><i class="fas fa-paw" style="font-family:'Font Awesome 5 Free' !important;font-weight:900 !important;"></i></div>
-                    <h3 style="color: #333; margin: 0 0 10px 0; font-size: 20px;">ARK Server</h3>
-                    <p style="color: #666; font-size: 14px; margin: 0 0 20px 0;">Dinosaur Survival</p>
-                    <div style="margin: 25px 0;">
-                        <div style="font-size: 36px; font-weight: bold; color: #ffa751;">EUR 15.00</div>
-                        <div style="font-size: 12px; color: #999;">/month</div>
-                    </div>
-                    <a href="/store.php" class="ybtn" style="background: #ffa751; display: inline-block; margin-top: 20px;">View Plans</a>
-                </div>
-            </div>
-        </div>
+  <section class="mk-section alt" id="plans">
+    <div class="mk-wrap">
+      <div class="mk-section-head center"><span class="mk-kicker">Transparent entry pricing</span><h2>Know the starting price before checkout.</h2><p>Each service page explains the product first, then takes you to the matching plan.</p></div>
+      <div class="mk-product-grid">
+        <article class="mk-product"><small>Free entry point</small><h3>Discord bot hosting</h3><p>Deploy your first bot without a payment card and upgrade when the project grows.</p><div class="mk-price"><strong>Free</strong><span>starter plan</span></div><a href="/discord-bot-hosting/">Explore free hosting <i class="fas fa-arrow-right"></i></a></article>
+        <article class="mk-product"><small>Most popular game</small><h3>Minecraft hosting</h3><p>Paper, Fabric, Forge, mods and plugins with plans for small and growing communities.</p><div class="mk-price"><strong>€5.00</strong><span>/ month</span></div><a href="/game-hosting/minecraft/">Compare Minecraft plans <i class="fas fa-arrow-right"></i></a></article>
+        <article class="mk-product"><small>Full server control</small><h3>Cloud VPS</h3><p>Root access, your preferred operating system and a customer control center.</p><div class="mk-price"><strong>€12.00</strong><span>/ month</span></div><a href="/vps-hosting/">See VPS details <i class="fas fa-arrow-right"></i></a></article>
+        <article class="mk-product"><small>Website starter</small><h3>Web hosting</h3><p>A straightforward place to launch a personal website or small web project.</p><div class="mk-price"><strong>Free</strong><span>current plan</span></div><a href="/web-hosting/">See web hosting <i class="fas fa-arrow-right"></i></a></article>
+      </div>
     </div>
-</div>
-<div id="cta-primary" class="container-fluid" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 60px 0; text-align: center; color: white;">
-    <div class="container">
-        <h2 style="font-size: 36px; margin-bottom: 20px; font-weight: bold;">Ready to Get Started?</h2>
-        <p style="font-size: 18px; margin-bottom: 30px; color: rgba(255,255,255,0.9);">Join thousands of satisfied customers. Most services are activated within minutes after payment.</p>
-        <div>
-            <a href="/register.php" class="ybtn" style="background: white; color: #667eea; padding: 14px 45px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block; font-size: 16px; margin-right: 15px; margin-bottom: 10px;">Create Free Account</a>
-            <a href="/login.php" class="ybtn" style="background: rgba(255,255,255,0.2); border: 2px solid white; color: white; padding: 12px 40px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block; font-size: 16px; margin-bottom: 10px;">Sign In</a>
-        </div>
-        <p style="margin-top: 20px; font-size: 13px; color: rgba(255,255,255,0.8);">No credit card required | 24/7 support | Money-back guarantee</p>
+  </section>
+
+  <section class="mk-section">
+    <div class="mk-wrap">
+      <div class="mk-free">
+        <div><span class="mk-free-badge">FOXNETWORK FREE</span><h2>Host your first Discord bot completely free.</h2><p>No credit card. Create an account, deploy a bot and learn the FoxNetwork platform. When you need more capacity, move to a larger server without starting over with a new provider.</p><a class="mk-button primary" href="/discord-bot-hosting/">Start free <i class="fas fa-arrow-right"></i></a></div>
+        <div class="mk-funnel"><div><span>1</span><b>Create an account<small>Only the details needed to get started</small></b></div><div><span>2</span><b>Deploy your bot<small>Choose the supported software and configuration</small></b></div><div><span>3</span><b>Grow when ready<small>Move from free hosting to more resources</small></b></div></div>
+      </div>
     </div>
-</div>
-<div id="features" class="features container-fluid">
-    <div class="container">
-        <div class="row">
-            <div class="col-12">
-                <div class="row-title">Why Choose FoxNetwork?</div>
-                <div class="row-subtitle">
-                    Reliable hosting infrastructure, powerful performance, and dedicated support for every project.
-                </div>
-            </div>
-        </div>
+  </section>
 
-        <div class="row rtl-cols">
-            <div class="col-md-12 col-lg-6">
-                <div id="features-links-holder" class="features-links-holder">
-                    <div class="icons-axis">
-                        <img src="images/features-icon.png" alt="" loading="lazy" decoding="async">
-                    </div>
-
-                    <div class="feature-icon-holder feature-icon-holder1 opened" data-id="1">
-                        <div class="animation-holder"><div class="special-gradiant"></div></div>
-                        <div class="feature-icon"><i class="htfy htfy-worldwide"></i></div>
-                        <div class="feature-title">99.9% Uptime Guarantee</div>
-                    </div>
-
-                    <div class="feature-icon-holder feature-icon-holder2" data-id="2">
-                        <div class="animation-holder"><div class="special-gradiant"></div></div>
-                        <div class="feature-icon"><i class="htfy htfy-cogwheel"></i></div>
-                        <div class="feature-title">Powerful Control Panel</div>
-                    </div>
-
-                    <div class="feature-icon-holder feature-icon-holder3" data-id="3">
-                        <div class="animation-holder"><div class="special-gradiant"></div></div>
-                        <div class="feature-icon"><i class="htfy htfy-location"></i></div>
-                        <div class="feature-title">DDoS Protection</div>
-                    </div>
-
-                    <div class="feature-icon-holder feature-icon-holder4" data-id="4">
-                        <div class="animation-holder"><div class="special-gradiant"></div></div>
-                        <div class="feature-icon"><i class="htfy htfy-download"></i></div>
-                        <div class="feature-title">Instant Deployment</div>
-                    </div>
-
-                    <div class="feature-icon-holder feature-icon-holder5" data-id="5">
-                        <div class="animation-holder"><div class="special-gradiant"></div></div>
-                        <div class="feature-icon"><i class="htfy htfy-like"></i></div>
-                        <div class="feature-title">24/7 Expert Support</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-md-12 col-lg-6">
-                <div id="features-holder" class="features-holder">
-
-                    <div class="feature-box feature-d1 show-details">
-                        <div class="feature-title-holder">
-                            <span class="feature-icon"><i class="htfy htfy-worldwide"></i></span>
-                            <span class="feature-title">99.9% Uptime Guarantee</span>
-                        </div>
-                        <div class="feature-details">
-                            <p>
-                                Our infrastructure is designed for maximum reliability, ensuring your VPS, game servers,
-                                and hosting services remain online and accessible around the clock.
-                            </p>
-
-                            <p>
-                                With proactive monitoring, redundant systems, and enterprise-grade hardware,
-                                we minimize downtime and deliver a stable hosting experience.
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="feature-box feature-d2">
-                        <div class="feature-title-holder">
-                            <span class="feature-icon"><i class="htfy htfy-cogwheel"></i></span>
-                            <span class="feature-title">Powerful Control Panel</span>
-                        </div>
-                        <div class="feature-details">
-                            <p>
-                                Easily manage your VPS, Discord bots, Minecraft servers, and game hosting
-                                through an intuitive and user-friendly control panel.
-                            </p>
-
-                            <p>
-                                Monitor resources, restart services, manage files, and configure settings
-                                quickly without technical complexity.
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="feature-box feature-d3">
-                        <div class="feature-title-holder">
-                            <span class="feature-icon"><i class="htfy htfy-location"></i></span>
-                            <span class="feature-title">DDoS Protection</span>
-                        </div>
-                        <div class="feature-details">
-                            <p>
-                                Advanced DDoS protection safeguards your services against malicious traffic,
-                                attacks, and network disruptions.
-                            </p>
-
-                            <p>
-                                Our security systems automatically detect and mitigate threats,
-                                helping your servers stay online when it matters most.
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="feature-box feature-d4">
-                        <div class="feature-title-holder">
-                            <span class="feature-icon"><i class="htfy htfy-download"></i></span>
-                            <span class="feature-title">Instant Deployment</span>
-                        </div>
-                        <div class="feature-details">
-                            <p>
-                                Launch your VPS, game server, or hosting package within minutes with our
-                                automated deployment system.
-                            </p>
-
-                            <p>
-                                Skip long waiting times and get your services online quickly so you can
-                                focus on building, gaming, or growing your community.
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="feature-box feature-d5">
-                        <div class="feature-title-holder">
-                            <span class="feature-icon"><i class="htfy htfy-like"></i></span>
-                            <span class="feature-title">24/7 Expert Support</span>
-                        </div>
-                        <div class="feature-details">
-                            <p>
-                                Our experienced support team is available 24/7 to assist with technical issues,
-                                server optimization, and account management.
-                            </p>
-
-                            <p>
-                                Whether you're hosting a website, Discord bot, or game server,
-                                help is always just a ticket away.
-                            </p>
-                        </div>
-                    </div>
-
-                </div>
-            </div>
-        </div>
+  <section class="mk-section alt">
+    <div class="mk-wrap mk-why-grid">
+      <div class="mk-story"><span class="mk-kicker">Small by design</span><blockquote>“Independent Belgian hosting, with support from actual humans.”</blockquote><p>FoxNetwork focuses on practical infrastructure, clear pricing and direct communication. You are not buying from a faceless marketplace; you can contact the company operating the platform.</p><div class="mk-company"><i class="fas fa-map-marker-alt"></i><div><b>FoxNetwork BV</b><small>Dokter Spitaelslaan 438 · 1502 Lembeek (Halle), Belgium</small></div></div></div>
+      <div class="mk-feature-list"><article class="mk-feature"><i class="fas fa-rocket"></i><div><h3>Automated provisioning</h3><p>Compatible services are queued and deployed after checkout.</p></div></article><article class="mk-feature"><i class="fas fa-shield-alt"></i><div><h3>Protected infrastructure</h3><p>DDoS protection and secure account controls are built into the platform.</p></div></article><article class="mk-feature"><i class="fas fa-sliders-h"></i><div><h3>Customer control center</h3><p>Manage services, power state, resources, billing and support in one place.</p></div></article><article class="mk-feature"><i class="fas fa-comments"></i><div><h3>Direct support</h3><p>Open a support ticket or contact FoxNetwork by phone, email or Discord.</p></div></article></div>
     </div>
-</div>
+  </section>
 
-<div id="testimonials" class="testimonials container-fluid">
-    <div class="bg-color"></div>
-    <div class="container">
-        <div class="row">
-            <div class="col-12">
-                <div class="row-title">What Our Customers Say</div>
-                <div class="row-subtitle">Real feedback from FoxNetwork customers</div>
-            </div>
-        </div>
-        <div class="row">
-            <div class="col-12">
-                <div id="testimonials-slider" class="testimonials-slider">
-                    <div>
-                        <div class="details-holder">
-                            <h4>Rated 5/5 - Verified Customer</h4>
-                            <h5>Discord Bot Hosting User</h5>
-                            <p>
-                                Great service and excellent support. I received quick help with network
-                                problems and other issues. The owner is friendly, approachable, and
-                                genuinely interested in helping customers. Highly recommended!
-                            </p>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="details-holder">
-                            <h4>Rated 5/5 - Verified Customer</h4>
-                            <h5>Minecraft Server Host</h5>
-                            <p>
-                                FoxNetwork has been amazing for our gaming community. Server uptime is
-                                fantastic and performance is consistently excellent. Support team responds
-                                within minutes. We couldn't ask for better hosting!
-                            </p>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="details-holder">
-                            <h4>Rated 5/5 - Verified Customer</h4>
-                            <h5>Web Developer</h5>
-                            <p>
-                                Switched from another provider and wish I did it sooner. FoxNetwork's VPS
-                                is blazingly fast, and their support team is incredibly knowledgeable.
-                                Great value for the price and reliability.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+  <section class="mk-section">
+    <div class="mk-wrap">
+      <div class="mk-section-head center"><span class="mk-kicker">From visitor to online</span><h2>A short, understandable path.</h2></div>
+      <div class="mk-steps"><article class="mk-step"><span>STEP 01</span><h3>Understand the product</h3><p>Read the game- or service-specific page, requirements, included controls and pricing.</p></article><article class="mk-step"><span>STEP 02</span><h3>Choose the right plan</h3><p>Select a package and provide only the configuration needed to deploy your service.</p></article><article class="mk-step"><span>STEP 03</span><h3>Manage it from FoxNetwork</h3><p>Follow provisioning and control the service from your secure customer portal.</p></article></div>
     </div>
-</div>
-<div id="comparison" class="container-fluid" style="background: #f8f9fa; padding: 60px 0;">
-    <div class="container">
-        <div class="row">
-            <div class="col-md-12">
-                <h2 style="text-align: center; font-size: 32px; margin-bottom: 15px; color: #333;">Quick Comparison</h2>
-                <p style="text-align: center; color: #666; margin-bottom: 40px; font-size: 16px;">Find the perfect hosting solution for your needs</p>
-            </div>
-        </div>
-        <div class="row">
-            <div class="col-md-12">
-                <div style="overflow-x: auto;">
-                    <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
-                        <thead>
-                            <tr style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
-                                <th style="padding: 20px; text-align: left; font-weight: bold;">Feature</th>
-                                <th style="padding: 20px; text-align: center;">Discord Bot</th>
-                                <th style="padding: 20px; text-align: center;">Web Hosting</th>
-                                <th style="padding: 20px; text-align: center;">VPS/Game Server</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr style="border-bottom: 1px solid #e0e0e0;">
-                                <td style="padding: 15px 20px; font-weight: 600;">Price</td>
-                                <td style="padding: 15px 20px; text-align: center;">Free</td>
-                                <td style="padding: 15px 20px; text-align: center;">Free</td>
-                                <td style="padding: 15px 20px; text-align: center;">From EUR 5/mo</td>
-                            </tr>
-                            <tr style="border-bottom: 1px solid #e0e0e0;">
-                                <td style="padding: 15px 20px; font-weight: 600;">Uptime Guarantee</td>
-                                <td style="padding: 15px 20px; text-align: center;">99.9%</td>
-                                <td style="padding: 15px 20px; text-align: center;">99.9%</td>
-                                <td style="padding: 15px 20px; text-align: center;">99.9%</td>
-                            </tr>
-                            <tr style="border-bottom: 1px solid #e0e0e0;">
-                                <td style="padding: 15px 20px; font-weight: 600;">DDoS Protection</td>
-                                <td style="padding: 15px 20px; text-align: center;">Yes</td>
-                                <td style="padding: 15px 20px; text-align: center;">Yes</td>
-                                <td style="padding: 15px 20px; text-align: center;">Yes (Advanced)</td>
-                            </tr>
-                            <tr style="border-bottom: 1px solid #e0e0e0;">
-                                <td style="padding: 15px 20px; font-weight: 600;">NVMe Storage</td>
-                                <td style="padding: 15px 20px; text-align: center;">Yes</td>
-                                <td style="padding: 15px 20px; text-align: center;">Yes</td>
-                                <td style="padding: 15px 20px; text-align: center;">Yes (High Speed)</td>
-                            </tr>
-                            <tr style="border-bottom: 1px solid #e0e0e0;">
-                                <td style="padding: 15px 20px; font-weight: 600;">24/7 Support</td>
-                                <td style="padding: 15px 20px; text-align: center;">Yes</td>
-                                <td style="padding: 15px 20px; text-align: center;">Yes</td>
-                                <td style="padding: 15px 20px; text-align: center;">Yes (Priority)</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 15px 20px; font-weight: 600;">Full Control</td>
-                                <td style="padding: 15px 20px; text-align: center;">Limited</td>
-                                <td style="padding: 15px 20px; text-align: center;">Limited</td>
-                                <td style="padding: 15px 20px; text-align: center;">Yes (Complete)</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
+  </section>
+
+  <section class="mk-section alt">
+    <div class="mk-wrap">
+      <div class="mk-section-head"><span class="mk-kicker">Questions before checkout</span><h2>Clear answers, up front.</h2></div>
+      <div class="mk-faq"><details><summary>How quickly are services deployed?</summary><p>Supported services are provisioned automatically after checkout and payment confirmation. The customer portal shows the current provisioning status.</p></details><details><summary>Where is FoxNetwork based?</summary><p>FoxNetwork BV is a Belgian company based in Lembeek, Halle. Hosting products use European infrastructure.</p></details><details><summary>Is Discord bot hosting really free?</summary><p>Yes. The current starter product is €0.00 and does not require a payment card. Resource limits apply, and paid options can be added as your bot grows.</p></details><details><summary>Can I choose my VPS operating system?</summary><p>Yes. Available operating-system images are shown during VPS checkout, before the service is created.</p></details><details><summary>Do game servers include a control panel?</summary><p>Yes. Game hosting is managed through a customer control panel with service controls and the options configured for the selected product.</p></details><details><summary>Can I ask a question before buying?</summary><p>Yes. Use the contact page, email info@foxnetwork.be, call +32 (0)2 615 76 80 or join the FoxNetwork Discord.</p></details></div>
     </div>
-</div>
-<div id="more-features" class="more-features container-fluid">
-    <div class="container">
-        <div class="row">
-            <div class="col-md-12">
-                <div class="row-title">Why Customers Trust FoxNetwork</div>
-                <div class="row-subtitle">Industry-leading infrastructure, transparent pricing, and genuine support.</div>
-            </div>
-        </div>
+  </section>
 
-        <div class="row">
-            <div class="col-md-6 col-lg-3">
-                <div class="mfeature-box" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 30px; color: white;">
-                    <div class="mfeature-icon" style="color: #ffd700; font-size: 40px; margin-bottom: 15px;">
-                        <i class="htfy htfy-trophy"></i>
-                    </div>
-                    <div class="mfeature-title" style="color: white;">99.9% Uptime</div>
-                    <div class="mfeature-details" style="color: rgba(255,255,255,0.9);">
-                        Enterprise-grade infrastructure with redundancy and monitoring keeps your services online.
-                    </div>
-                </div>
-            </div>
+  <section class="mk-cta"><div class="mk-wrap"><div class="mk-cta-box"><div><h2>Ready to choose your hosting?</h2><p>Explore a product page first, or start with a free Discord bot.</p></div><div class="mk-actions"><a class="mk-button" href="/contact.html">Ask a question</a><a class="mk-button primary" href="#hosting">Explore hosting</a></div></div></div></section>
+</main>
 
-            <div class="col-md-6 col-lg-3">
-                <div class="mfeature-box" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 30px; color: white;">
-                    <div class="mfeature-icon" style="color: #00ff88; font-size: 40px; margin-bottom: 15px;">
-                        <i class="htfy htfy-like"></i>
-                    </div>
-                    <div class="mfeature-title" style="color: white;">Risk-Free Trial</div>
-                    <div class="mfeature-details" style="color: rgba(255,255,255,0.9);">
-                        Start with confidence. We're transparent about pricing with no hidden fees or surprise charges.
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-md-6 col-lg-3">
-                <div class="mfeature-box" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 30px; color: white;">
-                    <div class="mfeature-icon" style="color: #ff6b9d; font-size: 40px; margin-bottom: 15px;">
-                        <i class="htfy htfy-cogwheel"></i>
-                    </div>
-                    <div class="mfeature-title" style="color: white;">Expert Support</div>
-                    <div class="mfeature-details" style="color: rgba(255,255,255,0.9);">
-                        24/7 responsive support team. Average response time under 5 minutes.
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-md-6 col-lg-3">
-                <div class="mfeature-box" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 30px; color: white;">
-                    <div class="mfeature-icon" style="color: #00bfff; font-size: 40px; margin-bottom: 15px;">
-                        <i class="fas fa-lock"></i>
-                    </div>
-                    <div class="mfeature-title" style="color: white;">Security First</div>
-                    <div class="mfeature-details" style="color: rgba(255,255,255,0.9);">
-                        DDoS protection, firewalls, and regular security audits for peace of mind.
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div id="faq" class="container-fluid">
-    <div class="container">
-        <div class="row">
-            <div class="col-12">
-                <div class="row-title">Frequently Asked Questions</div>
-                <div class="row-subtitle">Answers to common questions about our hosting services.</div>
-
-                <div class="faq-item active">
-                    <div class="faq-question" role="button" tabindex="0" aria-expanded="true">
-                        <span>How quickly are services deployed?</span>
-                        <span class="faq-toggle">+</span>
-                    </div>
-                    <div class="faq-answer">
-                        Most services are activated automatically within minutes after payment. You'll receive your credentials instantly and can start configuring your service right away.
-                    </div>
-                </div>
-
-                <div class="faq-item">
-                    <div class="faq-question" role="button" tabindex="0" aria-expanded="false">
-                        <span>Do you offer DDoS protection?</span>
-                        <span class="faq-toggle">+</span>
-                    </div>
-                    <div class="faq-answer">
-                        Yes. All hosting services benefit from network-level DDoS protection, protecting your services from malicious attacks and ensuring uptime.
-                    </div>
-                </div>
-
-                <div class="faq-item">
-                    <div class="faq-question" role="button" tabindex="0" aria-expanded="false">
-                        <span>Can I upgrade my plan later?</span>
-                        <span class="faq-toggle">+</span>
-                    </div>
-                    <div class="faq-answer">
-                        Absolutely. You can upgrade your resources as your project grows. Changes are reflected immediately in your control panel.
-                    </div>
-                </div>
-
-                <div class="faq-item">
-                    <div class="faq-question" role="button" tabindex="0" aria-expanded="false">
-                        <span>Do you provide support?</span>
-                        <span class="faq-toggle">+</span>
-                    </div>
-                    <div class="faq-answer">
-                        Yes. Our support team is available 24/7 to assist with technical and account-related questions. Contact us through the ticket system or by email.
-                    </div>
-                </div>
-
-                <div class="faq-item">
-                    <div class="faq-question" role="button" tabindex="0" aria-expanded="false">
-                        <span>Which games do you support?</span>
-                        <span class="faq-toggle">+</span>
-                    </div>
-                    <div class="faq-answer">
-                        We support Minecraft, Rust, ARK, Astroneer, and various other game servers. Custom game support is available upon request.
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-
-<div id="seo-content" class="container-fluid">
-    <div class="container">
-        <div class="row">
-            <div class="col-12">
-                <div class="row-title">Hosting Solutions Across Europe</div>
-                <p>
-                    FoxNetwork provides high-performance VPS hosting, Discord Bot Hosting,
-                    Minecraft Hosting and Game Server Hosting for customers across Belgium,
-                    the Netherlands and Europe.
-                </p>
-                <p>
-                    Our infrastructure is built for developers, communities, businesses and gamers
-                    who require reliable performance, DDoS protection, fast deployment and responsive support.
-                </p>
-                <p>
-                    Whether you need a virtual private server, a home for your Discord bot,
-                    or a powerful Minecraft server, FoxNetwork delivers secure and scalable hosting solutions.
-                </p>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div id="blog" class="container-fluid" style="background: #f8f9fa; padding: 60px 0;">
-    <div class="container">
-        <div class="row">
-            <div class="col-12">
-                <div class="row-title">Latest Articles</div>
-                <div id="soro-blog"></div>
-            </div>
-        </div>
-    </div>
-</div>
-<script>
-window.addEventListener('load', function () {
-    window.setTimeout(function () {
-        var blogScript = document.createElement('script');
-        blogScript.src = 'https://app.trysoro.com/api/embed/7de016d4-6a20-4987-83c0-4564918ac116';
-        blogScript.async = true;
-        document.body.appendChild(blogScript);
-    }, 1200);
-});
-</script>
-
-<div id="security" class="container-fluid" style="background: #fff; padding: 60px 0; border-top: 2px solid #e0e0e0; border-bottom: 1px solid #e0e0e0;">
-    <div class="container">
-        <div class="row">
-            <div class="col-md-12">
-                <h2 style="text-align: center; font-size: 32px; margin-bottom: 15px; color: #333;">Security & Compliance</h2>
-                <p style="text-align: center; color: #666; margin-bottom: 40px; font-size: 16px; max-width: 800px; margin-left: auto; margin-right: auto;">FoxNetwork is committed to protecting your data and providing secure hosting infrastructure with industry-standard security practices.</p>
-            </div>
-        </div>
-        <div class="row">
-            <div class="col-md-6 col-lg-3" style="margin-bottom: 30px;">
-                <div style="text-align: center; padding: 30px; background: #f8f9fa; border-radius: 8px;">
-                    <div style="font-size: 40px; margin-bottom: 15px;"><i class="fas fa-lock"></i></div>
-                    <h4 style="color: #333; margin-bottom: 10px;">SSL Encryption</h4>
-                    <p style="color: #666; font-size: 14px;">All data in transit is encrypted with industry-standard SSL/TLS protocols.</p>
-                </div>
-            </div>
-            <div class="col-md-6 col-lg-3" style="margin-bottom: 30px;">
-                <div style="text-align: center; padding: 30px; background: #f8f9fa; border-radius: 8px;">
-                    <div style="font-size: 40px; margin-bottom: 15px;"><i class="fas fa-shield-alt"></i></div>
-                    <h4 style="color: #333; margin-bottom: 10px;">DDoS Protection</h4>
-                    <p style="color: #666; font-size: 14px;">Advanced DDoS mitigation protects your services from attacks and ensures uptime.</p>
-                </div>
-            </div>
-            <div class="col-md-6 col-lg-3" style="margin-bottom: 30px;">
-                <div style="text-align: center; padding: 30px; background: #f8f9fa; border-radius: 8px;">
-                    <div style="font-size: 40px; margin-bottom: 15px;"><i class="fas fa-database"></i></div>
-                    <h4 style="color: #333; margin-bottom: 10px;">Data Backups</h4>
-                    <p style="color: #666; font-size: 14px;">Regular automated backups ensure your data is never lost.</p>
-                </div>
-            </div>
-            <div class="col-md-6 col-lg-3" style="margin-bottom: 30px;">
-                <div style="text-align: center; padding: 30px; background: #f8f9fa; border-radius: 8px;">
-                    <div style="font-size: 40px; margin-bottom: 15px;"><i class="fas fa-check-circle"></i></div>
-                    <h4 style="color: #333; margin-bottom: 10px;">Compliance</h4>
-                    <p style="color: #666; font-size: 14px;">GDPR compliant and following international security standards.</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div id="footer" class="footer container-fluid" style="background: #1a1a1a; color: #ccc; padding: 60px 0 30px; margin-top: 0;">
-    <div class="container">
-        <div class="row" style="margin-bottom: 40px;">
-            <div class="col-md-3 col-sm-6" style="margin-bottom: 30px;">
-                <div class="address-holder">
-                    <h4 style="color: white; margin-bottom: 15px;">Contact</h4>
-                    <div class="phone" style="margin-bottom: 10px;"><i class="fas fa-phone"></i> +32 (0)2 615 76 80</div>
-                    <div class="email" style="margin-bottom: 10px;"><i class="fas fa-envelope"></i> <!--email_off-->info@foxnetwork.be<!--/email_off--></div>
-                    <div class="address" style="font-size: 13px; line-height: 1.6;">
-                        <i class="fas fa-map-marker"></i> 
-                        <div>FoxNetwork BV<br>Dokter Spitaelslaan 438<br>1502 Lembeek (Halle), Belgium</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-2 col-sm-6" style="margin-bottom: 30px;">
-                <div class="footer-menu-holder">
-                    <h4 style="color: white; margin-bottom: 15px;">Services</h4>
-                    <ul class="footer-menu" style="list-style: none; padding: 0;">
-                        <li style="margin-bottom: 8px;"><a href="/store.php" style="color: #ccc; text-decoration: none; transition: 0.3s;">Web Hosting</a></li>
-                        <li style="margin-bottom: 8px;"><a href="/store.php" style="color: #ccc; text-decoration: none; transition: 0.3s;">Cloud/VPS</a></li>
-                        <li style="margin-bottom: 8px;"><a href="/store.php" style="color: #ccc; text-decoration: none; transition: 0.3s;">Game Servers</a></li>
-                        <li style="margin-bottom: 8px;"><a href="/store.php" style="color: #ccc; text-decoration: none; transition: 0.3s;">Discord Bots</a></li>
-                    </ul>
-                </div>
-            </div>
-            <div class="col-md-2 col-sm-6" style="margin-bottom: 30px;">
-                <div class="footer-menu-holder">
-                    <h4 style="color: white; margin-bottom: 15px;">Support</h4>
-                    <ul class="footer-menu" style="list-style: none; padding: 0;">
-                        <li style="margin-bottom: 8px;"><a href="/login.php" style="color: #ccc; text-decoration: none; transition: 0.3s;">Client Portal</a></li>
-                        <li style="margin-bottom: 8px;"><a href="/contact.html" style="color: #ccc; text-decoration: none; transition: 0.3s;">Support Center</a></li>
-                        <li style="margin-bottom: 8px;"><a href="https://status.foxnetwork.be" style="color: #ccc; text-decoration: none; transition: 0.3s;">Status Page</a></li>
-                        <li style="margin-bottom: 8px;"><a href="https://billing.foxnetwork.be/index.php?rp=/knowledgebase" style="color: #ccc; text-decoration: none; transition: 0.3s;">API Docs</a></li>
-                    </ul>
-                </div>
-            </div>
-            <div class="col-md-3 col-sm-12" style="margin-bottom: 30px;">
-                <div class="social-menu-holder">
-                    <h4 style="color: white; margin-bottom: 15px;">Connect With Us</h4>
-                    <ul class="social-menu" style="list-style: none; padding: 0; display: flex; gap: 15px;">
-                        <li><a href="#" style="color: #0077b5; text-decoration: none; font-size: 24px;"><i class="fab fa-linkedin"></i></a></li>
-                        <li><a href="#" style="color: #1DA1F2; text-decoration: none; font-size: 24px;"><i class="fab fa-twitter"></i></a></li>
-                        <li><a href="#" style="color: #ff0000; text-decoration: none; font-size: 24px;"><i class="fab fa-youtube"></i></a></li>
-                        <li><a href="https://discord.gg/JSMMJc2kY3" style="color: #5b21b6; text-decoration: none; font-size: 24px;"><i class="fab fa-discord"></i></a></li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-        <div style="border-top: 1px solid #333; padding-top: 20px; text-align: center; color: #999; font-size: 13px;">
-            <p style="margin: 0;">(c) 2020-2026 FoxNetwork BV All rights reserved. | <a href="/privacy.html" style="color: #ccc; text-decoration: none;">Privacy Policy</a> | <span style="color: #ccc;">Terms of Service</span></p>
-        </div>
-    </div>
-</div>
-<script src="js/jquery.min.js" defer></script>
-<script src="js/bootstrap.min.js" defer></script>
-<script src="js/main.js" defer></script>
+<footer class="mk-footer">
+  <div class="mk-wrap">
+    <div class="mk-footer-grid"><div><a class="mk-brand" href="/"><img src="/images/logo.png" alt=""><span>FOX<b>NETWORK</b></span></a><p>Independent Belgian hosting for game servers, cloud VPS, websites and Discord bots on European infrastructure.</p></div><div><h3>Game hosting</h3><a href="/game-hosting/minecraft/">Minecraft</a><a href="/game-hosting/rust/">Rust</a><a href="/game-hosting/palworld/">Palworld</a><a href="/game-hosting/ark/">ARK</a><a href="/game-hosting/astroneer/">Astroneer</a></div><div><h3>Cloud & web</h3><a href="/vps-hosting/">Cloud VPS</a><a href="/discord-bot-hosting/">Discord bot hosting</a><a href="/web-hosting/">Web hosting</a><a href="/store.php">All plans</a></div><div><h3>Company</h3><a href="/blog/">Blog</a><a href="/contact.html">Contact</a><a href="/privacy.html">Privacy</a><a href="/login.php">Client portal</a><a href="https://discord.gg/JSMMJc2kY3">Discord community</a></div></div>
+    <div class="mk-footer-bottom"><span>© 2020–2026 FoxNetwork BV. All rights reserved.</span><span>info@foxnetwork.be · +32 (0)2 615 76 80</span></div>
+  </div>
+</footer>
+<script>document.querySelector('[data-nav-toggle]')?.addEventListener('click',()=>document.querySelector('[data-nav]')?.classList.toggle('is-open'));</script>
 </body>
 </html>
-
-"><i class="fab fa-youtube"></i></a></li>
-                        <li><a href="https://discord.gg/JSMMJc2kY3" style="color: #5b21b6; text-decoration: none; font-size: 24px;"><i class="fab fa-discord"></i></a></li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-        <div style="border-top: 1px solid #333; padding-top: 20px; text-align: center; color: #999; font-size: 13px;">
-            <p style="margin: 0;">(c) 2020-2026 FoxNetwork BV All rights reserved. | <a href="/privacy.html" style="color: #ccc; text-decoration: none;">Privacy Policy</a> | <span style="color: #ccc;">Terms of Service</span></p>
-        </div>
-    </div>
-</div>
-<script src="js/jquery.min.js" defer></script>
-<script src="js/bootstrap.min.js" defer></script>
-<script src="js/main.js" defer></script>
-</body>
-</html>
-
-ript>
-<script src="js/bootstrap.min.js" defer></script>
-<script src="js/main.js" defer></script>
-</body>
-</html>
-
-

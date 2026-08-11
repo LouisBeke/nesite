@@ -17,6 +17,9 @@ DirectoryIndex index.html
 
     RewriteCond %{THE_REQUEST} \s/+privacy(?:\.php)?[?\s] [NC]
     RewriteRule ^privacy(?:\.php)?$ https://foxnetwork.be/privacy.html [R=301,L]
+
+    # Public blog articles use clean, shareable URLs.
+    RewriteRule ^blog/([a-z0-9-]+)/?$ blog/post.php?slug=$1 [L,QSA]
 </IfModule>
 
 <IfModule mod_deflate.c>
@@ -46,7 +49,7 @@ DirectoryIndex index.html
         Header always set X-Robots-Tag "noindex, nofollow, noarchive"
     </FilesMatch>
     <IfModule mod_setenvif.c>
-        SetEnvIf Request_URI "^/(?:admin|client)(?:/|$)" private_search_route
+        SetEnvIf Request_URI "^/(?:admin|client|api)(?:/|$)" private_search_route
         Header always set X-Robots-Tag "noindex, nofollow, noarchive" env=private_search_route
     </IfModule>
     <FilesMatch "\.(css|js|png|jpe?g|gif|svg|webp|woff2?)$">

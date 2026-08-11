@@ -158,6 +158,7 @@ try {
     if (function_exists('fox_v15m_migrate')) fox_v15m_migrate();
     if (function_exists('fox_v16_linode_migrate')) fox_v16_linode_migrate();
     if (function_exists('fox_v16a_provider_config_cleanup_migrate')) fox_v16a_provider_config_cleanup_migrate();
+    if (function_exists('fox_v17_blog_migrate')) fox_v17_blog_migrate();
 } catch (Throwable $e) {
     error_log('FoxNetwork migrations skipped: '.$e->getMessage());
 }

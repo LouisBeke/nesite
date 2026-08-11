@@ -4,15 +4,9 @@ security_touch_session((int)$u['id']);
 $ok = '';
 $err = '';
 $newRecovery = [];
-if (empty($u['ptero_user_id']) && !empty($u['email'])) {
-  try {
-    $autoPteroUserId = ensure_ptero_user_for_local_user((string)$u['email'], (string)($u['name'] ?? ''), false);
-    if ($autoPteroUserId) {
-      db()->prepare('UPDATE users SET ptero_user_id=? WHERE id=?')->execute([$autoPteroUserId, $u['id']]);
-      $u['ptero_user_id'] = $autoPteroUserId;
-    }
-  } catch (Throwable $e) {
-  }
+try {
+  if (auto_setup_ptero_client_key_for_local_user($u)) $u = user();
+} catch (Throwable $e) {
 }
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   verify_csrf();
@@ -38,27 +32,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       db()->prepare('UPDATE users SET password_hash=? WHERE id=?')->execute([password_hash($p, PASSWORD_DEFAULT), $u['id']]);
       db()->prepare('DELETE FROM user_sessions WHERE user_id=? AND session_id<>?')->execute([$u['id'], session_id()]);
       $ok = 'Password changed and other sessions signed out.';
-    } elseif ($a === 'ptero_link') {
-      if (empty($u['email'])) throw new RuntimeException('Your account email is required for linking.');
-      $pteroUserId = ensure_ptero_user_for_local_user((string)$u['email'], (string)($u['name'] ?? ''), false);
-      if ($pteroUserId) {
-        db()->prepare('UPDATE users SET ptero_user_id=? WHERE id=?')->execute([$pteroUserId, $u['id']]);
-        $u['ptero_user_id'] = $pteroUserId;
-        try {
-          if (auto_setup_ptero_client_key_for_local_user($u)) $u['ptero_client_key'] = 'auto';
-        } catch (Throwable $e) {
-        };
-        $ok = 'Pterodactyl account linked by email.';
-      } else {
-        $err = 'No matching Pterodactyl account found for your email.';
-      }
-    } elseif ($a === 'ptero_manual') {
-      $key = trim($_POST['ptero_key'] ?? '');
-      if ($key === '') throw new RuntimeException('Client API key is required.');
-      if (!verify_ptero_client_token($key)) throw new RuntimeException('Invalid Client API key.');
-      db()->prepare('UPDATE users SET ptero_client_key=? WHERE id=?')->execute([enc($key), $u['id']]);
-      $u['ptero_client_key'] = 'manual';
-      $ok = 'Client API key saved.';
     } elseif ($a === '2fa_begin') {
       $secret = b32encode(random_bytes(20));
       $_SESSION['2fa_setup_secret'] = $secret;
@@ -149,9 +122,43 @@ $totpUri = $setup ? 'otpauth://totp/' . rawurlencode('FoxNetwork:' . $u['email']
           </form><?php else: ?><p class="muted">Protect your account with an authenticator app.</p>
           <form method="post"><input type="hidden" name="csrf" value="<?= csrf() ?>"><button class="btn primary" name="action" value="2fa_begin">Set up 2FA</button></form><?php endif ?>
       </section>
-      <section class="security-card">
-        <h2>Pterodactyl connection</h2><?php if (!empty($u['ptero_user_id'])): ?><div class="notice">Linked by email to your Pterodactyl account.</div><?php else: ?><div class="muted">No link found yet. Connect automatically with your account email.</div>
-          <form method="post" style="margin-top:12px"><input type="hidden" name="csrf" value="<?= csrf() ?>"><button class="btn" name="action" value="ptero_link">Link by email</button></form><?php endif ?><form method="post" style="margin-top:12px"><input type="hidden" name="csrf" value="<?= csrf() ?>"><input type="hidden" name="action" value="ptero_manual">
+    </div>
+    <section class="security-card">
+      <div class="security-card-head">
+        <div>
+          <h2>Active sessions</h2>
+          <p class="muted">Devices currently signed in to your account.</p>
+        </div>
+        <form method="post"><input type="hidden" name="csrf" value="<?= csrf() ?>"><button class="btn" name="action" value="sessions">Sign out other sessions</button></form>
+      </div>
+      <div class="security-list"><?php foreach ($sessions as $s): ?><div><b><?= session_id() === $s['session_id'] ? 'This session' : 'Signed-in session' ?></b><span><?= e($s['ip_address'] ?: 'Unknown IP') ?> -+ <?= e($s['last_seen_at']) ?></span><small><?= e($s['user_agent'] ?: 'Unknown device') ?></small></div><?php endforeach ?></div>
+    </section>
+    <section class="security-card">
+      <h2>Login history</h2>
+      <div class="security-list"><?php foreach ($history as $h): ?><div><b><?= $h['success'] ? 'Successful login' : 'Failed login' ?></b><span><?= e($h['ip_address'] ?: 'Unknown IP') ?> -+ <?= e($h['created_at']) ?></span><small><?= e($h['user_agent'] ?: 'Unknown device') ?></small></div><?php endforeach ?></div>
+    </section>
+  </div><?php render_client_page_end(); ?><?php if ($setup): ?>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSQX0FslNhTDadL4O5SAGapGt4FodqL8My0mA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      var el = document.getElementById('totp-qrcode');
+      if (el && window.QRCode) {
+        new QRCode(el, {
+          text: <?= json_encode($totpUri, JSON_UNESCAPED_SLASHES) ?>,
+          width: 220,
+          height: 220,
+          colorDark: '#111111',
+          colorLight: '#ffffff',
+          correctLevel: QRCode.CorrectLevel.M
+        });
+      }
+    });
+  </script>
+<?php endif ?>
+</body>
+
+</html>
+<?php if (false): ?><form method="post" style="margin-top:12px"><input type="hidden" name="csrf" value="<?= csrf() ?>"><input type="hidden" name="action" value="disabled_connection_form">
           <div class="field"><label>Client API key</label><input type="password" name="ptero_key" placeholder="ptlc_..." required></div><button class="btn">Save client key</button>
         </form>
       </section>
@@ -191,3 +198,5 @@ $totpUri = $setup ? 'otpauth://totp/' . rawurlencode('FoxNetwork:' . $u['email']
 </body>
 
 </html>
+<?php endif; // Disabled legacy connection fragment. ?>
+>
