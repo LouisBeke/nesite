@@ -33,13 +33,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $serviceQ = db()->prepare('SELECT id FROM services WHERE order_id=? LIMIT 1');
             $serviceQ->execute([$id]);
             $serviceId = (int)$serviceQ->fetchColumn();
-            $msg = 'Service #'.$serviceId.' created and provisioning job #'.$queueId.' queued.';
+            $msg = oxxa_order_is_domain_only($id)?'Domain order provisioned.':'Service #'.$serviceId.' created and provisioning job #'.$queueId.' queued.';
         } elseif ($st === 'active') {
-            $serviceQ = db()->prepare("SELECT id FROM services WHERE order_id=? AND status='active' LIMIT 1");
-            $serviceQ->execute([$id]);
-            if (!(int)$serviceQ->fetchColumn()) throw new RuntimeException('Provision this order first. It has no active service.');
-            db()->prepare("UPDATE orders SET status='active' WHERE id=?")->execute([$id]);
-            $msg = 'Order updated.';
+            if(oxxa_order_is_domain_only($id)){oxxa_provision_domain_order($id);$msg='Domain order activated.';}else{
+                $serviceQ = db()->prepare("SELECT id FROM services WHERE order_id=? AND status='active' LIMIT 1");
+                $serviceQ->execute([$id]);
+                if (!(int)$serviceQ->fetchColumn()) throw new RuntimeException('Provision this order first. It has no active service.');
+                db()->prepare("UPDATE orders SET status='active' WHERE id=?")->execute([$id]);
+                $msg = 'Order updated.';
+            }
         } else {
             $q = db()->prepare('UPDATE orders SET status=? WHERE id=?');
             $q->execute([$st, $id]);

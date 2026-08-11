@@ -127,6 +127,24 @@ function oxxa_nginx_egg_enabled(int $eggId): bool {
     return oxxa_enabled()&&in_array($eggId,$ids,true);
 }
 
+function oxxa_order_is_domain_only(int $orderId): bool {
+    $q=db()->prepare('SELECT config_json FROM order_items WHERE order_id=? ORDER BY id LIMIT 1');$q->execute([$orderId]);$cfg=json_decode((string)$q->fetchColumn(),true)?:[];
+    return ($cfg['service_type']??'')==='domain_registration';
+}
+
+function oxxa_provision_domain_order(int $orderId): void {
+    $q=db()->prepare('SELECT oi.id item_id,oi.config_json,o.status order_status,u.* FROM orders o JOIN order_items oi ON oi.order_id=o.id JOIN users u ON u.id=o.user_id WHERE o.id=? ORDER BY oi.id LIMIT 1');$q->execute([$orderId]);$row=$q->fetch();if(!$row)throw new RuntimeException('Domain order not found.');
+    $cfg=json_decode((string)$row['config_json'],true)?:[];if(($cfg['status']??'')==='active'){db()->prepare("UPDATE orders SET status='active' WHERE id=?")->execute([$orderId]);return;}
+    $domain=oxxa_domain_parts((string)($cfg['domain']??''))['domain'];$dnsProvider=(string)($cfg['dns_provider']??'oxxa');
+    $identity=(string)($cfg['identity_handle']??'');if($identity===''){$identity=oxxa_ensure_user_identity($row);$cfg['identity_handle']=$identity;db()->prepare('UPDATE order_items SET config_json=? WHERE id=?')->execute([json_encode($cfg,JSON_UNESCAPED_SLASHES),(int)$row['item_id']]);}
+    $nsgroup=(string)($cfg['nsgroup']??'');$test=oxxa_setting('test_mode','0')==='1';
+    if($test&&$dnsProvider==='cloudflare')$nsgroup=oxxa_setting('nsgroup');
+    if($dnsProvider==='cloudflare'&&$nsgroup===''){$zone=cloudflare_ensure_zone($domain);$zoneId=(string)($zone['id']??'');$nameservers=(array)($zone['name_servers']??[]);if($zoneId===''||count($nameservers)<2)throw new RuntimeException('Cloudflare returned an incomplete zone.');$nsgroup=oxxa_create_nsgroup($domain,$nameservers);$cfg['cloudflare_zone_id']=$zoneId;$cfg['cloudflare_nameservers']=$nameservers;$cfg['nsgroup']=$nsgroup;db()->prepare('UPDATE order_items SET config_json=? WHERE id=?')->execute([json_encode($cfg,JSON_UNESCAPED_SLASHES),(int)$row['item_id']]);}
+    if($dnsProvider==='oxxa'&&$nsgroup==='')$nsgroup=oxxa_setting('nsgroup');
+    if(empty($cfg['registered'])){$result=oxxa_register_domain($domain,$identity,$nsgroup);$cfg['registered']=true;$cfg['oxxa_order_id']=(string)($result['order_id']??'');db()->prepare('UPDATE order_items SET config_json=? WHERE id=?')->execute([json_encode($cfg,JSON_UNESCAPED_SLASHES),(int)$row['item_id']]);}
+    $cfg['status']=$test?'test':'active';$cfg['registered_at']=date('c');db()->prepare('UPDATE order_items SET config_json=? WHERE id=?')->execute([json_encode($cfg,JSON_UNESCAPED_SLASHES),(int)$row['item_id']]);db()->prepare("UPDATE orders SET status='active' WHERE id=?")->execute([$orderId]);
+}
+
 function oxxa_provision_domain(int $serviceId, array &$runtime): void {
     $q=db()->prepare('SELECT s.config_json,u.* FROM services s JOIN users u ON u.id=s.user_id WHERE s.id=?');$q->execute([$serviceId]);$userRow=$q->fetch();if(!$userRow)throw new RuntimeException('Domain service owner was not found.');$cfg=json_decode((string)$userRow['config_json'],true)?:[];
     $domain=trim((string)($cfg['domain']['name']??'')); if($domain==='')return;

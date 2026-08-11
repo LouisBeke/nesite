@@ -28,6 +28,7 @@ $u = require_user(); ?>
                 <div class="eyebrow">FoxNetwork Store</div>
                 <h1>Pick your server.</h1>
                 <div class="muted">Simple plans. No confusing control-panel setup.</div>
+                <?php if(oxxa_enabled()):?><section class="store-section"><div class="store-heading"><div><h2>Domain names</h2><div class="muted">Register a domain without purchasing hosting. Live OXXA availability and pricing.</div></div><a class="btn primary" href="/domains.php">Find a domain</a></div></section><?php endif?>
                 <div class="store-cats"><?php foreach ($cats as $c): ?><a class="category-chip" href="#<?= e($c['slug']) ?>"><i class="<?= e($c['icon']) ?>"></i><?= e($c['name']) ?></a><?php endforeach ?></div>
                 <?php foreach ($cats as $c): ?><section id="<?= e($c['slug']) ?>" class="store-section">
                         <div class="store-heading">

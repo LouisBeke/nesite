@@ -67,6 +67,10 @@ function provisioning_queue_service(int $serviceId, array $meta = [], int $prior
 }
 
 function provisioning_dispatch_order(int $orderId, array $meta = []): int {
+    if(oxxa_order_is_domain_only($orderId)){
+        db()->prepare("UPDATE orders SET status='provisioning' WHERE id=? AND status IN ('paid','awaiting_payment')")->execute([$orderId]);
+        try{oxxa_provision_domain_order($orderId);provisioning_emit_event('domain.provisioned',['order_id'=>$orderId,'standalone'=>1]);return 0;}catch(Throwable $e){db()->prepare("UPDATE orders SET status='paid' WHERE id=?")->execute([$orderId]);provisioning_emit_event('domain.provision_failed',['order_id'=>$orderId,'error'=>$e->getMessage()],null,'error');throw $e;}
+    }
     $serviceId = ensure_service_for_order($orderId);
     db()->prepare("UPDATE orders SET status='provisioning' WHERE id=? AND status IN ('paid','awaiting_payment')")->execute([$orderId]);
     zoho_crm_try_sync_service($serviceId);

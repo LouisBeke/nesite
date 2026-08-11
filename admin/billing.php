@@ -131,7 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $q->execute([$iid]);
             $oid = (int)$q->fetchColumn();
             if ($oid) {
-                $sid = ensure_service_for_order($oid);
+                $sid = oxxa_order_is_domain_only($oid) ? 0 : ensure_service_for_order($oid);
                 if (($_POST['provision'] ?? '') === '1') {
                     provisioning_dispatch_order($oid, ['source' => 'admin_billing', 'invoice_id' => $iid, 'service_id' => $sid]);
                 }

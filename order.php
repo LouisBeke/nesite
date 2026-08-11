@@ -123,6 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
          if($error===''&&$domainName!==''){
             try{
                if(!in_array($dnsProvider,['oxxa','cloudflare'],true))throw new RuntimeException('Choose a valid DNS provider.');
+               if(($dnsProvider==='oxxa'||oxxa_setting('test_mode','0')==='1')&&oxxa_setting('nsgroup')==='')throw new RuntimeException('OXXA Managed DNS is not configured by the administrator.');
                if($dnsProvider==='cloudflare'&&(cloudflare_setting('api_token')===''||cloudflare_setting('account_id')===''))throw new RuntimeException('Cloudflare DNS is not configured by the administrator.');
                foreach(['name','email','phone','street','house_number','postal_code','city','state','country_code'] as $profileField)if(trim((string)($u[$profileField]??''))==='')throw new RuntimeException('Complete your domain holder details in Account Settings first.');
                if(!oxxa_nginx_egg_enabled($eggId))throw new RuntimeException('Domain registration is only available with the configured Nginx web-server software.');
