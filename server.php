@@ -2008,21 +2008,3 @@ if ($hasClientKey) {
 </body>
 
 </html>
-mpty muted">No activity yet.</div>';
-      } catch (e) {
-        q('#activitylog').innerHTML = '<div class="error">' + em(e.message) + '</div>';
-      }
-    }
-
-    resources();
-    if (HAS_CLIENT_KEY) setInterval(resources, 10000);
-    loadActivity();
-    if (HAS_CLIENT_KEY) loadFiles('/');
-  </script>
-</body>
-
-</html>
-ript>
-</body>
-
-</html>

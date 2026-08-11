@@ -15,9 +15,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($a === 'profile') {
       $profileName = trim((string)($_POST['name'] ?? $u['name']));
       if (mb_strlen($profileName) < 2) throw new RuntimeException('Please enter your full name.');
-      db()->prepare('UPDATE users SET name=?,email_notifications=? WHERE id=?')->execute([$profileName, isset($_POST['email_notifications']) ? 1 : 0, $u['id']]);
+      $profileFields=[];foreach(['company_name','phone','street','house_number','postal_code','city','state','country_code'] as $field)$profileFields[$field]=trim((string)($_POST[$field]??''));
+      $profileFields['country_code']=strtoupper($profileFields['country_code']);
+      if($profileFields['country_code']!==''&&!preg_match('/^[A-Z]{2}$/',$profileFields['country_code']))throw new RuntimeException('Country must be a two-letter country code.');
+      db()->prepare('UPDATE users SET name=?,email_notifications=?,company_name=?,phone=?,street=?,house_number=?,postal_code=?,city=?,state=?,country_code=? WHERE id=?')->execute([$profileName,isset($_POST['email_notifications'])?1:0,$profileFields['company_name']?:null,$profileFields['phone']?:null,$profileFields['street']?:null,$profileFields['house_number']?:null,$profileFields['postal_code']?:null,$profileFields['city']?:null,$profileFields['state']?:null,$profileFields['country_code']?:null,$u['id']]);
       $u['name'] = $profileName;
       $u['email_notifications'] = isset($_POST['email_notifications']) ? 1 : 0;
+      foreach($profileFields as $profileKey=>$profileValue)$u[$profileKey]=$profileValue;
       try {
         zoho_crm_sync_customer($u);
       } catch (Throwable $crmError) {
@@ -95,7 +99,17 @@ $totpUri = $setup ? 'otpauth://totp/' . rawurlencode('FoxNetwork:' . $u['email']
         <h2>Profile</h2>
         <form method="post"><input type="hidden" name="csrf" value="<?= csrf() ?>"><input type="hidden" name="action" value="profile">
           <div class="field"><label>Name</label><input name="name" value="<?= e($u['name']) ?>" required></div>
-          <div class="field"><label>Email</label><input value="<?= e($u['email']) ?>" disabled></div><label class="check"><input type="checkbox" name="email_notifications" <?= ((int)($u['email_notifications'] ?? 1)) ? 'checked' : '' ?>> Billing and service emails</label><button class="btn primary">Save profile</button>
+          <div class="field"><label>Email</label><input value="<?= e($u['email']) ?>" disabled></div><label class="check"><input type="checkbox" name="email_notifications" <?= ((int)($u['email_notifications'] ?? 1)) ? 'checked' : '' ?>> Billing and service emails</label>
+          <div class="field"><label>Company <span class="muted">(optional)</span></label><input name="company_name" value="<?=e($u['company_name']??'')?>"></div>
+          <div class="field"><label>Phone</label><input name="phone" value="<?=e($u['phone']??'')?>"></div>
+          <div class="field"><label>Street</label><input name="street" value="<?=e($u['street']??'')?>"></div>
+          <div class="field"><label>House number</label><input name="house_number" value="<?=e($u['house_number']??'')?>"></div>
+          <div class="field"><label>Postal code</label><input name="postal_code" value="<?=e($u['postal_code']??'')?>"></div>
+          <div class="field"><label>City</label><input name="city" value="<?=e($u['city']??'')?>"></div>
+          <div class="field"><label>State / province</label><input name="state" value="<?=e($u['state']??'')?>"></div>
+          <div class="field"><label>Country code</label><input name="country_code" maxlength="2" value="<?=e($u['country_code']??'')?>" placeholder="BE"></div>
+          <?php if(!empty($u['oxxa_identity_handle'])):?><div class="field"><label>OXXA identity handle</label><input value="<?=e($u['oxxa_identity_handle'])?>" disabled></div><?php endif?>
+          <p class="muted">These details are required when registering a domain and are used to create your personal OXXA holder identity.</p><button class="btn primary">Save profile</button>
         </form>
       </section>
       <section class="security-card">

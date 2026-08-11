@@ -747,6 +747,34 @@ function fox_v17_blog_migrate(): void {
     }
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v17-blog']);
 }
+
+function fox_v18_oxxa_domains_migrate(): void {
+    static $ran=false;if($ran)return;$ran=true;$pdo=db();
+    if(fox_migration_applied($pdo,'v18-oxxa-domains'))return;
+    if(fox_table_exists($pdo,'app_settings'))$pdo->prepare("INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES
+      ('oxxa_enabled','0'),('oxxa_api_url','https://api.oxxa.com/command.php'),('oxxa_api_user',''),('oxxa_api_password',''),
+      ('oxxa_identity_handle',''),('oxxa_nsgroup',''),('oxxa_dns_template',''),('oxxa_nginx_egg_ids',''),
+      ('oxxa_domain_price','12.50'),('oxxa_test_mode','1')")->execute();
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v18-oxxa-domains']);
+}
+
+function fox_v18a_domain_contacts_cloudflare_migrate(): void {
+    static $ran=false;if($ran)return;$ran=true;$pdo=db();
+    if(fox_migration_applied($pdo,'v18a-domain-contacts-cloudflare'))return;
+    if(fox_table_exists($pdo,'users'))foreach([
+        'company_name'=>'VARCHAR(190) NULL','phone'=>'VARCHAR(40) NULL','street'=>'VARCHAR(190) NULL','house_number'=>'VARCHAR(30) NULL',
+        'postal_code'=>'VARCHAR(30) NULL','city'=>'VARCHAR(120) NULL','state'=>'VARCHAR(120) NULL','country_code'=>'CHAR(2) NULL','oxxa_identity_handle'=>'VARCHAR(80) NULL'
+    ] as $column=>$definition)if(!fox_column_exists($pdo,'users',$column))$pdo->exec("ALTER TABLE users ADD COLUMN `$column` $definition");
+    if(fox_table_exists($pdo,'app_settings'))$pdo->prepare("INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES('cloudflare_api_token',''),('cloudflare_account_id',''),('oxxa_price_markup_percent','25'),('oxxa_price_fixed_fee','2.50'),('oxxa_price_minimum','10.00'),('oxxa_price_cache_seconds','3600')")->execute();
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v18a-domain-contacts-cloudflare']);
+}
+
+function fox_v18b_oxxa_auto_pricing_migrate(): void {
+    static $ran=false;if($ran)return;$ran=true;$pdo=db();
+    if(fox_migration_applied($pdo,'v18b-oxxa-auto-pricing'))return;
+    if(fox_table_exists($pdo,'app_settings'))$pdo->prepare("INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES('oxxa_price_markup_percent','25'),('oxxa_price_fixed_fee','2.50'),('oxxa_price_minimum','10.00'),('oxxa_price_cache_seconds','3600')")->execute();
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v18b-oxxa-auto-pricing']);
+}
 /* Removed malformed duplicate migration tail.
 ')) {
         $pdo->prepare("INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES('automation_batch_size','20'),('automation_worker_timeout_seconds','300')")->execute();

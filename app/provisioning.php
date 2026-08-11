@@ -381,6 +381,9 @@ function provisioning_process_service_job(array $job, array &$runtime = []): voi
         $runtime = array_merge($runtime, provisioning_select_runtime_for_service($serviceBefore, (int)$job['id']));
     }
 
+    // Register and point an optional OXXA domain once the final allocation IP is known.
+    oxxa_provision_domain($serviceId, $runtime);
+
     provisioning_emit_event('provisioning.started', ['service_id' => $serviceId, 'node_id' => (int)$runtime['node_id'], 'allocation_id' => (int)$runtime['allocation_id']], (int)$job['id']);
     provision_service($serviceId, $runtime);
 

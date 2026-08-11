@@ -159,6 +159,9 @@ try {
     if (function_exists('fox_v16_linode_migrate')) fox_v16_linode_migrate();
     if (function_exists('fox_v16a_provider_config_cleanup_migrate')) fox_v16a_provider_config_cleanup_migrate();
     if (function_exists('fox_v17_blog_migrate')) fox_v17_blog_migrate();
+    if (function_exists('fox_v18_oxxa_domains_migrate')) fox_v18_oxxa_domains_migrate();
+    if (function_exists('fox_v18a_domain_contacts_cloudflare_migrate')) fox_v18a_domain_contacts_cloudflare_migrate();
+    if (function_exists('fox_v18b_oxxa_auto_pricing_migrate')) fox_v18b_oxxa_auto_pricing_migrate();
 } catch (Throwable $e) {
     error_log('FoxNetwork migrations skipped: '.$e->getMessage());
 }
@@ -168,6 +171,7 @@ require_once __DIR__.'/mail.php';
 require_once __DIR__.'/linode.php';
 require_once __DIR__.'/zoho-crm.php';
 require_once __DIR__.'/automation.php';
+require_once __DIR__.'/oxxa.php';
 require_once __DIR__.'/provisioning.php';
 function csrf():string{if(empty($_SESSION['csrf']))$_SESSION['csrf']=bin2hex(random_bytes(32));return $_SESSION['csrf'];}
 function verify_csrf():void{if(!hash_equals($_SESSION['csrf']??'',$_POST['csrf']??'')){http_response_code(419);die('Invalid request token');}}
@@ -638,7 +642,7 @@ function invoice_for_order(int $orderId): int {
     $q=db()->prepare('SELECT * FROM orders WHERE id=?');$q->execute([$orderId]);$o=$q->fetch();if(!$o)throw new RuntimeException('Order not found.');
     $num='INV-'.date('ymd').'-'.strtoupper(bin2hex(random_bytes(3)));$due=date('Y-m-d H:i:s',strtotime('+7 days'));
     $q=db()->prepare("INSERT INTO invoices(user_id,order_id,invoice_number,status,subtotal,total,currency,due_at) VALUES(?,?,?,'unpaid',?,?,?,?)");$q->execute([$o['user_id'],$o['id'],$num,$o['subtotal'],$o['total'],$o['currency'],$due]);$iid=(int)db()->lastInsertId();
-    $items=db()->prepare('SELECT product_name,unit_price,quantity FROM order_items WHERE order_id=?');$items->execute([$orderId]);$ins=db()->prepare('INSERT INTO invoice_items(invoice_id,description,amount,quantity) VALUES(?,?,?,?)');foreach($items as $it)$ins->execute([$iid,$it['product_name'].' — monthly hosting',$it['unit_price'],$it['quantity']]);
+    $items=db()->prepare('SELECT product_name,unit_price,quantity,config_json FROM order_items WHERE order_id=?');$items->execute([$orderId]);$ins=db()->prepare('INSERT INTO invoice_items(invoice_id,description,amount,quantity) VALUES(?,?,?,?)');foreach($items as $it){$itemCfg=json_decode((string)($it['config_json']??''),true)?:[];$suffix=($itemCfg['billing_period']??'')==='annual'?' — annual registration':' — monthly hosting';$ins->execute([$iid,$it['product_name'].$suffix,$it['unit_price'],$it['quantity']]);}
     db()->prepare("UPDATE orders SET status='awaiting_payment' WHERE id=?")->execute([$orderId]);
     try{$uq=db()->prepare('SELECT * FROM users WHERE id=?');$uq->execute([$o['user_id']]);$cu=$uq->fetch();if($cu)send_template('invoice_created',$cu,['invoice_number'=>$num,'total'=>number_format((float)$o['total'],2),'currency'=>$o['currency'],'due_date'=>date('d M Y',strtotime($due))]);}catch(Throwable $e){}
     zoho_crm_try_sync_order($orderId);

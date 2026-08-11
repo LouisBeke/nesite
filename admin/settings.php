@@ -20,6 +20,7 @@ $keys = [
     'provisioning_worker_timeout_seconds','provisioning_retry_base_seconds','provisioning_retry_max_seconds',
     'provisioning_online_check_tries','provisioning_online_check_sleep_ms','provisioning_strict_online_check',
     'automation_batch_size','automation_worker_timeout_seconds','blog_author_name',
+    'oxxa_enabled','oxxa_api_url','oxxa_identity_handle','oxxa_nsgroup','oxxa_dns_template','oxxa_nginx_egg_ids','oxxa_domain_price','oxxa_test_mode','oxxa_price_markup_percent','oxxa_price_fixed_fee','oxxa_price_minimum','oxxa_price_cache_seconds','cloudflare_account_id',
     'maintenance_mode','maintenance_message','portal_registration','security_session_hours'
 ];
 
@@ -27,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     try {
         $settingsAction = (string)($_POST['settings_action'] ?? 'save');
-        foreach (['app_url'=>'Portal URL','pterodactyl_url'=>'Pterodactyl URL','mollie_webhook_url'=>'Mollie webhook URL','linode_api_url'=>'Linode API URL'] as $urlKey=>$label) {
+        foreach (['app_url'=>'Portal URL','pterodactyl_url'=>'Pterodactyl URL','mollie_webhook_url'=>'Mollie webhook URL','linode_api_url'=>'Linode API URL','oxxa_api_url'=>'OXXA API URL'] as $urlKey=>$label) {
             if (array_key_exists($urlKey,$_POST)) {
                 $url=trim((string)$_POST[$urlKey]);
                 if ($url==='' || !filter_var($url,FILTER_VALIDATE_URL) || !in_array(strtolower((string)parse_url($url,PHP_URL_SCHEME)),['http','https'],true)) throw new RuntimeException($label.' must be a complete HTTP or HTTPS URL.');
@@ -38,6 +39,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_POST['currency']=strtoupper(trim((string)$_POST['currency']));
             if(!preg_match('/^[A-Z]{3}$/',(string)$_POST['currency']))throw new RuntimeException('Currency must be a three-letter ISO code.');
         }
+        if(isset($_POST['oxxa_domain_price'])&&(!is_numeric($_POST['oxxa_domain_price'])||(float)$_POST['oxxa_domain_price']<0))throw new RuntimeException('OXXA domain price must be zero or higher.');
+        foreach(['oxxa_price_markup_percent','oxxa_price_fixed_fee','oxxa_price_minimum'] as $priceKey)if(isset($_POST[$priceKey])&&(!is_numeric($_POST[$priceKey])||(float)$_POST[$priceKey]<0))throw new RuntimeException('Automatic pricing values must be zero or higher.');
+        if(isset($_POST['oxxa_price_cache_seconds'])&&(!ctype_digit((string)$_POST['oxxa_price_cache_seconds'])||(int)$_POST['oxxa_price_cache_seconds']<60))throw new RuntimeException('OXXA price cache must be at least 60 seconds.');
+        if(isset($_POST['oxxa_nginx_egg_ids'])&&trim((string)$_POST['oxxa_nginx_egg_ids'])!==''&&!preg_match('/^\s*\d+(?:\s*[, ]\s*\d+)*\s*$/',(string)$_POST['oxxa_nginx_egg_ids']))throw new RuntimeException('Nginx Egg IDs must be numbers separated by commas.');
         $crmCredentialsChanged = false;
         foreach ($keys as $k) {
             if (array_key_exists($k, $_POST)) {
@@ -47,14 +52,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($_POST['smtp_password']) && trim((string)$_POST['smtp_password']) !== '') {
             save_setting('smtp_password', 'enc:' . enc(trim((string)$_POST['smtp_password'])));
         }
-        foreach (['zoho_crm_client_secret','zoho_crm_refresh_token','pterodactyl_application_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token','soro_webhook_secret'] as $secretKey) {
+        foreach (['zoho_crm_client_secret','zoho_crm_refresh_token','pterodactyl_application_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token'] as $secretKey) {
             if (isset($_POST[$secretKey]) && trim((string)$_POST[$secretKey]) !== '') {
                 save_setting($secretKey, 'enc:' . enc(trim((string)$_POST[$secretKey])));
                 if(str_starts_with($secretKey,'zoho_crm_'))$crmCredentialsChanged = true;
             }
         }
         $fallbackSecrets=['pterodactyl_application_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token'];
-        $clearableSecrets=array_merge($fallbackSecrets,['smtp_password','zoho_crm_client_secret','zoho_crm_refresh_token','soro_webhook_secret']);
+        $clearableSecrets=array_merge($fallbackSecrets,['smtp_password','zoho_crm_client_secret','zoho_crm_refresh_token','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token']);
         foreach((array)($_POST['clear_secret']??[]) as $secretKey){
             if(!in_array($secretKey,$clearableSecrets,true))continue;
             save_setting($secretKey,in_array($secretKey,$fallbackSecrets,true)?'__EMPTY__':'');
@@ -78,7 +83,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             save_setting('zoho_crm_scope_version', '2');
             $crmGrantExchanged = true;
         }
-        if ($settingsAction === 'test_linode') {
+        if ($settingsAction === 'test_oxxa') {
+            $funds=oxxa_api('funds_get');
+            $available=$funds['details']['funds_available']??null;
+            $nsgroup=oxxa_setting('nsgroup');if($nsgroup==='')throw new RuntimeException('Set the OXXA Managed DNS nameserver group first.');oxxa_api('nsgroup_get',['nsgroup'=>$nsgroup]);
+            $sampleQuote=oxxa_domain_quote('foxnetwork-price-test.nl',true);
+            if(cloudflare_setting('api_token')!==''||cloudflare_setting('account_id')!==''){if(cloudflare_setting('api_token')===''||cloudflare_setting('account_id')==='')throw new RuntimeException('Cloudflare requires both an API token and account ID.');cloudflare_api('/user/tokens/verify');}
+            if(trim(oxxa_setting('nginx_egg_ids'))==='')throw new RuntimeException('Set at least one Nginx Egg ID.');
+            $msg='Full domain setup passed: OXXA credentials, live .nl pricing (€'.number_format((float)$sampleQuote['price'],2).'), balance, managed DNS group, Egg mapping and configured Cloudflare credentials are valid'.($available!==null?'; OXXA balance €'.number_format((float)$available,2):'.');
+        } elseif ($settingsAction === 'test_linode') {
             $instances = linode_api('/linode/instances?page_size=25');
             $msg = 'Settings saved. Linode connected; '.count((array)($instances['data']??[])).' instance(s) returned on the first page.';
         } elseif ($settingsAction === 'test_zoho_crm') {
@@ -99,6 +112,9 @@ $webhookSecretConfigured=$webhookSecretRaw!==''&&$webhookSecretRaw!=='__EMPTY__'
 $linodeTokenConfigured=linode_api_token()!=='';
 $soroSecretRaw=(string)setting('soro_webhook_secret','');
 $soroSecretConfigured=$soroSecretRaw!==''&&$soroSecretRaw!=='__EMPTY__';
+$oxxaUserConfigured=oxxa_setting('api_user')!=='';
+$oxxaPasswordConfigured=oxxa_setting('api_password')!=='';
+$cloudflareTokenConfigured=cloudflare_setting('api_token')!=='';
 admin_head($u, 'Settings', 'settings');
 ?>
 <?php if($msg):?><div class="notice"><?=e($msg)?></div><?php endif?>
@@ -131,6 +147,30 @@ admin_head($u, 'Settings', 'settings');
         </div>
         <div class="fullfield"><button class="btn" type="submit" name="settings_action" value="test_linode">Save &amp; test Linode</button></div>
         <p class="muted fullfield" style="margin:0">Secrets are encrypted in the database. Database host, database name and database credentials remain startup-only because the portal must connect to that database before this Settings page can load.</p>
+    </div>
+</section>
+
+<section class="card settings-card" style="margin-bottom:18px">
+    <div class="cardhead"><b>OXXA DOMAIN AUTOMATION</b><span class="muted">Registration + managed DNS for the nginx Egg</span></div>
+    <div class="admin-form-grid">
+        <label>Integration<select name="oxxa_enabled"><option value="0" <?=oxxa_setting('enabled','0')==='0'?'selected':''?>>Disabled</option><option value="1" <?=oxxa_setting('enabled','0')==='1'?'selected':''?>>Enabled</option></select></label>
+        <label>Test mode<select name="oxxa_test_mode"><option value="1" <?=oxxa_setting('test_mode','1')==='1'?'selected':''?>>Enabled</option><option value="0" <?=oxxa_setting('test_mode','1')==='0'?'selected':''?>>Live registrations</option></select></label>
+        <label>API URL<input type="url" name="oxxa_api_url" value="<?=e(oxxa_setting('api_url','https://api.oxxa.com/command.php'))?>"></label>
+        <label>API username<input type="password" name="oxxa_api_user" placeholder="<?=$oxxaUserConfigured?'Configured — leave empty to keep':'OXXA reseller API username'?>" autocomplete="new-password"></label>
+        <label>API password<input type="password" name="oxxa_api_password" placeholder="<?=$oxxaPasswordConfigured?'Configured — leave empty to keep':'OXXA reseller API password'?>" autocomplete="new-password"></label>
+        <label>Managed DNS nameserver group<input name="oxxa_nsgroup" value="<?=e(oxxa_setting('nsgroup'))?>" placeholder="Optional handle"></label>
+        <label>DNS template<input name="oxxa_dns_template" value="<?=e(oxxa_setting('dns_template'))?>" placeholder="Optional handle"></label>
+        <label>Nginx Egg IDs<input name="oxxa_nginx_egg_ids" value="<?=e(oxxa_setting('nginx_egg_ids'))?>" placeholder="12, 18"></label>
+        <label>Fallback domain price / year (€)<input type="number" min="0" step="0.01" name="oxxa_domain_price" value="<?=e(oxxa_setting('domain_price','12.50'))?>"></label>
+        <label>OXXA price markup (%)<input type="number" min="0" step="0.01" name="oxxa_price_markup_percent" value="<?=e(oxxa_setting('price_markup_percent','25'))?>"></label>
+        <label>Fixed domain fee (€)<input type="number" min="0" step="0.01" name="oxxa_price_fixed_fee" value="<?=e(oxxa_setting('price_fixed_fee','2.50'))?>"></label>
+        <label>Minimum selling price (€)<input type="number" min="0" step="0.01" name="oxxa_price_minimum" value="<?=e(oxxa_setting('price_minimum','10.00'))?>"></label>
+        <label>Price cache (seconds)<input type="number" min="60" name="oxxa_price_cache_seconds" value="<?=e(oxxa_setting('price_cache_seconds','3600'))?>"></label>
+        <label>Cloudflare account ID<input name="cloudflare_account_id" value="<?=e(cloudflare_setting('account_id'))?>" placeholder="32-character account ID"></label>
+        <label>Cloudflare API token<input type="password" name="cloudflare_api_token" placeholder="<?=$cloudflareTokenConfigured?'Configured — leave empty to keep':'Account-scoped Zone Edit + DNS Edit token'?>" autocomplete="new-password"></label>
+        <div class="fullfield config-secret-actions"><label><input type="checkbox" name="clear_secret[]" value="oxxa_api_user"> Clear OXXA username</label><label><input type="checkbox" name="clear_secret[]" value="oxxa_api_password"> Clear OXXA password</label><label><input type="checkbox" name="clear_secret[]" value="cloudflare_api_token"> Clear Cloudflare token</label></div>
+        <div class="fullfield"><button class="btn" type="submit" name="settings_action" value="test_oxxa">Save &amp; test full domain setup</button></div>
+        <p class="muted fullfield" style="margin:0">Keep test mode enabled until a complete paid-order test succeeds. Every customer gets an OXXA holder identity generated from their Account Settings. Cloudflare needs an account-scoped token with Zone Edit and DNS Edit.</p>
     </div>
 </section>
 

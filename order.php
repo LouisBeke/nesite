@@ -21,6 +21,8 @@ if($isLinode){
    if($defaultImage!==''&&!isset($linodeImages[$defaultImage]))$linodeImages[$defaultImage]=$defaultImage;
 }
 $displayPrice = $isDeviceRepair ? 0.00 : (float)$p['price_monthly'];
+$domainPrice=max(0,(float)oxxa_setting('domain_price','12.50'));
+$domainCost=0.0;
 $eggQ = db()->prepare("SELECT * FROM product_eggs WHERE product_id=? AND enabled=1 ORDER BY is_default DESC,sort_order,id");
 $eggQ->execute([(int)$p['id']]);
 $allowedEggs = $eggQ->fetchAll();
@@ -77,6 +79,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
    $customerEnv = [];
    $sshPublicKey = trim((string)($_POST['ssh_public_key'] ?? ''));
    $selectedLinodeImage=trim((string)($_POST['linode_image']??$p['linode_image']??''));
+   $domainName=trim((string)($_POST['domain_name']??''));
+   $dnsProvider=(string)($_POST['dns_provider']??'oxxa');
    if ($name === '') $error = $isDeviceRepair ? 'Enter a device name or model.' : 'Choose a server name.';
    if ($error === '' && !$isDeviceRepair && !$isLinode) {
       if (!$eggId || !in_array($eggId, $allowedIds, true)) $error = 'Choose valid server software.';
@@ -116,6 +120,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                $error = 'Capacity check failed: ' . $x->getMessage();
             }
          }
+         if($error===''&&$domainName!==''){
+            try{
+               if(!in_array($dnsProvider,['oxxa','cloudflare'],true))throw new RuntimeException('Choose a valid DNS provider.');
+               if($dnsProvider==='cloudflare'&&(cloudflare_setting('api_token')===''||cloudflare_setting('account_id')===''))throw new RuntimeException('Cloudflare DNS is not configured by the administrator.');
+               foreach(['name','email','phone','street','house_number','postal_code','city','state','country_code'] as $profileField)if(trim((string)($u[$profileField]??''))==='')throw new RuntimeException('Complete your domain holder details in Account Settings first.');
+               if(!oxxa_nginx_egg_enabled($eggId))throw new RuntimeException('Domain registration is only available with the configured Nginx web-server software.');
+               $domainName=oxxa_domain_parts($domainName)['domain'];
+               if(!oxxa_domain_available($domainName))throw new RuntimeException('This domain is not available for registration.');
+               $domainQuote=oxxa_domain_quote($domainName,true);$domainPrice=(float)$domainQuote['price'];$domainCost=(float)$domainQuote['cost'];
+            }catch(Throwable $domainError){$error='Domain check failed: '.$domainError->getMessage();}
+         }
       }
    }
    if ($error === '' && $isLinode) {
@@ -132,7 +147,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       db()->beginTransaction();
       try {
          $num = 'FN-' . date('ymd') . '-' . strtoupper(bin2hex(random_bytes(3)));
-         $orderAmount = $isDeviceRepair ? 0.00 : (float)$p['price_monthly'];
+         $orderAmount = ($isDeviceRepair ? 0.00 : (float)$p['price_monthly']) + ($domainName!==''?$domainPrice:0);
          $initialStatus = $orderAmount <= 0 ? 'paid' : 'pending';
          $q = db()->prepare("INSERT INTO orders(user_id,order_number,status,subtotal,total,currency) VALUES(?,?,?,?,?,'EUR')");
          $q->execute([$u['id'], $num, $initialStatus, $orderAmount, $orderAmount]);
@@ -142,10 +157,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
          } elseif ($isLinode) {
             $cfg = json_encode(['server_name'=>$name,'provisioning_provider'=>'linode','ssh_public_key'=>$sshPublicKey,'linode_type'=>(string)$p['linode_type'],'linode_region'=>(string)$p['linode_region'],'linode_image'=>$selectedLinodeImage,'linode_image_label'=>(string)($linodeImages[$selectedLinodeImage]??$selectedLinodeImage),'ram_mb'=>(int)$p['ram_mb'],'disk_mb'=>(int)$p['disk_mb'],'cpu_percent'=>(int)$p['cpu_percent']], JSON_UNESCAPED_SLASHES);
          } else {
-            $cfg = json_encode(['server_name' => $name, 'egg_id' => $eggId, 'software_label' => $softwareLabel, 'environment' => $customerEnv, 'customer_environment_keys' => array_keys($customerEnv), 'ram_mb' => (int)$p['ram_mb'], 'disk_mb' => (int)$p['disk_mb'], 'cpu_percent' => (int)$p['cpu_percent']], JSON_UNESCAPED_SLASHES);
+            $cfg = json_encode(['server_name' => $name, 'egg_id' => $eggId, 'software_label' => $softwareLabel, 'environment' => $customerEnv, 'customer_environment_keys' => array_keys($customerEnv), 'ram_mb' => (int)$p['ram_mb'], 'disk_mb' => (int)$p['disk_mb'], 'cpu_percent' => (int)$p['cpu_percent'], 'domain'=>$domainName!==''?['name'=>$domainName,'provider'=>'oxxa','dns_provider'=>$dnsProvider,'status'=>'pending','annual_price'=>$domainPrice,'oxxa_cost'=>$domainCost,'quoted_at'=>date('c')]:null], JSON_UNESCAPED_SLASHES);
          }
          $q = db()->prepare("INSERT INTO order_items(order_id,product_id,product_name,unit_price,quantity,config_json) VALUES(?,?,?,?,1,?)");
-         $q->execute([$oid, $p['id'], $p['name'], $orderAmount, $cfg]);
+         $hostingPrice=$isDeviceRepair?0.00:(float)$p['price_monthly'];
+         $q->execute([$oid, $p['id'], $p['name'], $hostingPrice, $cfg]);
+         if($domainName!==''){
+            $q=db()->prepare("INSERT INTO order_items(order_id,product_id,product_name,unit_price,quantity,config_json) VALUES(?,NULL,?,?,1,?)");
+            $q->execute([$oid,'Domain registration: '.$domainName,$domainPrice,json_encode(['billing_period'=>'annual','domain'=>$domainName,'oxxa_cost'=>$domainCost],JSON_UNESCAPED_SLASHES)]);
+         }
          if ($isDeviceRepair) {
             $subject = 'Device Repair Order ' . $num;
             $message = "A new device repair order was placed.\n\nOrder: " . $num . "\nProduct: " . $p['name'] . "\nDevice: " . $name;
@@ -217,6 +237,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                               <option value="">— Choose software —</option><?php foreach ($allowedEggs as $ae): $label = (string)$ae['customer_label'];
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     $sel = (int)($_POST['egg_id'] ?? 0) === (int)$ae['egg_id'] || (!isset($_POST['egg_id']) && !empty($ae['is_default'])); ?><option value="<?= e($ae['egg_id']) ?>" <?= $sel ? 'selected' : '' ?>><?= e($label) ?><?= !empty($ae['is_default']) ? ' — Recommended' : '' ?></option><?php endforeach ?>
                             </select></div><?php endif ?>
+                     <?php if(!$isDeviceRepair&&!$isLinode&&oxxa_enabled()):?><div class="field" id="domainField"><label>Register a domain <span class="muted">(optional)</span></label><input name="domain_name" value="<?=e($_POST['domain_name']??'')?>" placeholder="example.nl" autocomplete="off"><label>DNS provider</label><select name="dns_provider"><option value="oxxa" <?=($_POST['dns_provider']??'oxxa')==='oxxa'?'selected':''?>>OXXA Managed DNS</option><option value="cloudflare" <?=($_POST['dns_provider']??'')==='cloudflare'?'selected':''?>>Cloudflare DNS</option></select><div class="muted small" id="domainQuote">Enter a domain to retrieve its current annual price from OXXA.</div></div><?php endif?>
                      <?php if($isLinode):?><div class="field customer-os-field"><label>Operating system image</label><select name="linode_image" required><option value="">— Choose operating system —</option><?php foreach($linodeImages as $imageId=>$imageLabel):$imageSelected=(string)($_POST['linode_image']??$p['linode_image']??'')===(string)$imageId;?><option value="<?=e($imageId)?>" <?=$imageSelected?'selected':''?>><?=e($imageLabel)?></option><?php endforeach?></select><div class="muted small">Choose the operating system that will be installed on your VPS.</div><?php if($linodeImageError):?><div class="muted small">The live image catalog is temporarily unavailable; the product default remains available.</div><?php endif?></div><script>document.querySelectorAll('#configForm .field').forEach(field=>{const label=field.querySelector('label');if(label&&label.textContent.trim()==='Operating system'&&field.querySelector('input[disabled]'))field.remove();});</script><?php endif?>
                      <?php if (!$isDeviceRepair && !$isLinode): ?><?php foreach ($varsByEgg as $eid => $vars): ?><div class="egg-options" data-egg="<?= e($eid) ?>" style="display:none">
                         <h3>Software options</h3><?php foreach ($vars as $v): if (empty($v['customer_visible'])) continue;
@@ -239,7 +260,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <div class="summary-row"><span>CPU</span><b><?= e($p['cpu_percent']) ?>%</b></div>
                         <div class="summary-row"><span>Storage</span><b><?= e((string)round($p['disk_mb'] / 1000)) ?> GB</b></div><?php if($isLinode):?><div class="summary-row"><span>Platform</span><b>FoxNetwork Cloud</b></div><div class="summary-row"><span>Plan</span><b><?=e($p['linode_type'])?></b></div><div class="summary-row"><span>Region</span><b><?=e($p['linode_region'])?></b></div><?php endif?><?php endif ?><div class="summary-row"><span>Stock</span><b><?= $p['stock'] === null ? 'Unlimited' : e($p['stock']) ?></b></div>
                      <?php if($isLinode):$summaryImage=(string)($_POST['linode_image']??$p['linode_image']??'');?><div class="summary-row"><span>Operating system</span><b data-linode-image-summary><?=e($linodeImages[$summaryImage]??$summaryImage)?></b></div><?php endif?>
-                     <div class="summary-total"><span>Total</span><strong>€<?= number_format($displayPrice, 2) ?><small><?= $isDeviceRepair ? '' : '/mo' ?></small></strong></div>
+                     <?php if(!$isDeviceRepair&&!$isLinode&&oxxa_enabled()):?><div class="summary-row" id="domainSummary" hidden><span>Domain (first year)</span><b>€<?=number_format($domainPrice,2)?></b></div><?php endif?><div class="summary-total"><span>Total due now</span><strong id="checkoutTotal" data-base="<?=e(number_format($displayPrice,2,'.',''))?>" data-domain="<?=e(number_format($domainPrice,2,'.',''))?>">€<?= number_format($displayPrice, 2) ?></strong></div>
                   </div>
                </aside>
             </div>
@@ -256,17 +277,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             group.style.display = active ? 'block' : 'none';
             group.querySelectorAll('input,select,textarea').forEach(control => control.disabled = !active);
          });
+         const domainField=document.getElementById('domainField');
+         if(domainField){const eligible=<?=json_encode(array_values(array_map('intval',array_filter(array_map('intval',preg_split('/[\s,]+/',oxxa_setting('nginx_egg_ids'))?:[])))))?>.includes(Number(id));domainField.style.display=eligible?'block':'none';domainField.querySelectorAll('input,select').forEach(control=>control.disabled=!eligible);}
       }
       const eggSelect = document.getElementById('eggSelect');
       if (eggSelect) eggSelect.addEventListener('change', showEgg);
       showEgg();
+      const domainInput=document.querySelector('[name="domain_name"]'),checkoutTotal=document.getElementById('checkoutTotal'),domainSummary=document.getElementById('domainSummary');
+      function updateDomainTotal(){if(!domainInput||!checkoutTotal)return;const selected=!domainInput.disabled&&domainInput.value.trim()!=='';checkoutTotal.textContent='€'+(Number(checkoutTotal.dataset.base)+(selected?Number(checkoutTotal.dataset.domain):0)).toFixed(2);if(domainSummary)domainSummary.hidden=!selected;}
+      if(domainInput)domainInput.addEventListener('input',updateDomainTotal);if(eggSelect)eggSelect.addEventListener('change',updateDomainTotal);updateDomainTotal();
+      const domainQuote=document.getElementById('domainQuote');let domainQuoteTimer=0,domainQuoteRequest=0;
+      async function loadDomainQuote(){if(!domainInput||domainInput.disabled)return;const domain=domainInput.value.trim();if(!domain){if(domainQuote)domainQuote.textContent='Enter a domain to retrieve its current annual price from OXXA.';return;}const request=++domainQuoteRequest;if(domainQuote)domainQuote.textContent='Checking availability and current OXXA price…';try{const response=await fetch('/api/domain-quote.php?domain='+encodeURIComponent(domain),{headers:{Accept:'application/json'}});const data=await response.json();if(request!==domainQuoteRequest)return;if(!response.ok||!data.ok)throw new Error(data.error||'Price lookup failed.');if(!data.available){if(domainQuote)domainQuote.textContent='This domain is already registered.';return;}const price=Number(data.quote?.price||0);checkoutTotal.dataset.domain=price.toFixed(2);if(domainSummary)domainSummary.querySelector('b').textContent='€'+price.toFixed(2);if(domainQuote)domainQuote.textContent='Available · €'+price.toFixed(2)+' for the first year. Final price is locked when you submit the order.';updateDomainTotal();}catch(error){if(request!==domainQuoteRequest)return;if(domainQuote)domainQuote.textContent=error.message||'Could not retrieve the domain price.';}}
+      if(domainInput)domainInput.addEventListener('input',()=>{clearTimeout(domainQuoteTimer);domainQuoteTimer=setTimeout(loadDomainQuote,450);});if(domainInput?.value.trim())loadDomainQuote();
       const linodeImageSelect=document.querySelector('[name="linode_image"]');
       const linodeImageSummary=document.querySelector('[data-linode-image-summary]');
       if(linodeImageSelect&&linodeImageSummary)linodeImageSelect.addEventListener('change',()=>{linodeImageSummary.textContent=linodeImageSelect.selectedOptions[0]?.textContent||'—';});
    </script>
-</body>
-
-</html>
 </body>
 
 </html>
