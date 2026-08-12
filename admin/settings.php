@@ -52,14 +52,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($_POST['smtp_password']) && trim((string)$_POST['smtp_password']) !== '') {
             save_setting('smtp_password', 'enc:' . enc(trim((string)$_POST['smtp_password'])));
         }
-        foreach (['zoho_crm_client_secret','zoho_crm_refresh_token','pterodactyl_application_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token'] as $secretKey) {
+        foreach (['zoho_crm_client_secret','zoho_crm_refresh_token','pterodactyl_application_key','pterodactyl_admin_client_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token'] as $secretKey) {
             if (isset($_POST[$secretKey]) && trim((string)$_POST[$secretKey]) !== '') {
                 save_setting($secretKey, 'enc:' . enc(trim((string)$_POST[$secretKey])));
                 if(str_starts_with($secretKey,'zoho_crm_'))$crmCredentialsChanged = true;
             }
         }
         $fallbackSecrets=['pterodactyl_application_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token'];
-        $clearableSecrets=array_merge($fallbackSecrets,['smtp_password','zoho_crm_client_secret','zoho_crm_refresh_token','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token']);
+        $clearableSecrets=array_merge($fallbackSecrets,['pterodactyl_admin_client_key','smtp_password','zoho_crm_client_secret','zoho_crm_refresh_token','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token']);
         foreach((array)($_POST['clear_secret']??[]) as $secretKey){
             if(!in_array($secretKey,$clearableSecrets,true))continue;
             save_setting($secretKey,in_array($secretKey,$fallbackSecrets,true)?'__EMPTY__':'');
@@ -106,6 +106,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $pteroKeyConfigured=trim((string)cfg('pterodactyl.application_key'))!=='';
+$pteroAdminClientRaw=(string)setting('pterodactyl_admin_client_key','');
+$pteroAdminClientConfigured=$pteroAdminClientRaw!==''&&$pteroAdminClientRaw!=='__EMPTY__';
 $mollieKeyConfigured=trim((string)cfg('mollie.api_key'))!=='';
 $webhookSecretRaw=(string)setting('pterodactyl_webhook_secret','');
 $webhookSecretConfigured=$webhookSecretRaw!==''&&$webhookSecretRaw!=='__EMPTY__';
@@ -130,6 +132,7 @@ admin_head($u, 'Settings', 'settings');
         <label>Portal URL<input type="url" name="app_url" value="<?=e(setting('app_url',(string)cfg('app_url')))?>" placeholder="https://example.com" required></label>
         <label>Pterodactyl panel URL<input type="url" name="pterodactyl_url" value="<?=e(setting('pterodactyl_url',(string)cfg('pterodactyl.url')))?>" placeholder="https://panel.example.com" required></label>
         <label>Pterodactyl Application API key<input type="password" name="pterodactyl_application_key" value="" placeholder="<?=$pteroKeyConfigured?'Configured — leave empty to keep':'Enter application API key'?>" autocomplete="new-password"></label>
+        <label>Pterodactyl admin Client API key<input type="password" name="pterodactyl_admin_client_key" value="" placeholder="<?=$pteroAdminClientConfigured?'Configured — leave empty to keep':'ptlc_... for automatic customer access'?>" autocomplete="new-password"><small>Create this key in the account settings of a Pterodactyl panel administrator.</small></label>
         <label>Mollie API key<input type="password" name="mollie_api_key" value="" placeholder="<?=$mollieKeyConfigured?'Configured — leave empty to keep':'Enter Mollie API key'?>" autocomplete="new-password"></label>
         <label>Mollie webhook URL<input type="url" name="mollie_webhook_url" value="<?=e(setting('mollie_webhook_url',(string)cfg('mollie.webhook_url')))?>" required></label>
         <label>Pterodactyl webhook secret<input type="password" name="pterodactyl_webhook_secret" value="" placeholder="<?=$webhookSecretConfigured?'Configured — leave empty to keep':'Optional shared webhook secret'?>" autocomplete="new-password"></label>
@@ -140,6 +143,7 @@ admin_head($u, 'Settings', 'settings');
         <label>Soro webhook secret<input type="password" name="soro_webhook_secret" value="" placeholder="<?=$soroSecretConfigured?'Configured — leave empty to keep':'Paste or generate from Blog admin'?>" autocomplete="new-password"></label>
         <div class="fullfield config-secret-actions">
             <label><input type="checkbox" name="clear_secret[]" value="pterodactyl_application_key"> Disable stored Pterodactyl application key</label>
+            <label><input type="checkbox" name="clear_secret[]" value="pterodactyl_admin_client_key"> Disable stored Pterodactyl admin client key</label>
             <label><input type="checkbox" name="clear_secret[]" value="mollie_api_key"> Disable stored Mollie API key</label>
             <label><input type="checkbox" name="clear_secret[]" value="pterodactyl_webhook_secret"> Disable webhook signature secret</label>
             <label><input type="checkbox" name="clear_secret[]" value="linode_api_token"> Disable stored Linode API token</label>

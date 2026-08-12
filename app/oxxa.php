@@ -63,6 +63,22 @@ function oxxa_domain_quote(string $domain,bool $fresh=false): array {
     $sell=max($minimum,$cost*(1+$markup/100)+$fee);return ['cost'=>round($cost,2),'price'=>round($sell,2),'currency'=>'EUR','period'=>1,'markup_percent'=>$markup,'fixed_fee'=>$fee];
 }
 
+function oxxa_list_domains(bool $fresh=false): array {
+    $cacheFile=rtrim(sys_get_temp_dir(),'\\/').DIRECTORY_SEPARATOR.'fox-oxxa-domain-list.json';
+    if(!$fresh&&is_file($cacheFile)&&filemtime($cacheFile)!==false&&filemtime($cacheFile)>=time()-300){$cached=json_decode((string)@file_get_contents($cacheFile),true);if(is_array($cached))return $cached;}
+    $all=[];$start=0;$limit=500;
+    do{
+        // OXXA installations differ in which DOMAIN_LIST sort fields they accept.
+        // Ordering is not required here because records are indexed by domain name
+        // below, so omit SORTNAME/SORTORDER and use the API's default ordering.
+        $result=oxxa_api('domain_list',['start'=>$start,'records'=>$limit]);$details=$result['details']??[];$batch=[];
+        if(is_array($details)&&isset($details['domain'])){$raw=$details['domain'];if(is_array($raw)&&isset($raw['domainname']))$batch=[$raw];elseif(is_array($raw))foreach($raw as $item)if(is_array($item)&&isset($item['domainname']))$batch[]=$item;}
+        foreach($batch as $item){$name=strtolower(trim((string)($item['domainname']??'')));if($name!==''){$item['domainname']=$name;$all[$name]=$item;}}
+        $total=(int)($details['domains_total']??count($all));$start+=count($batch);
+    }while($batch&&$start<$total&&$start<10000);
+    $all=array_values($all);@file_put_contents($cacheFile,json_encode($all,JSON_UNESCAPED_SLASHES),LOCK_EX);return $all;
+}
+
 function oxxa_result_handle(array $result): string {
     $details=$result['details']??'';
     if(is_string($details))return trim($details);

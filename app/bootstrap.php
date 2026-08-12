@@ -523,6 +523,11 @@ function link_existing_ptero_user_for_local_user(array $user): ?int {
 
 function extract_ptero_client_token_from_response(array $resp): ?string {
     $candidates = [
+        (string)($resp['data']['attributes']['token'] ?? ''),
+        (string)($resp['data']['attributes']['plain_text_token'] ?? ''),
+        (string)($resp['data']['attributes']['full_token'] ?? ''),
+        (string)($resp['data']['meta']['token'] ?? ''),
+        (string)($resp['data']['meta']['plain_text_token'] ?? ''),
         (string)($resp['attributes']['token'] ?? ''),
         (string)($resp['attributes']['plain_text_token'] ?? ''),
         (string)($resp['attributes']['full_token'] ?? ''),
@@ -530,8 +535,8 @@ function extract_ptero_client_token_from_response(array $resp): ?string {
         (string)($resp['meta']['plain_text_token'] ?? ''),
     ];
 
-    $identifier = (string)($resp['attributes']['identifier'] ?? '');
-    $secret = (string)($resp['meta']['secret_token'] ?? '');
+    $identifier = (string)($resp['attributes']['identifier'] ?? $resp['data']['attributes']['identifier'] ?? '');
+    $secret = (string)($resp['meta']['secret_token'] ?? $resp['data']['meta']['secret_token'] ?? '');
     if ($identifier !== '' && $secret !== '') {
         $candidates[] = $identifier . $secret;
         $candidates[] = $identifier . '.' . $secret;
@@ -584,15 +589,28 @@ function create_ptero_client_key_with_application_api(int $pteroUserId): ?string
         }
     }
 
+    // Stock Pterodactyl intentionally cannot mint a client key through the
+    // Application API. A client key belonging to a panel administrator can
+    // access the Client API for every server, so use the explicitly configured
+    // server-side admin client key as the supported fallback.
+    $stored = (string)setting('pterodactyl_admin_client_key', '');
+    if (str_starts_with($stored, 'enc:')) $stored = (string)(dec(substr($stored, 4)) ?? '');
+    if ($stored === '__EMPTY__') $stored = '';
+    $stored = trim($stored);
+    if ($stored !== '' && verify_ptero_client_token($stored)) return $stored;
+
     return null;
 }
 
-function auto_setup_ptero_client_key_for_local_user(array $user): bool {
+function auto_setup_ptero_client_key_for_local_user(array $user, bool $replaceInvalid = false): bool {
     $uid = (int)($user['id'] ?? 0);
     if ($uid <= 0) return false;
 
     if (trim((string)($user['ptero_client_key'] ?? '')) !== '') {
-        return true;
+        if (!$replaceInvalid) return true;
+        $existing = (string)(dec((string)$user['ptero_client_key']) ?? '');
+        if ($existing !== '' && verify_ptero_client_token($existing)) return true;
+        db()->prepare('UPDATE users SET ptero_client_key=NULL WHERE id=?')->execute([$uid]);
     }
 
     $pteroUserId = (int)($user['ptero_user_id'] ?? 0);
