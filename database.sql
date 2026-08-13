@@ -199,8 +199,17 @@ CREATE TABLE IF NOT EXISTS email_log (
  recipient VARCHAR(190) NOT NULL,
  subject VARCHAR(190) NOT NULL,
  template_key VARCHAR(80) NULL,
- status ENUM('sent','failed') NOT NULL,
+ status ENUM('pending','sent','failed') NOT NULL DEFAULT 'pending',
  error_message TEXT NULL,
+ tracking_token VARCHAR(64) NULL UNIQUE,
+ sent_at DATETIME NULL,
+ first_opened_at DATETIME NULL,
+ last_opened_at DATETIME NULL,
+ open_count INT UNSIGNED NOT NULL DEFAULT 0,
+ first_clicked_at DATETIME NULL,
+ last_clicked_at DATETIME NULL,
+ click_count INT UNSIGNED NOT NULL DEFAULT 0,
+ last_clicked_url TEXT NULL,
  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
  INDEX idx_email_log_created(created_at),
  CONSTRAINT fk_email_log_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
@@ -242,6 +251,18 @@ CREATE TABLE IF NOT EXISTS automation_jobs (
  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
  INDEX idx_automation_ready(status,run_at),
  INDEX idx_automation_entity(provider,entity_type,entity_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS email_tracking_events (
+ id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ email_log_id BIGINT UNSIGNED NOT NULL,
+ event_type VARCHAR(20) NOT NULL,
+ target_url TEXT NULL,
+ ip_hash CHAR(64) NULL,
+ user_agent VARCHAR(500) NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ INDEX idx_email_event_log(email_log_id,created_at),
+ INDEX idx_email_event_type(event_type,created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT IGNORE INTO email_templates(template_key,subject,body_html) VALUES

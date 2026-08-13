@@ -162,6 +162,7 @@ try {
     if (function_exists('fox_v18_oxxa_domains_migrate')) fox_v18_oxxa_domains_migrate();
     if (function_exists('fox_v18a_domain_contacts_cloudflare_migrate')) fox_v18a_domain_contacts_cloudflare_migrate();
     if (function_exists('fox_v18b_oxxa_auto_pricing_migrate')) fox_v18b_oxxa_auto_pricing_migrate();
+    if (function_exists('fox_v19_email_tracking_migrate')) fox_v19_email_tracking_migrate();
 } catch (Throwable $e) {
     error_log('FoxNetwork migrations skipped: '.$e->getMessage());
 }

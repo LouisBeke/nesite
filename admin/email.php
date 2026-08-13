@@ -36,10 +36,15 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
 $users=db()->query('SELECT id,name,email FROM users ORDER BY name')->fetchAll();
 $tpls=db()->query('SELECT * FROM email_templates ORDER BY template_key')->fetchAll();
 $logs=db()->query('SELECT * FROM email_log ORDER BY id DESC LIMIT 100')->fetchAll();
+$tracking=db()->query("SELECT COUNT(*) total,SUM(status='sent') sent,SUM(status='failed') failed,SUM(first_opened_at IS NOT NULL) opened,SUM(first_clicked_at IS NOT NULL) clicked FROM email_log")->fetch()?:[];
+$sent=max(0,(int)($tracking['sent']??0));$opened=max(0,(int)($tracking['opened']??0));$clicked=max(0,(int)($tracking['clicked']??0));
 admin_head($u,'Email & Notifications','email');
 ?>
 <?php if($msg):?><div class="notice"><?=e($msg)?></div><?php endif?>
 <?php if($err):?><div class="error"><?=e($err)?></div><?php endif?>
+
+<section class="email-tracking-hero card"><div><span class="admin-kicker">DELIVERY INSIGHTS</span><h2>Email tracking</h2><p>Opens and link clicks for newly sent FoxNetwork emails.</p></div><span class="admin-badge <?=email_tracking_enabled()?'status-active':'status-disabled'?>"><?=email_tracking_enabled()?'TRACKING ON':'TRACKING OFF'?></span></section>
+<section class="email-tracking-stats"><article><span>Sent</span><b><?=$sent?></b><small>Successfully handed to SMTP</small></article><article><span>Opened</span><b><?=$opened?></b><small><?=$sent?number_format(($opened/$sent)*100,1):'0.0'?>% unique open rate</small></article><article><span>Clicked</span><b><?=$clicked?></b><small><?=$sent?number_format(($clicked/$sent)*100,1):'0.0'?>% unique click rate</small></article><article><span>Failed</span><b><?=max(0,(int)($tracking['failed']??0))?></b><small>Delivery attempts with errors</small></article></section>
 
 <div class="admin-grid">
     <section class="card">
@@ -88,8 +93,9 @@ admin_head($u,'Email & Notifications','email');
 
 <section class="card" style="margin-top:24px">
     <div class="cardhead"><b>EMAIL HISTORY</b><span class="muted">Latest 100</span></div>
-    <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Time</th><th>Recipient</th><th>Subject</th><th>Status</th><th>Error</th></tr></thead><tbody>
-    <?php foreach($logs as $l):?><tr><td><?=e($l['created_at'])?></td><td><?=e($l['recipient'])?></td><td><?=e($l['subject'])?></td><td><?=admin_badge($l['status'])?></td><td class="small redtext"><?=e($l['error_message']??'')?></td></tr><?php endforeach?>
+    <div class="admin-table-wrap"><table class="admin-table email-history-table"><thead><tr><th>Sent</th><th>Recipient</th><th>Subject</th><th>Status</th><th>Opened</th><th>Clicked</th><th>Error</th></tr></thead><tbody>
+    <?php if(!$logs):?><tr><td colspan="7" class="muted">No emails have been sent yet.</td></tr><?php endif?>
+    <?php foreach($logs as $l):?><tr><td><?=e($l['sent_at']?:$l['created_at'])?></td><td><?=e($l['recipient'])?></td><td><b><?=e($l['subject'])?></b><?php if($l['template_key']):?><small><?=e(str_replace('_',' ',$l['template_key']))?></small><?php endif?></td><td><?=admin_badge($l['status'])?></td><td><?php if((int)$l['open_count']>0):?><span class="email-event is-open"><i class="fas fa-eye"></i><b><?=(int)$l['open_count']?></b></span><small><?=e($l['first_opened_at'])?></small><?php else:?><span class="email-event is-empty">Not opened</span><?php endif?></td><td><?php if((int)$l['click_count']>0):?><span class="email-event is-click"><i class="fas fa-mouse-pointer"></i><b><?=(int)$l['click_count']?></b></span><small><?=e($l['first_clicked_at'])?></small><?php else:?><span class="email-event is-empty">No clicks</span><?php endif?></td><td class="small redtext"><?=e($l['error_message']??'')?></td></tr><?php endforeach?>
     </tbody></table></div>
 </section>
 <?php admin_foot(); ?>

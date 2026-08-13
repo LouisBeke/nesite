@@ -45,7 +45,7 @@ DirectoryIndex index.html
 
 <IfModule mod_headers.c>
     # Account, checkout, admin, and API screens are functional pages, not search results.
-    <FilesMatch "^(?:login|logout|register|forgot-password|reset-password|two-factor|billing|invoice|order|orders|pay|payment-return|settings|server|store|support|setup|upgrades|cron|mollie-webhook|pterodactyl-webhook|return-admin)\.php$">
+    <FilesMatch "^(?:login|logout|register|forgot-password|reset-password|two-factor|billing|invoice|order|orders|pay|payment-return|settings|server|store|support|setup|upgrades|cron|mollie-webhook|pterodactyl-webhook|email-track|email-click|return-admin)\.php$">
         Header always set X-Robots-Tag "noindex, nofollow, noarchive"
     </FilesMatch>
     <IfModule mod_setenvif.c>

@@ -76,5 +76,41 @@ function portal_mail_send(string $to,string $subject,string $html):void{smtp_sen
 function email_template(string $key):?array{$q=db()->prepare('SELECT * FROM email_templates WHERE template_key=?');$q->execute([$key]);$r=$q->fetch();return $r?:null;}
 function render_tokens(string $text,array $vars):string{foreach($vars as $k=>$v)$text=str_replace('{{'.$k.'}}',(string)$v,$text);return $text;}
 function branded_email(string $body):string{$name=e((string)setting('company_name','FoxNetwork'));return '<!doctype html><html><body style="margin:0;background:#0d0f12;font-family:Arial,sans-serif;color:#f4f4f4"><div style="max-width:640px;margin:0 auto;padding:32px 18px"><div style="font-size:25px;font-weight:800;margin-bottom:24px">FOX<span style="color:#ff7417">NETWORK</span></div><div style="background:#15181d;border:1px solid #2a2e35;border-radius:14px;padding:28px;line-height:1.55">'.$body.'</div><p style="color:#8e96a2;font-size:12px;margin-top:20px">'.$name.' · '.e((string)setting('support_email','info@foxnetwork.be')).'</p></div></body></html>';}
-function send_template(string $key,array $recipient,array $vars=[]):bool{$tpl=email_template($key);if(!$tpl||!(int)$tpl['enabled']||empty($recipient['email']))return false;if(isset($recipient['email_notifications'])&&!(int)$recipient['email_notifications'])return false;$vars+=['customer_name'=>$recipient['name']??'Customer','portal_url'=>rtrim((string)cfg('app_url'),'/').'/','billing_url'=>rtrim((string)cfg('app_url'),'/').'/billing.php'];$subject=render_tokens($tpl['subject'],$vars);$html=branded_email(render_tokens($tpl['body_html'],$vars));$status='sent';$err=null;try{portal_mail_send($recipient['email'],$subject,$html);}catch(Throwable $e){$status='failed';$err=$e->getMessage();}$q=db()->prepare('INSERT INTO email_log(user_id,recipient,subject,template_key,status,error_message) VALUES(?,?,?,?,?,?)');$q->execute([$recipient['id']??null,$recipient['email'],$subject,$key,$status,$err]);return $status==='sent';}
-function send_custom_email(?int $userId,string $to,string $subject,string $html):bool{$status='sent';$err=null;try{portal_mail_send($to,$subject,branded_email($html));}catch(Throwable $e){$status='failed';$err=$e->getMessage();}$q=db()->prepare('INSERT INTO email_log(user_id,recipient,subject,status,error_message) VALUES(?,?,?,?,?)');$q->execute([$userId,$to,$subject,$status,$err]);if($err)throw new RuntimeException($err);return true;}
+function email_tracking_enabled():bool{return setting('email_tracking_enabled','1')==='1';}
+function email_tracking_encode(string $value):string{return rtrim(strtr(base64_encode($value),'+/','-_'),'=');}
+function email_tracking_decode(string $value):?string{$padding=strlen($value)%4;if($padding)$value.=str_repeat('=',4-$padding);$raw=base64_decode(strtr($value,'-_','+/'),true);return $raw===false?null:$raw;}
+function email_tracking_signature(string $token,string $encodedUrl):string{return hash_hmac('sha256',$token.'|'.$encodedUrl,hash('sha256',(string)cfg('db.pass').'|email-tracking',true));}
+function email_tracking_request_fingerprint():array{
+    $forwarded=trim(explode(',',(string)($_SERVER['HTTP_CF_CONNECTING_IP']??$_SERVER['HTTP_X_FORWARDED_FOR']??''))[0]);
+    $ip=$forwarded!==''?$forwarded:(string)($_SERVER['REMOTE_ADDR']??'');
+    return ['ip_hash'=>$ip!==''?hash_hmac('sha256',$ip,hash('sha256',(string)cfg('db.pass').'|email-privacy',true)):null,'user_agent'=>substr((string)($_SERVER['HTTP_USER_AGENT']??''),0,500)];
+}
+function email_tracking_prepare(string $html,string $token):string{
+    if($token==='')return $html;
+    $html=preg_replace_callback('/href\s*=\s*(["\'])(.*?)\1/i',static function(array $match)use($token):string{
+        $url=html_entity_decode(trim($match[2]),ENT_QUOTES,'UTF-8');
+        if(str_starts_with($url,'/'))$url=site_url($url);
+        if(!preg_match('#^https?://#i',$url)||str_contains($url,'/email-click.php'))return $match[0];
+        $encoded=email_tracking_encode($url);$signature=email_tracking_signature($token,$encoded);
+        $tracked=site_url('/email-click.php?t='.rawurlencode($token).'&u='.rawurlencode($encoded).'&s='.rawurlencode($signature));
+        return 'href='.$match[1].htmlspecialchars($tracked,ENT_QUOTES,'UTF-8').$match[1];
+    },$html)??$html;
+    $pixel='<img src="'.e(site_url('/email-track.php?t='.rawurlencode($token))).'" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0;opacity:0" aria-hidden="true">';
+    if(stripos($html,'</body>')!==false)return preg_replace('/<\/body>/i',$pixel.'</body>',$html,1)??($html.$pixel);
+    return $html.$pixel;
+}
+function email_log_create(?int $userId,string $to,string $subject,?string $templateKey):array{
+    $token=email_tracking_enabled()?bin2hex(random_bytes(32)):null;
+    $q=db()->prepare("INSERT INTO email_log(user_id,recipient,subject,template_key,status,tracking_token) VALUES(?,?,?,?,'pending',?)");
+    $q->execute([$userId,$to,$subject,$templateKey,$token]);
+    return ['id'=>(int)db()->lastInsertId(),'token'=>(string)$token];
+}
+function email_send_logged(?int $userId,string $to,string $subject,string $html,?string $templateKey=null,bool $throw=false):bool{
+    $log=email_log_create($userId,$to,$subject,$templateKey);$error=null;
+    try{portal_mail_send($to,$subject,email_tracking_prepare($html,$log['token']));db()->prepare("UPDATE email_log SET status='sent',sent_at=NOW(),error_message=NULL WHERE id=?")->execute([$log['id']]);}
+    catch(Throwable $e){$error=$e;db()->prepare("UPDATE email_log SET status='failed',error_message=? WHERE id=?")->execute([$e->getMessage(),$log['id']]);}
+    if($error&&$throw)throw new RuntimeException($error->getMessage(),0,$error);
+    return $error===null;
+}
+function send_template(string $key,array $recipient,array $vars=[]):bool{$tpl=email_template($key);if(!$tpl||!(int)$tpl['enabled']||empty($recipient['email']))return false;if(isset($recipient['email_notifications'])&&!(int)$recipient['email_notifications'])return false;$vars+=['customer_name'=>$recipient['name']??'Customer','portal_url'=>rtrim((string)cfg('app_url'),'/').'/','billing_url'=>rtrim((string)cfg('app_url'),'/').'/billing.php'];$subject=render_tokens($tpl['subject'],$vars);$html=branded_email(render_tokens($tpl['body_html'],$vars));return email_send_logged(isset($recipient['id'])?(int)$recipient['id']:null,(string)$recipient['email'],$subject,$html,$key,false);}
+function send_custom_email(?int $userId,string $to,string $subject,string $html):bool{return email_send_logged($userId,$to,$subject,branded_email($html),null,true);}

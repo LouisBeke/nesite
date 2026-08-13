@@ -775,6 +775,41 @@ function fox_v18b_oxxa_auto_pricing_migrate(): void {
     if(fox_table_exists($pdo,'app_settings'))$pdo->prepare("INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES('oxxa_price_markup_percent','25'),('oxxa_price_fixed_fee','2.50'),('oxxa_price_minimum','10.00'),('oxxa_price_cache_seconds','3600')")->execute();
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v18b-oxxa-auto-pricing']);
 }
+
+function fox_v19_email_tracking_migrate(): void {
+    static $ran=false;if($ran)return;$ran=true;$pdo=db();
+    if(fox_migration_applied($pdo,'v19-email-tracking'))return;
+    if(fox_table_exists($pdo,'email_log')){
+        $columns=[
+            'tracking_token'=>'VARCHAR(64) NULL',
+            'sent_at'=>'DATETIME NULL',
+            'first_opened_at'=>'DATETIME NULL',
+            'last_opened_at'=>'DATETIME NULL',
+            'open_count'=>'INT UNSIGNED NOT NULL DEFAULT 0',
+            'first_clicked_at'=>'DATETIME NULL',
+            'last_clicked_at'=>'DATETIME NULL',
+            'click_count'=>'INT UNSIGNED NOT NULL DEFAULT 0',
+            'last_clicked_url'=>'TEXT NULL',
+        ];
+        foreach($columns as $column=>$definition)if(!fox_column_exists($pdo,'email_log',$column))$pdo->exec("ALTER TABLE email_log ADD COLUMN `$column` $definition");
+        $pdo->exec("ALTER TABLE email_log MODIFY status ENUM('pending','sent','failed') NOT NULL DEFAULT 'pending'");
+        $index=$pdo->query("SHOW INDEX FROM email_log WHERE Key_name='uq_email_tracking_token'")->fetch();
+        if(!$index)$pdo->exec('ALTER TABLE email_log ADD UNIQUE KEY uq_email_tracking_token(tracking_token)');
+    }
+    $pdo->exec("CREATE TABLE IF NOT EXISTS email_tracking_events (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        email_log_id BIGINT UNSIGNED NOT NULL,
+        event_type VARCHAR(20) NOT NULL,
+        target_url TEXT NULL,
+        ip_hash CHAR(64) NULL,
+        user_agent VARCHAR(500) NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_email_event_log(email_log_id,created_at),
+        INDEX idx_email_event_type(event_type,created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    if(fox_table_exists($pdo,'app_settings'))$pdo->prepare("INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES('email_tracking_enabled','1')")->execute();
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v19-email-tracking']);
+}
 /* Removed malformed duplicate migration tail.
 ')) {
         $pdo->prepare("INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES('automation_batch_size','20'),('automation_worker_timeout_seconds','300')")->execute();

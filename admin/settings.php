@@ -19,7 +19,7 @@ $keys = [
     'provisioning_remove_failed_queue_item','provisioning_enabled','linode_immediate_provisioning','provisioning_batch_size','provisioning_max_attempts',
     'provisioning_worker_timeout_seconds','provisioning_retry_base_seconds','provisioning_retry_max_seconds',
     'provisioning_online_check_tries','provisioning_online_check_sleep_ms','provisioning_strict_online_check',
-    'automation_batch_size','automation_worker_timeout_seconds','blog_author_name',
+    'automation_batch_size','automation_worker_timeout_seconds','blog_author_name','email_tracking_enabled',
     'oxxa_enabled','oxxa_api_url','oxxa_identity_handle','oxxa_nsgroup','oxxa_dns_template','oxxa_nginx_egg_ids','oxxa_domain_price','oxxa_test_mode','oxxa_price_markup_percent','oxxa_price_fixed_fee','oxxa_price_minimum','oxxa_price_cache_seconds','cloudflare_account_id',
     'maintenance_mode','maintenance_message','portal_registration','security_session_hours'
 ];
@@ -322,6 +322,7 @@ admin_head($u, 'Settings', 'settings');
                 <option value="none" <?=setting('smtp_security','tls')==='none'?'selected':''?>>None</option>
             </select>
         </label>
+        <label>Email engagement tracking<select name="email_tracking_enabled"><option value="1" <?=setting('email_tracking_enabled','1')==='1'?'selected':''?>>Enabled — opens and clicks</option><option value="0" <?=setting('email_tracking_enabled','1')==='0'?'selected':''?>>Disabled</option></select></label>
         <label>Zoho mailbox<input type="email" name="smtp_username" value="<?=e(setting('smtp_username','info@foxnetwork.be'))?>"></label>
         <label>Zoho app password<input type="password" name="smtp_password" value="" placeholder="Leave empty to keep current password"></label>
         <label class="config-clear-option"><input type="checkbox" name="clear_secret[]" value="smtp_password"> Clear saved SMTP password</label>
