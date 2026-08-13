@@ -4,7 +4,7 @@ require __DIR__.'/../app/bootstrap.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: private, no-store, no-cache, must-revalidate');
-$admin=require_admin();
+$admin=require_admin();$requestStarted=microtime(true);
 $pdo=db();
 
 function queue_status_counts(PDO $pdo,string $table): array {
@@ -46,7 +46,7 @@ foreach($automation as &$job){$job['id']=(int)$job['id'];$job['entity_id']=(int)
 unset($job);
 
 $workers=$pdo->query("SELECT worker_id,hostname,status,processed_jobs,failed_jobs,last_heartbeat,started_at,TIMESTAMPDIFF(SECOND,last_heartbeat,NOW()) heartbeat_age FROM provisioning_workers ORDER BY last_heartbeat DESC LIMIT 20")->fetchAll();
-foreach($workers as &$worker){$worker['processed_jobs']=(int)$worker['processed_jobs'];$worker['failed_jobs']=(int)$worker['failed_jobs'];$worker['heartbeat_age']=(int)$worker['heartbeat_age'];$worker['online']=$worker['heartbeat_age']<=120;}
+foreach($workers as &$worker){$worker['processed_jobs']=(int)$worker['processed_jobs'];$worker['failed_jobs']=(int)$worker['failed_jobs'];$worker['heartbeat_age']=$worker['heartbeat_age']===null?null:(int)$worker['heartbeat_age'];$worker['online']=$worker['heartbeat_age']!==null&&$worker['heartbeat_age']>=0&&$worker['heartbeat_age']<=120;}
 unset($worker);
 
-echo json_encode(['ok'=>true,'server_time'=>(string)$pdo->query('SELECT NOW()')->fetchColumn(),'stats'=>['provisioning'=>queue_status_counts($pdo,'provisioning_queue'),'automation'=>queue_status_counts($pdo,'automation_jobs'),'waiting'=>$waitingTotal],'provisioning'=>$provisioning,'automation'=>$automation,'workers'=>$workers],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+echo json_encode(['ok'=>true,'server_time'=>(string)$pdo->query('SELECT NOW()')->fetchColumn(),'request_ms'=>(int)round((microtime(true)-$requestStarted)*1000),'stats'=>['provisioning'=>queue_status_counts($pdo,'provisioning_queue'),'automation'=>queue_status_counts($pdo,'automation_jobs'),'waiting'=>$waitingTotal],'provisioning'=>$provisioning,'automation'=>$automation,'workers'=>$workers],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);

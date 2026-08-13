@@ -171,6 +171,7 @@ require_once __DIR__.'/client-layout.php';
 require_once __DIR__.'/mail.php';
 require_once __DIR__.'/linode.php';
 require_once __DIR__.'/zoho-crm.php';
+require_once __DIR__.'/zoho-sso.php';
 require_once __DIR__.'/automation.php';
 require_once __DIR__.'/oxxa.php';
 require_once __DIR__.'/provisioning.php';
@@ -942,7 +943,3 @@ function apply_pending_service_change_for_invoice(int $invoiceId): void {
       db()->prepare("UPDATE service_changes SET status='completed',completed_at=NOW() WHERE id=?")->execute([$c['id']]);service_log((int)$c['service_id'],0,'upgrade','Service package/resources updated after invoice payment.');
     }catch(Throwable $e){db()->prepare("UPDATE service_changes SET status='failed',error_message=? WHERE id=?")->execute([$e->getMessage(),$c['id']]);db()->prepare('UPDATE services SET last_error=? WHERE id=?')->execute([$e->getMessage(),$c['service_id']]);throw $e;}
 }
-/* Removed a stale patch-tail fragment.
-age(),$c['service_id']]);throw $e;}
-}
-*/

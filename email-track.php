@@ -9,7 +9,7 @@ header('X-Robots-Tag: noindex, nofollow, noarchive');
 $token=strtolower(trim((string)($_GET['t']??'')));
 if(preg_match('/^[a-f0-9]{64}$/',$token)){
     try{
-        $q=db()->prepare("SELECT id FROM email_log WHERE tracking_token=? AND status='sent' LIMIT 1");$q->execute([$token]);$id=(int)$q->fetchColumn();
+        $q=db()->prepare("SELECT id FROM email_log WHERE tracking_token=? AND status IN ('pending','sent') LIMIT 1");$q->execute([$token]);$id=(int)$q->fetchColumn();
         if($id>0){
             $fingerprint=email_tracking_request_fingerprint();
             db()->prepare('UPDATE email_log SET first_opened_at=COALESCE(first_opened_at,NOW()),last_opened_at=NOW(),open_count=open_count+1 WHERE id=?')->execute([$id]);

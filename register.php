@@ -9,6 +9,14 @@ if (user()) {
 $error = '';
 $name = trim((string)($_POST['name'] ?? ''));
 $email = strtolower(trim((string)($_POST['email'] ?? '')));
+$companyName = trim((string)($_POST['company_name'] ?? ''));
+$phone = trim((string)($_POST['phone'] ?? ''));
+$street = trim((string)($_POST['street'] ?? ''));
+$houseNumber = trim((string)($_POST['house_number'] ?? ''));
+$postalCode = trim((string)($_POST['postal_code'] ?? ''));
+$city = trim((string)($_POST['city'] ?? ''));
+$state = trim((string)($_POST['state'] ?? ''));
+$countryCode = strtoupper(trim((string)($_POST['country_code'] ?? '')));
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
@@ -19,6 +27,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             throw new RuntimeException('Please enter a valid email address.');
+        }
+        foreach ([
+            'phone number' => $phone,
+            'street' => $street,
+            'house number' => $houseNumber,
+            'postal code' => $postalCode,
+            'city' => $city,
+            'state or province' => $state,
+        ] as $label => $value) {
+            if ($value === '') {
+                throw new RuntimeException('Please enter your '.$label.'.');
+            }
+        }
+        if (!preg_match('/^[A-Z]{2}$/', $countryCode)) {
+            throw new RuntimeException('Country code must contain two letters, for example BE or NL.');
         }
 
         $password = (string)($_POST['password'] ?? '');
@@ -36,8 +59,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new RuntimeException('An account with this email already exists.');
         }
 
-        $ins = db()->prepare("INSERT INTO users(name,email,password_hash,role,email_notifications) VALUES(?,?,?,'customer',1)");
-        $ins->execute([$name, $email, password_hash($password, PASSWORD_DEFAULT)]);
+        $ins = db()->prepare("INSERT INTO users(name,email,password_hash,role,email_notifications,company_name,phone,street,house_number,postal_code,city,state,country_code) VALUES(?,?,?,'customer',1,?,?,?,?,?,?,?,?)");
+        $ins->execute([$name, $email, password_hash($password, PASSWORD_DEFAULT), $companyName ?: null, $phone, $street, $houseNumber, $postalCode, $city, $state, $countryCode]);
         $uid = (int)db()->lastInsertId();
 
         $q = db()->prepare('SELECT * FROM users WHERE id=? LIMIT 1');
@@ -101,6 +124,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="field">
             <label>Email</label>
             <input type="email" name="email" required value="<?= e($email) ?>">
+        </div>
+
+        <div class="field">
+            <label>Company <span class="muted">(optional)</span></label>
+            <input name="company_name" autocomplete="organization" value="<?= e($companyName) ?>">
+        </div>
+
+        <div class="field">
+            <label>Phone</label>
+            <input type="tel" name="phone" autocomplete="tel" required value="<?= e($phone) ?>">
+        </div>
+
+        <div class="field">
+            <label>Street</label>
+            <input name="street" autocomplete="address-line1" required value="<?= e($street) ?>">
+        </div>
+
+        <div class="field">
+            <label>House number</label>
+            <input name="house_number" required value="<?= e($houseNumber) ?>">
+        </div>
+
+        <div class="field">
+            <label>Postal code</label>
+            <input name="postal_code" autocomplete="postal-code" required value="<?= e($postalCode) ?>">
+        </div>
+
+        <div class="field">
+            <label>City</label>
+            <input name="city" autocomplete="address-level2" required value="<?= e($city) ?>">
+        </div>
+
+        <div class="field">
+            <label>State / province</label>
+            <input name="state" autocomplete="address-level1" required value="<?= e($state) ?>">
+        </div>
+
+        <div class="field">
+            <label>Country code</label>
+            <input name="country_code" autocomplete="country" maxlength="2" pattern="[A-Za-z]{2}" placeholder="BE" required value="<?= e($countryCode) ?>">
         </div>
 
         <div class="field">

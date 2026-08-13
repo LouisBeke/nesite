@@ -202,9 +202,3 @@ function admin_badge(string $status): string
 {
     return '<span class="admin-badge status-'.e($status).'">'.e(strtoupper(str_replace('_', ' ', $status))).'</span>';
 }
-/* Removed malformed duplicate footer fragment.
-_badge(string $status): string
-{
-    return '<span class="admin-badge status-'.e($status).'">'.e(strtoupper(str_replace('_', ' ', $status))).'</span>';
-}
-*/

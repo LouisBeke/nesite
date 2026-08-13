@@ -1,7 +1,7 @@
 <?php
 require __DIR__ . '/app/bootstrap.php';
 
-$error = '';
+$error = trim((string)($_GET['sso_error']??''));
 $email = strtolower(trim($_POST['email'] ?? ''));
 
 function login_public_error_message(Throwable $e): string
@@ -84,6 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 			<p class="muted">Sign in to FoxNetwork Control Center.</p><?php if ($error): ?><div class="error"><?= e($error) ?></div><?php endif ?><input type="hidden" name="csrf" value="<?= csrf() ?>">
 			<div class="field"><label>Email</label><input type="email" name="email" required value="<?= e($email) ?>"></div>
 			<div class="field"><label>Password</label><input type="password" name="password" required></div><button class="btn primary wide">Sign in</button>
+			<?php if(zoho_sso_enabled()):?><div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,.12)"><p class="muted" style="text-align:center;margin-top:0">FOXNETWORK ADMIN</p><a class="btn wide" href="/admin-sso.php" aria-label="Admin login with Zoho Directory">Admin login with Zoho Directory</a></div><?php endif?>
 			<p><a class="link" href="/forgot-password.php">Forgot password?</a></p>
 			<p><a class="link" href="/register.php">Create a new account</a></p>
 		</form>

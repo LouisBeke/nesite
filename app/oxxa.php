@@ -36,7 +36,7 @@ function oxxa_api(string $command, array $parameters=[]): array {
     $order=$xml->order[0]??null; if(!$order)throw new RuntimeException('OXXA returned no order result.');
     $result=json_decode(json_encode($order),true)?:[];
     $code=preg_replace('/\s+/','',strtoupper((string)($result['status_code']??'')));
-    if(!str_starts_with($code,'XMLOK')&&!str_starts_with($code,'XMLPEN'))
+    if(!str_starts_with($code,'XMLOK')&&!str_starts_with($code,'XMLEOK')&&!str_starts_with($code,'XMLPEN'))
         throw new RuntimeException('OXXA: '.trim((string)($result['status_description']??$code?:'unknown error')));
     return $result;
 }
@@ -119,6 +119,44 @@ function cloudflare_ensure_a_record(string $zoneId,string $name,string $ip): voi
     $existing=cloudflare_api('/zones/'.rawurlencode($zoneId).'/dns_records?type=A&name='.rawurlencode($name).'&per_page=1');
     if(isset($existing[0]['id']))cloudflare_api('/zones/'.rawurlencode($zoneId).'/dns_records/'.rawurlencode((string)$existing[0]['id']),'PUT',['type'=>'A','name'=>$name,'content'=>$ip,'ttl'=>1,'proxied'=>false]);
     else cloudflare_api('/zones/'.rawurlencode($zoneId).'/dns_records','POST',['type'=>'A','name'=>$name,'content'=>$ip,'ttl'=>1,'proxied'=>false]);
+}
+
+function domain_dns_normalize_name(string $domain,string $name): string {
+    $name=strtolower(trim($name," .\t\n\r\0\x0B"));if($name===''||$name==='@')return $domain;
+    if(str_ends_with($name,'.'.$domain)||$name===$domain)return $name;
+    if(!preg_match('/^(?:[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?)(?:\.(?:[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?))*$/',$name))throw new InvalidArgumentException('Enter a valid DNS host name.');
+    return $name.'.'.$domain;
+}
+function domain_dns_validate(string $domain,string $name,string $type,string $content,int $ttl,int $priority): array {
+    $type=strtoupper(trim($type));if(!in_array($type,['A','AAAA','CNAME','MX','TXT'],true))throw new InvalidArgumentException('Choose A, AAAA, CNAME, MX or TXT.');
+    $name=domain_dns_normalize_name($domain,$name);$content=trim($content);if($content===''||strlen($content)>4096)throw new InvalidArgumentException('Enter valid DNS record content.');
+    if($type==='A'&&!filter_var($content,FILTER_VALIDATE_IP,FILTER_FLAG_IPV4))throw new InvalidArgumentException('An A record requires an IPv4 address.');
+    if($type==='AAAA'&&!filter_var($content,FILTER_VALIDATE_IP,FILTER_FLAG_IPV6))throw new InvalidArgumentException('An AAAA record requires an IPv6 address.');
+    if(in_array($type,['CNAME','MX'],true)){$content=strtolower(rtrim($content,'.'));if(!filter_var($content,FILTER_VALIDATE_DOMAIN,FILTER_FLAG_HOSTNAME))throw new InvalidArgumentException($type.' requires a valid hostname.');}
+    return ['name'=>$name,'type'=>$type,'content'=>$content,'ttl'=>max(60,min(86400,$ttl)),'priority'=>max(0,min(65535,$priority))];
+}
+function oxxa_dns_records(string $domain): array {
+    $p=oxxa_domain_parts($domain);$r=oxxa_api('dnsrecord_list',['sld'=>$p['sld'],'tld'=>$p['tld'],'start'=>0,'records'=>-1]);$raw=$r['details']['record']??[];
+    if(isset($raw['value']))$raw=[$raw];$records=[];foreach((array)$raw as $item)if(is_array($item)&&isset($item['value']))$records[]=['id'=>(string)($item['record_id']??sha1(json_encode($item))),'name'=>(string)$item['value'],'type'=>strtoupper((string)($item['type']??'')),'content'=>(string)($item['data']??''),'ttl'=>(int)($item['ttl']??3600),'priority'=>(int)($item['priority']??0)];return $records;
+}
+function domain_dns_records(string $domain,string $provider,string $zoneId=''): array {
+    if($provider==='cloudflare'){if($zoneId==='')throw new RuntimeException('This domain has no linked Cloudflare zone.');$rows=cloudflare_api('/zones/'.rawurlencode($zoneId).'/dns_records?per_page=500');$out=[];foreach($rows as $r)$out[]=['id'=>(string)($r['id']??''),'name'=>(string)($r['name']??''),'type'=>(string)($r['type']??''),'content'=>(string)($r['content']??''),'ttl'=>(int)($r['ttl']??1),'priority'=>(int)($r['priority']??0)];return $out;}
+    return oxxa_dns_records($domain);
+}
+function domain_dns_add(string $domain,string $provider,string $zoneId,array $record): void {
+    if($provider==='cloudflare'){$body=['type'=>$record['type'],'name'=>$record['name'],'content'=>$record['content'],'ttl'=>$record['ttl'],'proxied'=>false];if($record['type']==='MX')$body['priority']=$record['priority'];cloudflare_api('/zones/'.rawurlencode($zoneId).'/dns_records','POST',$body);return;}
+    $p=oxxa_domain_parts($domain);$params=['sld'=>$p['sld'],'tld'=>$p['tld'],'value'=>$record['name'],'type'=>$record['type'],'data'=>$record['content'],'ttl'=>$record['ttl']];if($record['type']==='MX')$params['priority']=$record['priority'];oxxa_api('dnsrecord_add',$params);
+}
+function domain_dns_delete(string $domain,string $provider,string $zoneId,array $record): void {
+    if($provider==='cloudflare'){if(empty($record['id']))throw new RuntimeException('Cloudflare record ID is missing.');cloudflare_api('/zones/'.rawurlencode($zoneId).'/dns_records/'.rawurlencode((string)$record['id']),'DELETE');return;}
+    $p=oxxa_domain_parts($domain);$params=['sld'=>$p['sld'],'tld'=>$p['tld'],'value'=>$record['name'],'type'=>$record['type'],'data'=>$record['content'],'ttl'=>max(60,(int)$record['ttl'])];if($record['type']==='MX')$params['priority']=(int)$record['priority'];oxxa_api('dnsrecord_del',$params);
+}
+function oxxa_nameserver_groups(): array {
+    $r=oxxa_api('nsgroup_list',['start'=>0,'records'=>-1]);$raw=$r['details']['nsgroup']??[];if(isset($raw['handle']))$raw=[$raw];$out=[];foreach((array)$raw as $row)if(is_array($row)&&trim((string)($row['handle']??''))!=='')$out[]=['handle'=>trim((string)$row['handle']),'name'=>trim((string)($row['name']??$row['alias']??$row['handle']))];return $out;
+}
+function oxxa_domain_set_nsgroup(string $domain,string $nsgroup): string {
+    $allowed=oxxa_nameserver_groups();$match=null;foreach($allowed as $group)if(hash_equals($group['handle'],$nsgroup)){$match=$group;break;}if(!$match)throw new RuntimeException('Choose a valid OXXA nameserver group.');
+    $p=oxxa_domain_parts($domain);oxxa_api('domain_ns_upd',['sld'=>$p['sld'],'tld'=>$p['tld'],'nsgroup'=>$nsgroup,'dnssec_delete'=>'Y']);return $nsgroup;
 }
 
 function oxxa_register_domain(string $domain,string $identity,string $nsgroup): array {

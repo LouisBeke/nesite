@@ -58,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   } catch (Throwable $e) {
     $err = $e->getMessage();
   }
-  $u = user();
+  $freshUser=db()->prepare('SELECT * FROM users WHERE id=? LIMIT 1');$freshUser->execute([(int)$u['id']]);$u=$freshUser->fetch()?:$u;
 }
 $sessions = [];
 $history = [];
@@ -75,6 +75,7 @@ try {
 } catch (Throwable $e) {
 }
 $setup = $_SESSION['2fa_setup_secret'] ?? '';
+$holderFields=['name','phone','street','house_number','postal_code','city','state','country_code'];$holderComplete=count(array_filter($holderFields,fn($field)=>trim((string)($u[$field]??''))!==''));$holderPercent=(int)round(($holderComplete/count($holderFields))*100);$sessionCount=count($sessions);$hasPteroKey=trim((string)($u['ptero_client_key']??''))!=='';
 $totpUri = $setup ? 'otpauth://totp/' . rawurlencode('FoxNetwork:' . $u['email']) . '?secret=' . rawurlencode($setup) . '&issuer=' . rawurlencode('FoxNetwork') . '&algorithm=SHA1&digits=6&period=30' : ''; ?>
 <!doctype html>
 <html>
@@ -83,19 +84,20 @@ $totpUri = $setup ? 'otpauth://totp/' . rawurlencode('FoxNetwork:' . $u['email']
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width">
   <title>Account & Security</title>
-  <link rel="stylesheet" href="/assets/portal.css?v=<?= rawurlencode((string)@filemtime(__DIR__ . '/assets/portal.css')) ?>">
+  <link rel="stylesheet" href="/assets/portal.css?v=<?= rawurlencode((string)@filemtime(__DIR__ . '/assets/portal.css')) ?>"><style>.settings-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}.settings-summary article{padding:16px 18px;border:1px solid #2a3038;border-radius:13px;background:#15191f}.settings-summary span,.settings-summary small{display:block;color:#7f8996;font-size:9px}.settings-summary b{display:block;margin:6px 0 4px;font-size:16px}.settings-nav{display:flex;gap:7px;overflow:auto;margin-bottom:18px;padding:5px;border:1px solid #292f37;border-radius:12px;background:#101419}.settings-nav a{padding:9px 12px;border-radius:8px;color:#9ca6b3;text-decoration:none;font-size:11px;white-space:nowrap}.settings-nav a:hover{background:#22272e;color:#fff}.security-card{scroll-margin-top:20px}@media(max-width:750px){.settings-summary{grid-template-columns:1fr 1fr}}@media(max-width:430px){.settings-summary{grid-template-columns:1fr}}</style>
 </head>
 
 <body class="portal-page"><?php render_client_page_start($u, 'settings', 'Account settings'); ?><div class="security-page">
     <div class="security-top"><a class="link" href="/client">← Dashboard</a>
       <h1>Account & Security</h1>
       <p class="muted">Manage your FoxNetwork profile, password, two-factor authentication and sessions.</p>
-    </div><?php if ($ok): ?><div class="notice"><?= e($ok) ?></div><?php endif ?><?php if ($err): ?><div class="error"><?= e($err) ?></div><?php endif ?><?php if ($newRecovery): ?><section class="security-card">
+    </div><section class="settings-summary"><article><span>ACCOUNT</span><b><?=e(ucfirst((string)($u['account_status']??'active')))?></b><small><?=e($u['email'])?></small></article><article><span>DOMAIN PROFILE</span><b><?=$holderPercent?>% complete</b><small><?=$holderComplete?> of <?=count($holderFields)?> required fields</small></article><article><span>TWO-FACTOR</span><b><?=!empty($u['two_factor_enabled'])?'Enabled':'Disabled'?></b><small><?=!empty($u['two_factor_enabled'])?'Extra login protection':'Setup recommended'?></small></article><article><span>GAME PANEL</span><b><?=$hasPteroKey?'Connected':'Not connected'?></b><small><?=$sessionCount?> active session<?=$sessionCount===1?'':'s'?></small></article></section><nav class="settings-nav" aria-label="Settings sections"><a href="#profile">Profile &amp; domain holder</a><a href="#password">Password</a><a href="#two-factor">Two-factor</a><a href="#sessions">Sessions</a><a href="#history">Login history</a></nav>
+    <?php if ($ok): ?><div class="notice"><?= e($ok) ?></div><?php endif ?><?php if ($err): ?><div class="error"><?= e($err) ?></div><?php endif ?><?php if ($newRecovery): ?><section class="security-card">
         <h2>Recovery codes</h2>
         <p class="muted">Store these somewhere safe. Each code can be used once.</p>
         <div class="recovery-grid"><?php foreach ($newRecovery as $c): ?><code><?= e($c) ?></code><?php endforeach ?></div>
       </section><?php endif ?><div class="security-grid">
-      <section class="security-card">
+      <section class="security-card" id="profile">
         <h2>Profile</h2>
         <form method="post"><input type="hidden" name="csrf" value="<?= csrf() ?>"><input type="hidden" name="action" value="profile">
           <div class="field"><label>Name</label><input name="name" value="<?= e($u['name']) ?>" required></div>
@@ -112,7 +114,7 @@ $totpUri = $setup ? 'otpauth://totp/' . rawurlencode('FoxNetwork:' . $u['email']
           <p class="muted">These details are required when registering a domain and are used to create your personal OXXA holder identity.</p><button class="btn primary">Save profile</button>
         </form>
       </section>
-      <section class="security-card">
+      <section class="security-card" id="password">
         <h2>Change password</h2>
         <form method="post"><input type="hidden" name="csrf" value="<?= csrf() ?>"><input type="hidden" name="action" value="password">
           <div class="field"><label>Current password</label><input type="password" name="current_password" required></div>
@@ -120,7 +122,7 @@ $totpUri = $setup ? 'otpauth://totp/' . rawurlencode('FoxNetwork:' . $u['email']
           <div class="field"><label>Confirm new password</label><input type="password" name="confirm_password" minlength="10" required></div><button class="btn">Change password</button>
         </form>
       </section>
-      <section class="security-card">
+      <section class="security-card" id="two-factor">
         <h2>Two-factor authentication</h2><?php if ((int)($u['two_factor_enabled'] ?? 0) === 1): ?><div class="notice">2FA is enabled.</div>
           <form method="post"><input type="hidden" name="csrf" value="<?= csrf() ?>"><input type="hidden" name="action" value="2fa_disable">
             <div class="field"><label>Current password</label><input type="password" name="current_password" required></div><button class="btn danger">Disable 2FA</button>
@@ -137,7 +139,7 @@ $totpUri = $setup ? 'otpauth://totp/' . rawurlencode('FoxNetwork:' . $u['email']
           <form method="post"><input type="hidden" name="csrf" value="<?= csrf() ?>"><button class="btn primary" name="action" value="2fa_begin">Set up 2FA</button></form><?php endif ?>
       </section>
     </div>
-    <section class="security-card">
+    <section class="security-card" id="sessions">
       <div class="security-card-head">
         <div>
           <h2>Active sessions</h2>
@@ -145,11 +147,11 @@ $totpUri = $setup ? 'otpauth://totp/' . rawurlencode('FoxNetwork:' . $u['email']
         </div>
         <form method="post"><input type="hidden" name="csrf" value="<?= csrf() ?>"><button class="btn" name="action" value="sessions">Sign out other sessions</button></form>
       </div>
-      <div class="security-list"><?php foreach ($sessions as $s): ?><div><b><?= session_id() === $s['session_id'] ? 'This session' : 'Signed-in session' ?></b><span><?= e($s['ip_address'] ?: 'Unknown IP') ?> -+ <?= e($s['last_seen_at']) ?></span><small><?= e($s['user_agent'] ?: 'Unknown device') ?></small></div><?php endforeach ?></div>
+      <div class="security-list"><?php foreach ($sessions as $s): ?><div><b><?= session_id() === $s['session_id'] ? 'This session' : 'Signed-in session' ?></b><span><?= e($s['ip_address'] ?: 'Unknown IP') ?> · <?= e($s['last_seen_at']) ?></span><small><?= e($s['user_agent'] ?: 'Unknown device') ?></small></div><?php endforeach ?></div>
     </section>
-    <section class="security-card">
+    <section class="security-card" id="history">
       <h2>Login history</h2>
-      <div class="security-list"><?php foreach ($history as $h): ?><div><b><?= $h['success'] ? 'Successful login' : 'Failed login' ?></b><span><?= e($h['ip_address'] ?: 'Unknown IP') ?> -+ <?= e($h['created_at']) ?></span><small><?= e($h['user_agent'] ?: 'Unknown device') ?></small></div><?php endforeach ?></div>
+      <div class="security-list"><?php foreach ($history as $h): ?><div><b><?= $h['success'] ? 'Successful login' : 'Failed login' ?></b><span><?= e($h['ip_address'] ?: 'Unknown IP') ?> · <?= e($h['created_at']) ?></span><small><?= e($h['user_agent'] ?: 'Unknown device') ?></small></div><?php endforeach ?></div>
     </section>
   </div><?php render_client_page_end(); ?><?php if ($setup): ?>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSQX0FslNhTDadL4O5SAGapGt4FodqL8My0mA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
@@ -172,45 +174,3 @@ $totpUri = $setup ? 'otpauth://totp/' . rawurlencode('FoxNetwork:' . $u['email']
 </body>
 
 </html>
-<?php if (false): ?><form method="post" style="margin-top:12px"><input type="hidden" name="csrf" value="<?= csrf() ?>"><input type="hidden" name="action" value="disabled_connection_form">
-          <div class="field"><label>Client API key</label><input type="password" name="ptero_key" placeholder="ptlc_..." required></div><button class="btn">Save client key</button>
-        </form>
-      </section>
-    </div>
-    <section class="security-card">
-      <div class="security-card-head">
-        <div>
-          <h2>Active sessions</h2>
-          <p class="muted">Devices currently signed in to your account.</p>
-        </div>
-        <form method="post"><input type="hidden" name="csrf" value="<?= csrf() ?>"><button class="btn" name="action" value="sessions">Sign out other sessions</button></form>
-      </div>
-      <div class="security-list"><?php foreach ($sessions as $s): ?><div><b><?= session_id() === $s['session_id'] ? 'This session' : 'Signed-in session' ?></b><span><?= e($s['ip_address'] ?: 'Unknown IP') ?> -+ <?= e($s['last_seen_at']) ?></span><small><?= e($s['user_agent'] ?: 'Unknown device') ?></small></div><?php endforeach ?></div>
-    </section>
-    <section class="security-card">
-      <h2>Login history</h2>
-      <div class="security-list"><?php foreach ($history as $h): ?><div><b><?= $h['success'] ? 'Successful login' : 'Failed login' ?></b><span><?= e($h['ip_address'] ?: 'Unknown IP') ?> -+ <?= e($h['created_at']) ?></span><small><?= e($h['user_agent'] ?: 'Unknown device') ?></small></div><?php endforeach ?></div>
-    </section>
-  </div><?php render_client_page_end(); ?><?php if ($setup): ?>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSQX0FslNhTDadL4O5SAGapGt4FodqL8My0mA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      var el = document.getElementById('totp-qrcode');
-      if (el && window.QRCode) {
-        new QRCode(el, {
-          text: <?= json_encode($totpUri, JSON_UNESCAPED_SLASHES) ?>,
-          width: 220,
-          height: 220,
-          colorDark: '#111111',
-          colorLight: '#ffffff',
-          correctLevel: QRCode.CorrectLevel.M
-        });
-      }
-    });
-  </script>
-<?php endif ?>
-</body>
-
-</html>
-<?php endif; // Disabled legacy connection fragment. ?>
->

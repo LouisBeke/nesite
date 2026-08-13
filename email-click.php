@@ -9,7 +9,7 @@ $target=email_tracking_decode($encoded);
 $valid=preg_match('/^[a-f0-9]{64}$/',$token)&&preg_match('/^[a-f0-9]{64}$/',$signature)&&hash_equals(email_tracking_signature($token,$encoded),$signature)&&is_string($target)&&filter_var($target,FILTER_VALIDATE_URL)&&in_array(strtolower((string)parse_url($target,PHP_URL_SCHEME)),['http','https'],true);
 if(!$valid){http_response_code(400);header('Content-Type: text/plain; charset=utf-8');echo 'Invalid email link.';exit;}
 try{
-    $q=db()->prepare("SELECT id FROM email_log WHERE tracking_token=? AND status='sent' LIMIT 1");$q->execute([$token]);$id=(int)$q->fetchColumn();
+    $q=db()->prepare("SELECT id FROM email_log WHERE tracking_token=? AND status IN ('pending','sent') LIMIT 1");$q->execute([$token]);$id=(int)$q->fetchColumn();
     if($id<=0){http_response_code(404);header('Content-Type: text/plain; charset=utf-8');echo 'Email link not found.';exit;}
     $fingerprint=email_tracking_request_fingerprint();
     db()->prepare('UPDATE email_log SET first_clicked_at=COALESCE(first_clicked_at,NOW()),last_clicked_at=NOW(),click_count=click_count+1,last_clicked_url=? WHERE id=?')->execute([$target,$id]);

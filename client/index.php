@@ -407,13 +407,3 @@ setInterval(()=>{if(!document.hidden)refreshProvisioning();},5000);
 </body>
 </html>
 
-<?php /* Legacy truncated markup intentionally suppressed.
-tml>
-
-pt>
-</body>
-</html>
-
-tml>
-
-*/ ?>

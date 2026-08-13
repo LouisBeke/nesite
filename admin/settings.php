@@ -2,6 +2,7 @@
 require __DIR__.'/../app/bootstrap.php';
 require __DIR__.'/_layout.php';
 $u = require_admin();
+$settingsSections=['connections','admin-sso','domains','billing','hosting','automation','access','infrastructure','mail','crm'];$settingsSection=(string)($_GET['section']??'connections');if(!in_array($settingsSection,$settingsSections,true))$settingsSection='connections';
 $msg = (string)($_SESSION['zoho_crm_flash_message'] ?? '');
 $err = (string)($_SESSION['zoho_crm_flash_error'] ?? '');
 unset($_SESSION['zoho_crm_flash_message'], $_SESSION['zoho_crm_flash_error']);
@@ -21,7 +22,7 @@ $keys = [
     'provisioning_online_check_tries','provisioning_online_check_sleep_ms','provisioning_strict_online_check',
     'automation_batch_size','automation_worker_timeout_seconds','blog_author_name','email_tracking_enabled',
     'oxxa_enabled','oxxa_api_url','oxxa_identity_handle','oxxa_nsgroup','oxxa_dns_template','oxxa_nginx_egg_ids','oxxa_domain_price','oxxa_test_mode','oxxa_price_markup_percent','oxxa_price_fixed_fee','oxxa_price_minimum','oxxa_price_cache_seconds','cloudflare_account_id',
-    'maintenance_mode','maintenance_message','portal_registration','security_session_hours'
+    'maintenance_mode','maintenance_message','portal_registration','security_session_hours','zoho_sso_enabled','zoho_sso_client_id','zoho_sso_discovery_url','zoho_sso_authorization_endpoint','zoho_sso_token_endpoint','zoho_sso_userinfo_endpoint'
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -52,14 +53,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($_POST['smtp_password']) && trim((string)$_POST['smtp_password']) !== '') {
             save_setting('smtp_password', 'enc:' . enc(trim((string)$_POST['smtp_password'])));
         }
-        foreach (['zoho_crm_client_secret','zoho_crm_refresh_token','pterodactyl_application_key','pterodactyl_admin_client_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token'] as $secretKey) {
+        foreach (['zoho_crm_client_secret','zoho_crm_refresh_token','zoho_sso_client_secret','pterodactyl_application_key','pterodactyl_admin_client_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token'] as $secretKey) {
             if (isset($_POST[$secretKey]) && trim((string)$_POST[$secretKey]) !== '') {
                 save_setting($secretKey, 'enc:' . enc(trim((string)$_POST[$secretKey])));
                 if(str_starts_with($secretKey,'zoho_crm_'))$crmCredentialsChanged = true;
             }
         }
         $fallbackSecrets=['pterodactyl_application_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token'];
-        $clearableSecrets=array_merge($fallbackSecrets,['pterodactyl_admin_client_key','smtp_password','zoho_crm_client_secret','zoho_crm_refresh_token','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token']);
+        $clearableSecrets=array_merge($fallbackSecrets,['pterodactyl_admin_client_key','smtp_password','zoho_crm_client_secret','zoho_crm_refresh_token','zoho_sso_client_secret','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token']);
         foreach((array)($_POST['clear_secret']??[]) as $secretKey){
             if(!in_array($secretKey,$clearableSecrets,true))continue;
             save_setting($secretKey,in_array($secretKey,$fallbackSecrets,true)?'__EMPTY__':'');
@@ -108,6 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $pteroKeyConfigured=trim((string)cfg('pterodactyl.application_key'))!=='';
 $pteroAdminClientRaw=(string)setting('pterodactyl_admin_client_key','');
 $pteroAdminClientConfigured=$pteroAdminClientRaw!==''&&$pteroAdminClientRaw!=='__EMPTY__';
+$zohoSsoSecretConfigured=zoho_sso_setting('client_secret')!=='';
 $mollieKeyConfigured=trim((string)cfg('mollie.api_key'))!=='';
 $webhookSecretRaw=(string)setting('pterodactyl_webhook_secret','');
 $webhookSecretConfigured=$webhookSecretRaw!==''&&$webhookSecretRaw!=='__EMPTY__';
@@ -117,15 +119,27 @@ $soroSecretConfigured=$soroSecretRaw!==''&&$soroSecretRaw!=='__EMPTY__';
 $oxxaUserConfigured=oxxa_setting('api_user')!=='';
 $oxxaPasswordConfigured=oxxa_setting('api_password')!=='';
 $cloudflareTokenConfigured=cloudflare_setting('api_token')!=='';
+$integrationStatus=[
+    ['Pterodactyl',$pteroKeyConfigured,'Application API'],
+    ['OXXA',$oxxaUserConfigured&&$oxxaPasswordConfigured,'Domain registrar'],
+    ['Cloudflare',$cloudflareTokenConfigured,'Managed DNS'],
+    ['Zoho SSO',zoho_sso_enabled()&&$zohoSsoSecretConfigured,'Admin login'],
+    ['Zoho CRM',zoho_crm_enabled()&&zoho_crm_secret('zoho_crm_refresh_token')!=='','Customer sync'],
+    ['Mollie',$mollieKeyConfigured,'Payments'],
+];
 admin_head($u, 'Settings', 'settings');
 ?>
+<style>.settings-overview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px;margin:0 0 16px}.settings-overview article{display:flex;align-items:center;gap:11px;padding:14px 16px;border:1px solid #2a3038;border-radius:12px;background:#14181d}.settings-overview i{width:9px;height:9px;flex:0 0 auto;border-radius:50%;background:#68727f}.settings-overview i.on{background:#43d990;box-shadow:0 0 11px rgba(67,217,144,.45)}.settings-overview b,.settings-overview small{display:block}.settings-overview b{font-size:12px}.settings-overview small{margin-top:3px;color:#788390;font-size:9px}.settings-jumps{position:sticky;top:8px;z-index:20;display:flex;gap:6px;overflow:auto;margin-bottom:16px;padding:7px;border:1px solid #2a3038;border-radius:12px;background:rgba(14,17,21,.96);backdrop-filter:blur(12px)}.settings-jumps a{padding:8px 10px;border-radius:8px;color:#919ba8;text-decoration:none;font-size:10px;white-space:nowrap}.settings-jumps a:hover{background:#252a31;color:#fff}.settings-card{scroll-margin-top:78px}.settings-savebar{position:sticky;z-index:19;bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:15px;margin-top:14px;padding:12px 14px;border:1px solid #343a43;border-radius:12px;background:rgba(16,19,23,.96);box-shadow:0 10px 35px rgba(0,0,0,.35);backdrop-filter:blur(12px)}.settings-savebar span{color:#7f8996;font-size:10px}@media(max-width:850px){.settings-overview{grid-template-columns:1fr 1fr}}@media(max-width:500px){.settings-overview{grid-template-columns:1fr}.settings-savebar{align-items:stretch;flex-direction:column}.settings-savebar .btn{width:100%}}</style>
+<style>.settings-card{display:none!important}#<?=e($settingsSection)?>.settings-card,.settings-card:has(#<?=e($settingsSection)?>){display:block!important}</style>
 <?php if($msg):?><div class="notice"><?=e($msg)?></div><?php endif?>
 <?php if($err):?><div class="error"><?=e($err)?></div><?php endif?>
 
 <form method="post">
 <input type="hidden" name="csrf" value="<?=e(csrf())?>">
+<section class="settings-overview" aria-label="Integration status"><?php foreach($integrationStatus as [$label,$connected,$description]):?><article><i class="<?=$connected?'on':''?>"></i><div><b><?=e($label)?> · <?=$connected?'Configured':'Needs setup'?></b><small><?=e($description)?></small></div></article><?php endforeach?></section>
+<nav class="settings-jumps" aria-label="Settings pages"><a href="/admin/settings-connections.php">Connections</a><a href="/admin/settings-sso.php">Admin SSO</a><a href="/admin/settings-domains.php">Domains</a><a href="/admin/settings-billing.php">Billing</a><a href="/admin/settings-hosting.php">Hosting</a><a href="/admin/settings-automation.php">Automation</a><a href="/admin/settings-access.php">Access</a><a href="/admin/settings-infrastructure.php">Infrastructure</a><a href="/admin/settings-mail.php">Mail</a><a href="/admin/settings-crm.php">CRM</a></nav>
 
-<section class="card settings-card" style="margin-bottom:18px">
+<section class="card settings-card" id="connections" style="margin-bottom:18px">
     <div class="cardhead"><b>PORTAL & API CONNECTIONS</b><span class="muted">Runtime configuration</span></div>
     <div class="admin-form-grid">
         <label>Application name<input name="app_name" value="<?=e(setting('app_name',(string)cfg('app_name')))?>" required></label>
@@ -154,7 +168,22 @@ admin_head($u, 'Settings', 'settings');
     </div>
 </section>
 
-<section class="card settings-card" style="margin-bottom:18px">
+<section class="card settings-card" id="admin-sso" style="margin-bottom:18px">
+    <div class="cardhead"><b>ZOHO DIRECTORY ADMIN SSO</b><span class="muted">OIDC · existing admins only</span></div>
+    <div class="admin-form-grid">
+        <label>Admin SSO<select name="zoho_sso_enabled"><option value="0" <?=zoho_sso_setting('enabled','0')==='0'?'selected':''?>>Disabled</option><option value="1" <?=zoho_sso_setting('enabled','0')==='1'?'selected':''?>>Enabled</option></select></label>
+        <label>Client ID<input name="zoho_sso_client_id" value="<?=e(zoho_sso_setting('client_id'))?>" autocomplete="off"></label>
+        <label>Client secret<input type="password" name="zoho_sso_client_secret" placeholder="<?=$zohoSsoSecretConfigured?'Configured — leave empty to keep':'Enter OIDC client secret'?>" autocomplete="new-password"></label>
+        <label class="fullfield">Discovery URL<input type="url" name="zoho_sso_discovery_url" value="<?=e(zoho_sso_setting('discovery_url'))?>" placeholder="Paste the discovery endpoint shown by Zoho Directory"></label>
+        <label>Authorization endpoint<input type="url" name="zoho_sso_authorization_endpoint" value="<?=e(zoho_sso_setting('authorization_endpoint'))?>" placeholder="Optional when discovery works"></label>
+        <label>Token endpoint<input type="url" name="zoho_sso_token_endpoint" value="<?=e(zoho_sso_setting('token_endpoint'))?>" placeholder="Optional when discovery works"></label>
+        <label>UserInfo endpoint<input type="url" name="zoho_sso_userinfo_endpoint" value="<?=e(zoho_sso_setting('userinfo_endpoint'))?>" placeholder="Optional when discovery works"></label>
+        <div class="fullfield"><b>Callback URL</b><code><?=e(zoho_sso_callback_url())?></code><p class="muted">Use this exact URL in the Zoho Directory OIDC custom app. Assign only authorized administrators to that app. Their Zoho primary email must match an existing portal admin email.</p></div>
+        <label class="fullfield"><input type="checkbox" name="clear_secret[]" value="zoho_sso_client_secret"> Clear stored Zoho SSO client secret</label>
+    </div>
+</section>
+
+<section class="card settings-card" id="domains" style="margin-bottom:18px">
     <div class="cardhead"><b>OXXA DOMAIN AUTOMATION</b><span class="muted">Registration + managed DNS for the nginx Egg</span></div>
     <div class="admin-form-grid">
         <label>Integration<select name="oxxa_enabled"><option value="0" <?=oxxa_setting('enabled','0')==='0'?'selected':''?>>Disabled</option><option value="1" <?=oxxa_setting('enabled','0')==='1'?'selected':''?>>Enabled</option></select></label>
@@ -179,7 +208,7 @@ admin_head($u, 'Settings', 'settings');
 </section>
 
 <section class="card settings-card" style="margin-bottom:18px">
-    <div class="cardhead"><b>COMPANY & BILLING</b></div>
+    <div class="cardhead" id="billing"><b>COMPANY & BILLING</b></div>
     <div class="admin-form-grid">
         <label>Company name<input name="company_name" value="<?=e(setting('company_name',''))?>"></label>
         <label>Support email<input name="support_email" value="<?=e(setting('support_email',''))?>"></label>
@@ -194,7 +223,7 @@ admin_head($u, 'Settings', 'settings');
 </section>
 
 <section class="card settings-card" style="margin-bottom:18px">
-    <div class="cardhead"><b>ADVANCED HOSTING CONTROLS</b></div>
+    <div class="cardhead" id="hosting"><b>ADVANCED HOSTING CONTROLS</b></div>
     <div class="admin-form-grid">
         <label>Startup variable editor
             <select name="hosting_allow_startup_variable_edit">
@@ -224,7 +253,7 @@ admin_head($u, 'Settings', 'settings');
 </section>
 
 <section class="card settings-card" style="margin-bottom:18px">
-    <div class="cardhead"><b>AUTOMATION</b></div>
+    <div class="cardhead" id="automation"><b>AUTOMATION</b></div>
     <div class="admin-form-grid">
         <label>Automatic suspension
             <select name="auto_suspend">
@@ -270,7 +299,7 @@ admin_head($u, 'Settings', 'settings');
 </section>
 
 <section class="card settings-card" style="margin-bottom:18px">
-    <div class="cardhead"><b>PRODUCTION & ACCESS</b></div>
+    <div class="cardhead" id="access"><b>PRODUCTION & ACCESS</b></div>
     <div class="admin-form-grid">
         <label>Maintenance mode<select name="maintenance_mode"><option value="0" <?=setting('maintenance_mode','0')==='0'?'selected':''?>>Off</option><option value="1" <?=setting('maintenance_mode','0')==='1'?'selected':''?>>On — admins bypass</option></select></label>
         <label>Customer registration<select name="portal_registration"><option value="1" <?=setting('portal_registration','1')==='1'?'selected':''?>>Enabled</option><option value="0" <?=setting('portal_registration','1')==='0'?'selected':''?>>Disabled</option></select></label>
@@ -280,7 +309,7 @@ admin_head($u, 'Settings', 'settings');
 </section>
 
 <section class="card settings-card" style="margin-bottom:18px">
-    <div class="cardhead"><b>SMART INFRASTRUCTURE</b></div>
+    <div class="cardhead" id="infrastructure"><b>SMART INFRASTRUCTURE</b></div>
     <div class="admin-form-grid">
         <label>Smart node selection
             <select name="provisioning_smart_node_enabled">
@@ -309,7 +338,7 @@ admin_head($u, 'Settings', 'settings');
 </section>
 
 <section class="card settings-card" style="margin-bottom:18px">
-    <div class="cardhead"><b>ZOHO MAIL</b></div>
+    <div class="cardhead" id="mail"><b>ZOHO MAIL</b></div>
     <div class="admin-form-grid">
         <input type="hidden" name="mail_provider" value="zoho">
         <label>SMTP host<input name="smtp_host" value="<?=e(setting('smtp_host','smtppro.zoho.eu'))?>"></label>
@@ -333,7 +362,7 @@ admin_head($u, 'Settings', 'settings');
 </section>
 
 <section class="card settings-card" style="margin-bottom:18px">
-    <div class="cardhead"><b>ZOHO CRM</b><span class="muted"><?php if(zoho_crm_secret('zoho_crm_refresh_token')===''):?>Not connected<?php elseif(!zoho_crm_full_sync_enabled()):?>Reconnect required for full sync<?php else:?>Connected · full sync<?php endif?> · EU data centre</span></div>
+    <div class="cardhead" id="crm"><b>ZOHO CRM</b><span class="muted"><?php if(zoho_crm_secret('zoho_crm_refresh_token')===''):?>Not connected<?php elseif(!zoho_crm_full_sync_enabled()):?>Reconnect required for full sync<?php else:?>Connected · full sync<?php endif?> · EU data centre</span></div>
     <div class="admin-form-grid">
         <label>CRM sync
             <select name="zoho_crm_enabled">
@@ -369,8 +398,8 @@ admin_head($u, 'Settings', 'settings');
     </div>
 </section>
 
-<div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px">
-    <button class="btn primary" name="settings_action" value="save">Save Settings</button>
+<div class="settings-savebar">
+    <span>Secret fields left empty keep their current value. Review clear-secret checkboxes before saving.</span><button class="btn primary" name="settings_action" value="save">Save Settings</button>
 </div>
 </form>
 

@@ -11,7 +11,7 @@ $hasClientKey = !empty($u['ptero_client_key']);
 $localService = null;
 $localStatus = 'unknown';
 try {
-  $sq = db()->prepare('SELECT id,name,status,ptero_identifier,ptero_server_id FROM services WHERE user_id=? AND ptero_identifier=? LIMIT 1');
+  $sq = db()->prepare('SELECT id,name,status,ptero_identifier,ptero_server_id,config_json FROM services WHERE user_id=? AND ptero_identifier=? LIMIT 1');
   $sq->execute([(int)$u['id'], $id]);
   $localService = $sq->fetch() ?: null;
   if ($localService) $localStatus = (string)($localService['status'] ?? 'unknown');
@@ -506,6 +506,7 @@ if ($hasClientKey) {
         <div class="eyebrow">Game Server</div>
         <h1><?= e($srv['name'] ?? 'Server') ?></h1>
         <div class="muted"><?= e($srv['description'] ?? 'FoxNetwork game server') ?></div>
+        <?php $localCfg=json_decode((string)($localService['config_json']??''),true)?:[];if(!empty($localCfg['domain']['name'])&&in_array((string)($localCfg['domain']['status']??''),['active','test'],true)):?><p><a class="btn" href="/domain-dns.php?service=<?=e($localService['id'])?>">Manage <?=e($localCfg['domain']['name'])?> DNS</a></p><?php endif?>
         <?php if (!empty($err)): ?><div class="error"><?= e($err) ?></div><?php endif ?>
 
         <div class="server-tabs">

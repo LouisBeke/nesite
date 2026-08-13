@@ -221,11 +221,3 @@ function linode_service_credentials(array $service): array {
     $password = str_starts_with($stored, 'enc:') ? (string)(dec(substr($stored, 4)) ?? '') : '';
     return ['ipv4'=>(string)($service['linode_ipv4'] ?? ''),'ipv6'=>(string)($service['linode_ipv6'] ?? ''),'username'=>'root','password'=>$password];
 }
-if (false) {
-}
-/* Removed a stale patch-tail fragment.
-t','password'=>$password];
-}
-if (false) {
-}
-*/

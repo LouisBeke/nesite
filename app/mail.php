@@ -107,7 +107,7 @@ function email_log_create(?int $userId,string $to,string $subject,?string $templ
 }
 function email_send_logged(?int $userId,string $to,string $subject,string $html,?string $templateKey=null,bool $throw=false):bool{
     $log=email_log_create($userId,$to,$subject,$templateKey);$error=null;
-    try{portal_mail_send($to,$subject,email_tracking_prepare($html,$log['token']));db()->prepare("UPDATE email_log SET status='sent',sent_at=NOW(),error_message=NULL WHERE id=?")->execute([$log['id']]);}
+    try{db()->prepare('UPDATE email_log SET sent_at=NOW() WHERE id=?')->execute([$log['id']]);portal_mail_send($to,$subject,email_tracking_prepare($html,$log['token']));db()->prepare("UPDATE email_log SET status='sent',error_message=NULL WHERE id=?")->execute([$log['id']]);}
     catch(Throwable $e){$error=$e;db()->prepare("UPDATE email_log SET status='failed',error_message=? WHERE id=?")->execute([$e->getMessage(),$log['id']]);}
     if($error&&$throw)throw new RuntimeException($error->getMessage(),0,$error);
     return $error===null;
