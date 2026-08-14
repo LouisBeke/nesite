@@ -45,7 +45,7 @@ DirectoryIndex index.html
 
 <IfModule mod_headers.c>
     # Account, checkout, admin, and API screens are functional pages, not search results.
-    <FilesMatch "^(?:login|logout|register|forgot-password|reset-password|two-factor|billing|invoice|order|orders|pay|payment-return|settings|server|store|support|setup|upgrades|cron|mollie-webhook|pterodactyl-webhook|email-track|email-click|return-admin)\.php$">
+    <FilesMatch "^(?:login|logout|register|verify-email|forgot-password|reset-password|two-factor|billing|invoice|order|orders|pay|payment-return|settings|server|store|support|setup|upgrades|cron|mollie-webhook|pterodactyl-webhook|email-track|email-click|return-admin)\.php$">
         Header always set X-Robots-Tag "noindex, nofollow, noarchive"
     </FilesMatch>
     <IfModule mod_setenvif.c>
@@ -55,8 +55,11 @@ DirectoryIndex index.html
     <FilesMatch "\.(css|js|png|jpe?g|gif|svg|webp|woff2?)$">
         Header set Cache-Control "public, max-age=31536000, immutable"
     </FilesMatch>
-    <FilesMatch "\.(html|php)$">
+    <FilesMatch "\.html$">
         Header set Cache-Control "public, max-age=300"
     </FilesMatch>
-</IfModule>
+    <FilesMatch "\.php$">
+        Header always set Cache-Control "private, no-store, max-age=0"
+        Header always set Pragma "no-cache"
+    </FilesMatch>
 </IfModule>

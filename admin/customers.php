@@ -75,7 +75,6 @@ admin_head($u, 'Customers', 'customers');
 <?php if ($err): ?>
 <div class="error"><?= e($err) ?></div>
 <?php endif ?>
-
 <form class="admin-search">
     <input name="q" value="<?= e($q) ?>" placeholder="Search name or email...">
     <button class="btn">Search</button>
@@ -85,7 +84,7 @@ admin_head($u, 'Customers', 'customers');
     <div class="cardhead">
         <b>CUSTOMER ACCOUNTS</b>
         <div style="display:flex;align-items:center;gap:10px">
-            <span class="muted"><?= count($rows) ?> shown</span>
+            <span class="muted"><?= count($rows) ?> shown</span><a class="btn primary" href="/admin/customer-create.php">Create customer</a>
             <form method="post">
                 <input type="hidden" name="csrf" value="<?= e(csrf()) ?>">
                 <input type="hidden" name="action" value="sync_zoho_all">
@@ -100,6 +99,7 @@ admin_head($u, 'Customers', 'customers');
                 <tr>
                     <th>Customer</th>
                     <th>Role</th>
+                    <th>Email</th>
                     <th>Orders</th>
                     <th>Pterodactyl</th>
                     <th>Joined</th>
@@ -114,6 +114,7 @@ admin_head($u, 'Customers', 'customers');
                         <small><?= e($r['email']) ?></small>
                     </td>
                     <td><?= e(ucfirst((string)$r['role'])) ?></td>
+                    <td><?=!empty($r['email_verified_at'])?admin_badge('active'):admin_badge('pending')?></td>
                     <td><?= e($r['order_count']) ?></td>
                     <td>
                         <?php if (!empty($r['ptero_user_id'])): ?>

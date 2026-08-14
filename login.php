@@ -33,9 +33,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 		$u = $s->fetch();
 		$pass = $u && password_verify($_POST['password'] ?? '', $u['password_hash']);
 		if ($pass) {
+			if (($u['role']??'customer')==='customer' && empty($u['email_verified_at'])) {
+				$_SESSION['email_verification_pending_email']=$email;
+				header('Location:/verify-email.php?pending=1');
+				exit;
+			}
 			if ((int)($u['two_factor_enabled'] ?? 0) === 1) {
 				$_SESSION['2fa_pending_uid'] = $u['id'];
 				$_SESSION['2fa_pending_email'] = $email;
+				$method=(string)($u['two_factor_method']??'totp');
+				if($method==='whatsapp'){
+					$last=(int)($_SESSION['2fa_message_sent_at']??0);
+					if(time()-$last>=60){try{messaging_verify_start((string)($u['phone']??''));$_SESSION['2fa_message_sent_at']=time();}catch(Throwable $e){error_log('2FA message delivery failed: '.$e->getMessage());}}
+				}
 				header('Location:/two-factor.php');
 				exit;
 			}

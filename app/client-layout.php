@@ -87,7 +87,7 @@ function render_client_sidebar(array $user, string $active = 'overview', ?int $o
             <?php if (($user['role'] ?? '') === 'admin'): ?>
                 <a href="/admin/"><?=client_sidebar_icon('admin')?><span>Admin center</span></a>
             <?php endif ?>
-            <a class="<?=$active === 'settings' ? 'active' : ''?>" href="/settings.php"<?=$active === 'settings' ? ' aria-current="page"' : ''?>><?=client_sidebar_icon('settings')?><span>Account settings</span></a>
+            <a class="<?=$active === 'settings' ? 'active' : ''?>" href="/settings-profile.php"<?=$active === 'settings' ? ' aria-current="page"' : ''?>><?=client_sidebar_icon('settings')?><span>Account settings</span></a>
             <a href="/logout.php"><?=client_sidebar_icon('logout')?><span>Sign out</span></a>
         </div>
     </aside>

@@ -20,7 +20,7 @@ $keys = [
     'provisioning_remove_failed_queue_item','provisioning_enabled','linode_immediate_provisioning','provisioning_batch_size','provisioning_max_attempts',
     'provisioning_worker_timeout_seconds','provisioning_retry_base_seconds','provisioning_retry_max_seconds',
     'provisioning_online_check_tries','provisioning_online_check_sleep_ms','provisioning_strict_online_check',
-    'automation_batch_size','automation_worker_timeout_seconds','blog_author_name','email_tracking_enabled',
+    'automation_batch_size','automation_worker_timeout_seconds','blog_author_name','email_tracking_enabled','telnyx_enabled','telnyx_verify_profile_id','telnyx_whatsapp_from','messaging_notifications_enabled',
     'oxxa_enabled','oxxa_api_url','oxxa_identity_handle','oxxa_nsgroup','oxxa_dns_template','oxxa_nginx_egg_ids','oxxa_domain_price','oxxa_test_mode','oxxa_price_markup_percent','oxxa_price_fixed_fee','oxxa_price_minimum','oxxa_price_cache_seconds','cloudflare_account_id',
     'maintenance_mode','maintenance_message','portal_registration','security_session_hours','zoho_sso_enabled','zoho_sso_client_id','zoho_sso_discovery_url','zoho_sso_authorization_endpoint','zoho_sso_token_endpoint','zoho_sso_userinfo_endpoint'
 ];
@@ -29,6 +29,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     try {
         $settingsAction = (string)($_POST['settings_action'] ?? 'save');
+        $fastAutomationPreset=$settingsAction==='fast_automation';
+        if($fastAutomationPreset){
+            foreach([
+                'provisioning_batch_size'=>'10','provisioning_max_attempts'=>'5','provisioning_worker_timeout_seconds'=>'240',
+                'provisioning_retry_base_seconds'=>'10','provisioning_retry_max_seconds'=>'120','provisioning_online_check_tries'=>'10',
+                'provisioning_online_check_sleep_ms'=>'750','provisioning_node_cache_max_age_seconds'=>'45',
+                'automation_batch_size'=>'40','automation_worker_timeout_seconds'=>'300',
+            ] as $presetKey=>$presetValue)$_POST[$presetKey]=$presetValue;
+        }
         foreach (['app_url'=>'Portal URL','pterodactyl_url'=>'Pterodactyl URL','mollie_webhook_url'=>'Mollie webhook URL','linode_api_url'=>'Linode API URL','oxxa_api_url'=>'OXXA API URL'] as $urlKey=>$label) {
             if (array_key_exists($urlKey,$_POST)) {
                 $url=trim((string)$_POST[$urlKey]);
@@ -53,14 +62,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($_POST['smtp_password']) && trim((string)$_POST['smtp_password']) !== '') {
             save_setting('smtp_password', 'enc:' . enc(trim((string)$_POST['smtp_password'])));
         }
-        foreach (['zoho_crm_client_secret','zoho_crm_refresh_token','zoho_sso_client_secret','pterodactyl_application_key','pterodactyl_admin_client_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token'] as $secretKey) {
+        foreach (['zoho_crm_client_secret','zoho_crm_refresh_token','zoho_sso_client_secret','pterodactyl_application_key','pterodactyl_admin_client_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token','telnyx_api_key'] as $secretKey) {
             if (isset($_POST[$secretKey]) && trim((string)$_POST[$secretKey]) !== '') {
                 save_setting($secretKey, 'enc:' . enc(trim((string)$_POST[$secretKey])));
                 if(str_starts_with($secretKey,'zoho_crm_'))$crmCredentialsChanged = true;
             }
         }
         $fallbackSecrets=['pterodactyl_application_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token'];
-        $clearableSecrets=array_merge($fallbackSecrets,['pterodactyl_admin_client_key','smtp_password','zoho_crm_client_secret','zoho_crm_refresh_token','zoho_sso_client_secret','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token']);
+        $clearableSecrets=array_merge($fallbackSecrets,['pterodactyl_admin_client_key','smtp_password','zoho_crm_client_secret','zoho_crm_refresh_token','zoho_sso_client_secret','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token','telnyx_api_key']);
         foreach((array)($_POST['clear_secret']??[]) as $secretKey){
             if(!in_array($secretKey,$clearableSecrets,true))continue;
             save_setting($secretKey,in_array($secretKey,$fallbackSecrets,true)?'__EMPTY__':'');
@@ -98,6 +107,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($settingsAction === 'test_zoho_crm') {
             if (!$crmGrantExchanged) zoho_crm_access_token(true);
             $msg = 'Settings saved. Zoho CRM OAuth connection successful.';
+        } elseif($fastAutomationPreset) {
+            $msg = 'Fast automation preset applied. Provisioning now processes 10 jobs per run with quicker safe retries; automation processes 40 jobs per run.';
         } else {
             $msg = 'Settings saved.';
         }
@@ -119,6 +130,7 @@ $soroSecretConfigured=$soroSecretRaw!==''&&$soroSecretRaw!=='__EMPTY__';
 $oxxaUserConfigured=oxxa_setting('api_user')!=='';
 $oxxaPasswordConfigured=oxxa_setting('api_password')!=='';
 $cloudflareTokenConfigured=cloudflare_setting('api_token')!=='';
+$telnyxKeyConfigured=telnyx_secret('api_key')!=='';
 $integrationStatus=[
     ['Pterodactyl',$pteroKeyConfigured,'Application API'],
     ['OXXA',$oxxaUserConfigured&&$oxxaPasswordConfigured,'Domain registrar'],
@@ -294,6 +306,7 @@ admin_head($u, 'Settings', 'settings');
         <label>Online check delay (ms)<input type="number" min="300" name="provisioning_online_check_sleep_ms" value="<?=e(setting('provisioning_online_check_sleep_ms','1500'))?>"></label>
         <label>Automation batch size<input type="number" min="1" name="automation_batch_size" value="<?=e(setting('automation_batch_size','20'))?>"></label>
         <label>Automation timeout (seconds)<input type="number" min="60" name="automation_worker_timeout_seconds" value="<?=e(setting('automation_worker_timeout_seconds','300'))?>"></label>
+        <div class="fullfield"><button class="btn primary" type="submit" name="settings_action" value="fast_automation">Apply fast automation preset</button><p class="muted small">Uses larger worker batches and shorter bounded retries. Keep cron running every minute for the fastest queue response.</p></div>
         <label class="fullfield">Cron token<input name="cron_token" value="<?=e(setting('cron_token',''))?>"></label>
     </div>
 </section>
@@ -358,6 +371,14 @@ admin_head($u, 'Settings', 'settings');
         <label>From email<input type="email" name="smtp_from_email" value="<?=e(setting('smtp_from_email','info@foxnetwork.be'))?>"></label>
         <label>From name<input name="smtp_from_name" value="<?=e(setting('smtp_from_name','FoxNetwork'))?>"></label>
         <p class="muted" style="grid-column:1/-1;margin:0">Use the exact SMTP host shown in Zoho Mail's Server Configuration. EU paid organization accounts commonly use smtppro.zoho.eu. Port 587 with TLS is recommended. The EHLO domain must be a complete domain such as foxnetwork.be.</p>
+        <div class="fullfield" style="border-top:1px solid #2b313a;margin-top:8px;padding-top:18px"><b>TELNYX WHATSAPP</b></div>
+        <label>Telnyx integration<select name="telnyx_enabled"><option value="0" <?=setting('telnyx_enabled','0')==='0'?'selected':''?>>Disabled</option><option value="1" <?=setting('telnyx_enabled','0')==='1'?'selected':''?>>Enabled</option></select></label>
+        <label>Notification messages<select name="messaging_notifications_enabled"><option value="0" <?=setting('messaging_notifications_enabled','0')==='0'?'selected':''?>>Disabled</option><option value="1" <?=setting('messaging_notifications_enabled','0')==='1'?'selected':''?>>Enabled</option></select></label>
+        <label>API key<input type="password" name="telnyx_api_key" placeholder="<?=$telnyxKeyConfigured?'Configured — leave empty to keep':'Enter Telnyx API key'?>" autocomplete="new-password"></label>
+        <label>Verify Profile ID<input name="telnyx_verify_profile_id" value="<?=e(setting('telnyx_verify_profile_id',''))?>" placeholder="UUID from Telnyx Verify"></label>
+        <label>WhatsApp sender<input name="telnyx_whatsapp_from" value="<?=e(setting('telnyx_whatsapp_from',''))?>" placeholder="+32..."></label>
+        <label class="config-clear-option"><input type="checkbox" name="clear_secret[]" value="telnyx_api_key"> Clear Telnyx API key</label>
+        <p class="muted fullfield" style="margin:0">Customer and sender numbers must use E.164 format. WhatsApp login codes use the Telnyx Verify Profile. Normal notifications can only use free-form text during an open 24-hour conversation; proactive messages require an approved Telnyx WhatsApp template.</p>
     </div>
 </section>
 

@@ -135,7 +135,7 @@ $initial = mb_strtoupper(mb_substr(trim((string)$u['name']), 0, 1));
             </div>
             <div class="client-top-actions">
                 <a class="topbar-action" href="/support.php" aria-label="Open support"><i class="far fa-question-circle" aria-hidden="true"></i></a>
-                <a class="client-profile" href="/settings.php">
+                <a class="client-profile" href="/settings-profile.php">
                     <span class="client-profile-copy"><b><?=e($u['name'])?></b><small><?=e(ucfirst((string)$u['role']))?> account</small></span>
                     <span class="client-avatar"><?=e($initial)?></span>
                 </a>
@@ -262,7 +262,7 @@ $initial = mb_strtoupper(mb_substr(trim((string)$u['name']), 0, 1));
                             <a href="/store.php"><span class="quick-icon"><i class="fas fa-plus" aria-hidden="true"></i></span><span><b>New service</b><small>Browse hosting plans</small></span><i class="fas fa-chevron-right" aria-hidden="true"></i></a>
                             <a href="/billing.php"><span class="quick-icon"><i class="fas fa-credit-card" aria-hidden="true"></i></span><span><b>Billing</b><small>Invoices and payments</small></span><i class="fas fa-chevron-right" aria-hidden="true"></i></a>
                             <a href="/support.php"><span class="quick-icon"><i class="far fa-comment-alt" aria-hidden="true"></i></span><span><b>Open a ticket</b><small>Talk to our support team</small></span><i class="fas fa-chevron-right" aria-hidden="true"></i></a>
-                            <a href="/settings.php"><span class="quick-icon"><i class="fas fa-user-cog" aria-hidden="true"></i></span><span><b>Account</b><small>Security and connections</small></span><i class="fas fa-chevron-right" aria-hidden="true"></i></a>
+                            <a href="/settings-profile.php"><span class="quick-icon"><i class="fas fa-user-cog" aria-hidden="true"></i></span><span><b>Account</b><small>Profile, security and sessions</small></span><i class="fas fa-chevron-right" aria-hidden="true"></i></a>
                         </div>
                     </section>
 

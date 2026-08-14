@@ -112,5 +112,25 @@ function email_send_logged(?int $userId,string $to,string $subject,string $html,
     if($error&&$throw)throw new RuntimeException($error->getMessage(),0,$error);
     return $error===null;
 }
-function send_template(string $key,array $recipient,array $vars=[]):bool{$tpl=email_template($key);if(!$tpl||!(int)$tpl['enabled']||empty($recipient['email']))return false;if(isset($recipient['email_notifications'])&&!(int)$recipient['email_notifications'])return false;$vars+=['customer_name'=>$recipient['name']??'Customer','portal_url'=>rtrim((string)cfg('app_url'),'/').'/','billing_url'=>rtrim((string)cfg('app_url'),'/').'/billing.php'];$subject=render_tokens($tpl['subject'],$vars);$html=branded_email(render_tokens($tpl['body_html'],$vars));return email_send_logged(isset($recipient['id'])?(int)$recipient['id']:null,(string)$recipient['email'],$subject,$html,$key,false);}
+function send_template(string $key,array $recipient,array $vars=[]):bool{
+    $tpl=email_template($key);if(!$tpl||!(int)$tpl['enabled'])return false;
+    $userId=(int)($recipient['user_id']??$recipient['id']??0);
+    if($userId>0&&!array_key_exists('notify_whatsapp',$recipient)){try{$q=db()->prepare('SELECT phone,notify_whatsapp,email_notifications FROM users WHERE id=?');$q->execute([$userId]);$preferences=$q->fetch();if($preferences)$recipient=array_merge($preferences,$recipient);}catch(Throwable $e){}}
+    $vars+=['customer_name'=>$recipient['name']??'Customer','portal_url'=>rtrim((string)cfg('app_url'),'/').'/','billing_url'=>rtrim((string)cfg('app_url'),'/').'/billing.php'];
+    $subject=render_tokens($tpl['subject'],$vars);$body=render_tokens($tpl['body_html'],$vars);$sent=false;
+    if(!empty($recipient['email'])&&(!isset($recipient['email_notifications'])||(int)$recipient['email_notifications']))$sent=email_send_logged($userId?:null,(string)$recipient['email'],$subject,branded_email($body),$key,false);
+    $phone=(string)($recipient['phone']??'');
+    if($phone!==''&&telnyx_enabled()&&!empty($recipient['notify_whatsapp'])){try{$sent=messaging_send_notification($phone,$subject)||$sent;}catch(Throwable $e){error_log('Telnyx WhatsApp notification failed: '.$e->getMessage());}}
+    return $sent;
+}
 function send_custom_email(?int $userId,string $to,string $subject,string $html):bool{return email_send_logged($userId,$to,$subject,branded_email($html),null,true);}
+function email_verification_send(array $user): bool {
+    $id=(int)($user['id']??0);$email=strtolower(trim((string)($user['email']??'')));
+    if($id<=0||!filter_var($email,FILTER_VALIDATE_EMAIL))throw new RuntimeException('A valid customer email address is required.');
+    $token=bin2hex(random_bytes(32));$hash=hash('sha256',$token);
+    db()->prepare('UPDATE users SET email_verification_token_hash=?,email_verification_expires_at=DATE_ADD(NOW(),INTERVAL 24 HOUR) WHERE id=?')->execute([$hash,$id]);
+    $url=site_url('/verify-email.php?token='.rawurlencode($token));
+    $name=e((string)($user['name']??'Customer'));
+    $html='<h2>Verify your email address</h2><p>Hello '.$name.',</p><p>Confirm this email address to activate your FoxNetwork customer account.</p><p><a href="'.e($url).'" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#ff7417;color:#fff;text-decoration:none;font-weight:700">Verify email address</a></p><p style="color:#8e96a2;font-size:13px">This link expires in 24 hours. If you did not request this account, you can ignore this email.</p>';
+    return send_custom_email($id,$email,'Verify your FoxNetwork email address',$html);
+}

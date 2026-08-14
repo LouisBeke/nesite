@@ -810,3 +810,47 @@ function fox_v19_email_tracking_migrate(): void {
     if(fox_table_exists($pdo,'app_settings'))$pdo->prepare("INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES('email_tracking_enabled','1')")->execute();
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v19-email-tracking']);
 }
+
+function fox_v20_email_verification_migrate(): void {
+    static $ran=false;if($ran)return;$ran=true;$pdo=db();
+    if(fox_migration_applied($pdo,'v20-email-verification'))return;
+    if(fox_table_exists($pdo,'users')){
+        foreach([
+            'email_verified_at'=>'DATETIME NULL',
+            'email_verification_token_hash'=>'CHAR(64) NULL',
+            'email_verification_expires_at'=>'DATETIME NULL',
+        ] as $column=>$definition)if(!fox_column_exists($pdo,'users',$column))$pdo->exec("ALTER TABLE users ADD COLUMN `$column` $definition");
+        // Accounts that existed before this feature remain usable.
+        $pdo->exec('UPDATE users SET email_verified_at=COALESCE(email_verified_at,created_at)');
+    }
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v20-email-verification']);
+}
+
+function fox_v21_messaging_migrate(): void {
+    static $ran=false;if($ran)return;$ran=true;$pdo=db();
+    if(fox_migration_applied($pdo,'v21-messaging'))return;
+    if(fox_table_exists($pdo,'users'))foreach([
+        'two_factor_method'=>"VARCHAR(20) NOT NULL DEFAULT 'totp'",
+        'notify_whatsapp'=>'TINYINT(1) NOT NULL DEFAULT 0',
+    ] as $column=>$definition)if(!fox_column_exists($pdo,'users',$column))$pdo->exec("ALTER TABLE users ADD COLUMN `$column` $definition");
+    if(fox_table_exists($pdo,'app_settings'))$pdo->prepare("INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES('telnyx_enabled','0'),('telnyx_api_key',''),('telnyx_verify_profile_id',''),('telnyx_whatsapp_from',''),('messaging_notifications_enabled','0')")->execute();
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v21-messaging']);
+}
+
+function fox_v22_telnyx_migrate(): void {
+    static $ran=false;if($ran)return;$ran=true;$pdo=db();
+    if(fox_migration_applied($pdo,'v22-telnyx'))return;
+    if(fox_table_exists($pdo,'app_settings'))$pdo->prepare("INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES('telnyx_enabled','0'),('telnyx_api_key',''),('telnyx_verify_profile_id',''),('telnyx_whatsapp_from',''),('messaging_notifications_enabled','0')")->execute();
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v22-telnyx']);
+}
+
+function fox_v23_whatsapp_only_migrate(): void {
+    static $ran=false;if($ran)return;$ran=true;$pdo=db();
+    if(fox_migration_applied($pdo,'v23-whatsapp-only'))return;
+    if(fox_table_exists($pdo,'users')){
+        $pdo->exec("UPDATE users SET two_factor_method='whatsapp' WHERE two_factor_method='sms'");
+        if(fox_column_exists($pdo,'users','notify_sms'))$pdo->exec('UPDATE users SET notify_sms=0');
+    }
+    if(fox_table_exists($pdo,'app_settings'))$pdo->prepare("DELETE FROM app_settings WHERE setting_key='telnyx_sms_from'")->execute();
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v23-whatsapp-only']);
+}

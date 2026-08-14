@@ -133,7 +133,11 @@ function enforce_https_redirect(): void {
 require_once __DIR__.'/mollie.php';
 function db(): PDO {static $pdo;if(!$pdo){$d=cfg('db');$pdo=new PDO("mysql:host={$d['host']};port={$d['port']};dbname={$d['name']};charset=utf8mb4",$d['user'],$d['pass'],[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);}return $pdo;}
 require_once __DIR__.'/migrations.php';
-try {
+$migrationFile=__DIR__.'/migrations.php';
+$migrationSignature=sha1((string)@filemtime($migrationFile).'|'.(string)@filesize($migrationFile));
+$migrationMarker=rtrim(sys_get_temp_dir(),'\\/').DIRECTORY_SEPARATOR.'foxnetwork-migrations-'.$migrationSignature.'.ok';
+$migrationDue=!is_file($migrationMarker)||(time()-(int)@filemtime($migrationMarker)>300);
+if($migrationDue)try {
     fox_auto_migrate();
     fox_v9c_migrate();
     fox_v11_migrate();
@@ -163,11 +167,17 @@ try {
     if (function_exists('fox_v18a_domain_contacts_cloudflare_migrate')) fox_v18a_domain_contacts_cloudflare_migrate();
     if (function_exists('fox_v18b_oxxa_auto_pricing_migrate')) fox_v18b_oxxa_auto_pricing_migrate();
     if (function_exists('fox_v19_email_tracking_migrate')) fox_v19_email_tracking_migrate();
+    if (function_exists('fox_v20_email_verification_migrate')) fox_v20_email_verification_migrate();
+    if (function_exists('fox_v21_messaging_migrate')) fox_v21_messaging_migrate();
+    if (function_exists('fox_v22_telnyx_migrate')) fox_v22_telnyx_migrate();
+    if (function_exists('fox_v23_whatsapp_only_migrate')) fox_v23_whatsapp_only_migrate();
+    @touch($migrationMarker);
 } catch (Throwable $e) {
     error_log('FoxNetwork migrations skipped: '.$e->getMessage());
 }
 function e($v):string{return htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');}
 require_once __DIR__.'/client-layout.php';
+require_once __DIR__.'/messaging.php';
 require_once __DIR__.'/mail.php';
 require_once __DIR__.'/linode.php';
 require_once __DIR__.'/zoho-crm.php';
@@ -401,7 +411,7 @@ function app_ptero(string $path,string $method='GET',?array $body=null){
     $key=(string)(cfg('pterodactyl.application_key')??'');
     if($key==='') throw new RuntimeException('Pterodactyl Application API key is not configured.');
     $method=strtoupper($method);
-    $cacheTtl=$method==='GET'?3:0;
+    $cacheTtl=$method==='GET'?10:0;
     $cacheKey=$cacheTtl>0?ptero_cache_key('application',$key,$path,$method,$body):null;
     if($cacheKey){$cached=ptero_cache_get($cacheKey,$cacheTtl);if($cached!==null)return $cached;}
     $ch=curl_init(rtrim((string)cfg('pterodactyl.url'),'/').'/api/application'.$path);

@@ -76,19 +76,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             error_log('FoxNetwork registration Zoho CRM sync failed for user '.$uid.': '.$e->getMessage());
         }
 
-        try {
-            provision_ptero_client_key_for_new_user($uid);
-        } catch (Throwable $e) {
-            error_log('FoxNetwork registration Pterodactyl key setup failed for user '.$uid.': '.$e->getMessage());
-        }
-
-        session_regenerate_id(true);
-        $_SESSION['uid'] = $uid;
-        security_log_login($uid, $email, true);
-        security_touch_session($uid);
-        db()->prepare('UPDATE users SET last_login_at=NOW(),last_login_ip=? WHERE id=?')->execute([$_SERVER['REMOTE_ADDR'] ?? null, $uid]);
-
-        header('Location:/client');
+        try { email_verification_send($u); }
+        catch (Throwable $e) { error_log('FoxNetwork verification email failed for user '.$uid.': '.$e->getMessage()); }
+        $_SESSION['email_verification_pending_email']=$email;
+        header('Location:/verify-email.php?pending=1');
         exit;
     } catch (Throwable $e) {
         $error = $e->getMessage();
