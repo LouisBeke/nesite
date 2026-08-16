@@ -12,6 +12,9 @@ $dashboard = [
     'active_services' => 0,
     'total_services' => 0,
     'open_tickets' => 0,
+    'latest_ticket_id' => 0,
+    'latest_ticket_status' => '',
+    'latest_ticket_subject' => '',
     'unpaid_invoices' => 0,
     'unpaid_total' => 0.0,
     'currency' => (string)setting('currency', 'EUR'),
@@ -45,6 +48,13 @@ try {
     $q = db()->prepare("SELECT COUNT(*) FROM support_tickets WHERE user_id=? AND status<>'closed'");
     $q->execute([(int)$u['id']]);
     $dashboard['open_tickets'] = (int)$q->fetchColumn();
+    $q = db()->prepare("SELECT id,subject,status FROM support_tickets WHERE user_id=? AND status<>'closed' ORDER BY updated_at DESC,id DESC LIMIT 1");
+    $q->execute([(int)$u['id']]);
+    if($latestTicket=$q->fetch()){
+        $dashboard['latest_ticket_id']=(int)$latestTicket['id'];
+        $dashboard['latest_ticket_status']=(string)$latestTicket['status'];
+        $dashboard['latest_ticket_subject']=(string)$latestTicket['subject'];
+    }
 
     $q = db()->prepare('SELECT COUNT(*) FROM orders WHERE user_id=?');
     $q->execute([(int)$u['id']]);
@@ -125,6 +135,9 @@ $nameParts = preg_split('/\s+/', trim((string)$u['name'])) ?: [];
 $firstName = (string)($nameParts[0] ?? $u['name']);
 $hasPteroLink = !empty($u['ptero_user_id']) && $hasClientKey;
 $initial = mb_strtoupper(mb_substr(trim((string)$u['name']), 0, 1));
+$ticketStatusLabels=['open'=>'Open','awaiting_staff'=>'Waiting for support','awaiting_customer'=>'Your reply needed','answered'=>'Answered'];
+$latestTicketStatus=(string)$dashboard['latest_ticket_status'];
+$latestTicketLabel=$latestTicketStatus!==''?($ticketStatusLabels[$latestTicketStatus]??ucwords(str_replace('_',' ',$latestTicketStatus))):'No open tickets';
 ?>
 <!doctype html>
 <html lang="en">
@@ -196,10 +209,10 @@ $initial = mb_strtoupper(mb_substr(trim((string)$u['name']), 0, 1));
                     <span class="stat-icon stat-icon-blue"><i class="fas fa-file-invoice" aria-hidden="true"></i></span>
                     <div><small>Outstanding</small><strong><?=e(number_format((float)$dashboard['unpaid_total'], 2))?> <sup><?=e($dashboard['currency'])?></sup></strong><span><?=e($dashboard['unpaid_invoices'])?> open invoice<?=((int)$dashboard['unpaid_invoices']===1?'':'s')?></span></div>
                 </article>
-                <article class="client-stat">
+                <a class="client-stat client-stat-link" href="/support.php<?=((int)$dashboard['latest_ticket_id']>0?'?id='.(int)$dashboard['latest_ticket_id']:'')?>">
                     <span class="stat-icon stat-icon-purple"><i class="fas fa-life-ring" aria-hidden="true"></i></span>
-                    <div><small>Support</small><strong><?=e($dashboard['open_tickets'])?></strong><span>open ticket<?=((int)$dashboard['open_tickets']===1?'':'s')?></span></div>
-                </article>
+                    <div><small>Open tickets</small><strong><?=e($dashboard['open_tickets'])?></strong><span class="ticket-summary-status status-<?=e($latestTicketStatus?:'none')?>"><?=e($latestTicketLabel)?></span><?php if($dashboard['latest_ticket_subject']!==''):?><em title="<?=e($dashboard['latest_ticket_subject'])?>">#<?=(int)$dashboard['latest_ticket_id']?> <?=e($dashboard['latest_ticket_subject'])?></em><?php endif?></div><i class="fas fa-chevron-right stat-arrow" aria-hidden="true"></i>
+                </a>
             </section>
 
             <section class="dashboard-section provisioning-section" id="prov-section" hidden>

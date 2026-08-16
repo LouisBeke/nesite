@@ -169,6 +169,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
          $q = db()->prepare("INSERT INTO order_items(order_id,product_id,product_name,unit_price,quantity,config_json) VALUES(?,?,?,?,1,?)");
          $hostingPrice=$isDeviceRepair?0.00:(float)$p['price_monthly'];
          $q->execute([$oid, $p['id'], $p['name'], $hostingPrice, $cfg]);
+         if($orderAmount<=0&&$p['stock']!==null){
+            $stockQ=db()->prepare('SELECT stock FROM store_products WHERE id=? FOR UPDATE');$stockQ->execute([(int)$p['id']]);$currentStock=$stockQ->fetchColumn();
+            if($currentStock===false||(int)$currentStock<1)throw new RuntimeException('This free service is currently out of stock.');
+            db()->prepare('UPDATE store_products SET stock=stock-1 WHERE id=?')->execute([(int)$p['id']]);
+         }
          if($domainName!==''){
             $q=db()->prepare("INSERT INTO order_items(order_id,product_id,product_name,unit_price,quantity,config_json) VALUES(?,NULL,?,?,1,?)");
             $q->execute([$oid,'Domain registration: '.$domainName,$domainPrice,json_encode(['billing_period'=>'annual','domain'=>$domainName,'oxxa_cost'=>$domainCost],JSON_UNESCAPED_SLASHES)]);
@@ -195,7 +200,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
          }
          try {
-            provisioning_dispatch_order($oid, ['source' => 'free_checkout']);
+            $freeQueueId=provisioning_dispatch_order($oid, ['source' => 'free_checkout','immediate'=>1]);
+            if($freeQueueId>0){
+               $freeProvisioning=provisioning_run_job_now($freeQueueId);
+               if(in_array((string)($freeProvisioning['status']??''),['retry_wait','failed'],true))error_log('FoxNetwork free-order immediate provisioning will retry for order '.$oid.': '.(string)($freeProvisioning['error']??'Unknown error'));
+            }
          } catch (Throwable $provisioningError) {
             error_log('FoxNetwork free-order provisioning dispatch failed for order '.$oid.': '.$provisioningError->getMessage());
          }

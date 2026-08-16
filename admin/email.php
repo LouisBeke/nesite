@@ -33,7 +33,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     }
 }
 
-$users=db()->query('SELECT id,name,email FROM users ORDER BY name')->fetchAll();
+$users=db()->query('SELECT id,name,email,role,account_status FROM users ORDER BY name,email')->fetchAll();
 $tpls=db()->query('SELECT * FROM email_templates ORDER BY template_key')->fetchAll();
 $logs=db()->query('SELECT * FROM email_log ORDER BY id DESC LIMIT 100')->fetchAll();
 $tracking=db()->query("SELECT COUNT(*) total,SUM(status='sent') sent,SUM(status='failed') failed,SUM(first_opened_at IS NOT NULL) opened,SUM(first_clicked_at IS NOT NULL) clicked FROM email_log")->fetch()?:[];
@@ -52,7 +52,7 @@ admin_head($u,'Email & Notifications','email');
         <form method="post" class="admin-form-grid">
             <input type="hidden" name="csrf" value="<?=e(csrf())?>">
             <input type="hidden" name="action" value="custom">
-            <label>Customer<select name="user_id"><?php foreach($users as $c):?><option value="<?=$c['id']?>"><?=e($c['name'].' — '.$c['email'])?></option><?php endforeach?></select></label>
+            <div class="fullfield email-recipient-picker"><label for="email-recipient-search">Find recipient</label><div class="email-recipient-search"><span aria-hidden="true">⌕</span><input id="email-recipient-search" type="search" placeholder="Search name or email…" autocomplete="off"></div><select id="email-recipient-select" name="user_id" size="7" required><?php foreach($users as $c):?><option value="<?=(int)$c['id']?>" data-search="<?=e(strtolower($c['name'].' '.$c['email'].' '.$c['role'].' '.$c['account_status']))?>"><?=e($c['name'])?> — <?=e($c['email'])?> · <?=e(ucfirst($c['role']))?> · <?=e(ucfirst($c['account_status']??'active'))?></option><?php endforeach?></select><div class="email-recipient-selected" id="email-recipient-selected"><?=count($users)?> available recipient<?=count($users)===1?'':'s'?></div></div>
             <label>Subject<input name="subject" required></label>
             <label class="fullfield">Message<textarea name="message" rows="7" required></textarea></label>
             <button class="btn primary">Send email</button>
@@ -98,4 +98,5 @@ admin_head($u,'Email & Notifications','email');
     <?php foreach($logs as $l):?><tr><td><?=e($l['sent_at']?:$l['created_at'])?></td><td><?=e($l['recipient'])?></td><td><b><?=e($l['subject'])?></b><?php if($l['template_key']):?><small><?=e(str_replace('_',' ',$l['template_key']))?></small><?php endif?></td><td><?=admin_badge($l['status'])?></td><td><?php if((int)$l['open_count']>0):?><span class="email-event is-open"><i class="fas fa-eye"></i><b><?=(int)$l['open_count']?></b></span><small><?=e($l['first_opened_at'])?></small><?php else:?><span class="email-event is-empty">Not opened</span><?php endif?></td><td><?php if((int)$l['click_count']>0):?><span class="email-event is-click"><i class="fas fa-mouse-pointer"></i><b><?=(int)$l['click_count']?></b></span><small><?=e($l['first_clicked_at'])?></small><?php else:?><span class="email-event is-empty">No clicks</span><?php endif?></td><td class="small redtext"><?=e($l['error_message']??'')?></td></tr><?php endforeach?>
     </tbody></table></div>
 </section>
+<script>(()=>{const search=document.getElementById('email-recipient-search'),select=document.getElementById('email-recipient-select'),selected=document.getElementById('email-recipient-selected');if(!search||!select)return;const options=[...select.options];function updateSelected(){const option=select.selectedOptions[0];selected.textContent=option?'Selected: '+option.textContent.trim():options.filter(o=>!o.hidden).length+' matching recipients';}search.addEventListener('input',()=>{const term=search.value.trim().toLowerCase();let visible=0;options.forEach(option=>{const show=!term||(option.dataset.search||'').includes(term);option.hidden=!show;option.style.display=show?'':'none';if(show)visible++;});const current=select.selectedOptions[0];if(current?.hidden)select.selectedIndex=-1;selected.textContent=visible+' matching recipient'+(visible===1?'':'s');});select.addEventListener('change',updateSelected);select.addEventListener('dblclick',()=>select.form?.querySelector('input[name="subject"]')?.focus());})();</script>
 <?php admin_foot(); ?>

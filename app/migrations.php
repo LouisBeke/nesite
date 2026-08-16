@@ -854,3 +854,19 @@ function fox_v23_whatsapp_only_migrate(): void {
     if(fox_table_exists($pdo,'app_settings'))$pdo->prepare("DELETE FROM app_settings WHERE setting_key='telnyx_sms_from'")->execute();
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v23-whatsapp-only']);
 }
+
+function fox_v24_inbound_email_migrate(): void {
+    static $ran=false;if($ran)return;$ran=true;$pdo=db();
+    if(fox_migration_applied($pdo,'v24-inbound-email'))return;
+    $pdo->exec("CREATE TABLE IF NOT EXISTS inbound_email_messages (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        message_key CHAR(64) NOT NULL UNIQUE,
+        sender_email VARCHAR(190) NOT NULL,
+        ticket_id BIGINT UNSIGNED NULL,
+        received_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_inbound_ticket(ticket_id),
+        CONSTRAINT fk_inbound_ticket FOREIGN KEY(ticket_id) REFERENCES support_tickets(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    if(fox_table_exists($pdo,'app_settings'))$pdo->prepare("INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES('inbound_email_enabled','0'),('inbound_email_secret','')")->execute();
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v24-inbound-email']);
+}

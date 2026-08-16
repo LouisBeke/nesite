@@ -20,7 +20,7 @@ $keys = [
     'provisioning_remove_failed_queue_item','provisioning_enabled','linode_immediate_provisioning','provisioning_batch_size','provisioning_max_attempts',
     'provisioning_worker_timeout_seconds','provisioning_retry_base_seconds','provisioning_retry_max_seconds',
     'provisioning_online_check_tries','provisioning_online_check_sleep_ms','provisioning_strict_online_check',
-    'automation_batch_size','automation_worker_timeout_seconds','blog_author_name','email_tracking_enabled','telnyx_enabled','telnyx_verify_profile_id','telnyx_whatsapp_from','messaging_notifications_enabled',
+    'automation_batch_size','automation_worker_timeout_seconds','blog_author_name','email_tracking_enabled','telnyx_enabled','telnyx_verify_profile_id','telnyx_whatsapp_from','messaging_notifications_enabled','openai_support_enabled','openai_support_model','inbound_email_enabled',
     'oxxa_enabled','oxxa_api_url','oxxa_identity_handle','oxxa_nsgroup','oxxa_dns_template','oxxa_nginx_egg_ids','oxxa_domain_price','oxxa_test_mode','oxxa_price_markup_percent','oxxa_price_fixed_fee','oxxa_price_minimum','oxxa_price_cache_seconds','cloudflare_account_id',
     'maintenance_mode','maintenance_message','portal_registration','security_session_hours','zoho_sso_enabled','zoho_sso_client_id','zoho_sso_discovery_url','zoho_sso_authorization_endpoint','zoho_sso_token_endpoint','zoho_sso_userinfo_endpoint'
 ];
@@ -63,14 +63,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($_POST['smtp_password']) && trim((string)$_POST['smtp_password']) !== '') {
             save_setting('smtp_password', 'enc:' . enc(trim((string)$_POST['smtp_password'])));
         }
-        foreach (['zoho_crm_client_secret','zoho_crm_refresh_token','zoho_sso_client_secret','pterodactyl_application_key','pterodactyl_admin_client_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token','telnyx_api_key'] as $secretKey) {
+        foreach (['zoho_crm_client_secret','zoho_crm_refresh_token','zoho_sso_client_secret','pterodactyl_application_key','pterodactyl_admin_client_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token','telnyx_api_key','openai_api_key','inbound_email_secret'] as $secretKey) {
             if (isset($_POST[$secretKey]) && trim((string)$_POST[$secretKey]) !== '') {
+                if($secretKey==='inbound_email_secret'&&strlen(trim((string)$_POST[$secretKey]))<24)throw new RuntimeException('Inbound email secret must be at least 24 characters.');
                 save_setting($secretKey, 'enc:' . enc(trim((string)$_POST[$secretKey])));
                 if(str_starts_with($secretKey,'zoho_crm_'))$crmCredentialsChanged = true;
             }
         }
         $fallbackSecrets=['pterodactyl_application_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token'];
-        $clearableSecrets=array_merge($fallbackSecrets,['pterodactyl_admin_client_key','smtp_password','zoho_crm_client_secret','zoho_crm_refresh_token','zoho_sso_client_secret','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token','telnyx_api_key']);
+        $clearableSecrets=array_merge($fallbackSecrets,['pterodactyl_admin_client_key','smtp_password','zoho_crm_client_secret','zoho_crm_refresh_token','zoho_sso_client_secret','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token','telnyx_api_key','openai_api_key','inbound_email_secret']);
         foreach((array)($_POST['clear_secret']??[]) as $secretKey){
             if(!in_array($secretKey,$clearableSecrets,true))continue;
             save_setting($secretKey,in_array($secretKey,$fallbackSecrets,true)?'__EMPTY__':'');
@@ -141,6 +142,8 @@ $oxxaUserConfigured=oxxa_setting('api_user')!=='';
 $oxxaPasswordConfigured=oxxa_setting('api_password')!=='';
 $cloudflareTokenConfigured=cloudflare_setting('api_token')!=='';
 $telnyxKeyConfigured=telnyx_secret('api_key')!=='';
+$openaiKeyConfigured=openai_secret()!=='';
+$inboundSecretRaw=(string)setting('inbound_email_secret','');$inboundSecretConfigured=$inboundSecretRaw!=='';
 $integrationStatus=[
     ['Pterodactyl',$pteroKeyConfigured&&$pteroAdminClientConfigured,'Application + Client API'],
     ['OXXA',$oxxaUserConfigured&&$oxxaPasswordConfigured,'Domain registrar'],
@@ -380,7 +383,18 @@ admin_head($u, 'Settings', 'settings');
         <label class="config-clear-option"><input type="checkbox" name="clear_secret[]" value="smtp_password"> Clear saved SMTP password</label>
         <label>From email<input type="email" name="smtp_from_email" value="<?=e(setting('smtp_from_email','info@foxnetwork.be'))?>"></label>
         <label>From name<input name="smtp_from_name" value="<?=e(setting('smtp_from_name','FoxNetwork'))?>"></label>
+        <div class="fullfield" style="border-top:1px solid #2b313a;margin-top:8px;padding-top:18px"><b>AI TICKET REPLY SUGGESTIONS</b></div>
+        <label>AI suggestions<select name="openai_support_enabled"><option value="0" <?=setting('openai_support_enabled','0')==='0'?'selected':''?>>Disabled</option><option value="1" <?=setting('openai_support_enabled','0')==='1'?'selected':''?>>Enabled</option></select></label>
+        <label>OpenAI model<input name="openai_support_model" value="<?=e(setting('openai_support_model','gpt-5.6-luna'))?>"></label>
+        <label>OpenAI API key<input type="password" name="openai_api_key" placeholder="<?=$openaiKeyConfigured?'Configured — leave empty to keep':'sk-...'?>" autocomplete="new-password"></label>
+        <label class="config-clear-option"><input type="checkbox" name="clear_secret[]" value="openai_api_key"> Clear OpenAI API key</label>
+        <p class="muted fullfield" style="margin:0">Ticket content is sent to OpenAI only after an administrator requests a suggestion. The generated text fills the editor and is never sent automatically.</p>
         <label>Ticket notification email<input type="email" name="ticket_notification_email" value="<?=e(setting('ticket_notification_email',setting('support_email','info@foxnetwork.be')))?>" placeholder="you@example.com"><small>New tickets and every customer reply are sent here.</small></label>
+        <div class="fullfield" style="border-top:1px solid #2b313a;margin-top:8px;padding-top:18px"><b>REPLY TO TICKETS BY EMAIL</b></div>
+        <label>Inbound email processing<select name="inbound_email_enabled"><option value="0" <?=setting('inbound_email_enabled','0')==='0'?'selected':''?>>Disabled</option><option value="1" <?=setting('inbound_email_enabled','0')==='1'?'selected':''?>>Enabled</option></select></label>
+        <label>Inbound webhook secret<input type="password" name="inbound_email_secret" minlength="24" placeholder="<?=$inboundSecretConfigured?'Configured — leave empty to keep':'At least 24 random characters'?>" autocomplete="new-password"></label>
+        <label class="config-clear-option"><input type="checkbox" name="clear_secret[]" value="inbound_email_secret"> Clear inbound email secret</label>
+        <div class="fullfield"><small class="muted">Webhook: <code><?=e(site_url('/api/inbound-email.php'))?></code><br>Forward JSON or form fields: <code>from</code>, <code>subject</code>, <code>text</code>, <code>message_id</code>. Send the secret in <code>X-Inbound-Email-Secret</code>. Subjects containing <code>#123</code> reply to that customer’s ticket; otherwise a new ticket is created.</small></div>
         <p class="muted" style="grid-column:1/-1;margin:0">Use the exact SMTP host shown in Zoho Mail's Server Configuration. EU paid organization accounts commonly use smtppro.zoho.eu. Port 587 with TLS is recommended. The EHLO domain must be a complete domain such as foxnetwork.be.</p>
         <div class="fullfield" style="border-top:1px solid #2b313a;margin-top:8px;padding-top:18px"><b>TELNYX WHATSAPP</b></div>
         <label>Telnyx integration<select name="telnyx_enabled"><option value="0" <?=setting('telnyx_enabled','0')==='0'?'selected':''?>>Disabled</option><option value="1" <?=setting('telnyx_enabled','0')==='1'?'selected':''?>>Enabled</option></select></label>
