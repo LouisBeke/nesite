@@ -39,7 +39,7 @@ function process_mollie_payment(string $paymentId): void {
         $q=db()->prepare('SELECT i.order_id,i.service_id,i.invoice_number,i.total,i.currency,u.id,u.name,u.email,u.email_notifications FROM invoices i JOIN users u ON u.id=i.user_id WHERE i.id=?');$q->execute([$iid]);$iv=$q->fetch();$oid=(int)($iv['order_id']??0);$sid=(int)($iv['service_id']??0);
         send_template('payment_received',$iv,['invoice_number'=>$iv['invoice_number'],'total'=>number_format((float)$iv['total'],2),'currency'=>$iv['currency']]);
         apply_pending_service_change_for_invoice($iid);
-        if($oid){if(oxxa_order_is_domain_only($oid)){provisioning_dispatch_order($oid,['source'=>'mollie','invoice_id'=>$iid,'payment_id'=>$paymentId]);}else{$sid=ensure_service_for_order($oid);$sv=service_row($sid);if(empty($sv['ptero_server_id']) && !in_array($sv['status'],['provisioning','active','terminated'],true)){provisioning_dispatch_order($oid,['source'=>'mollie','invoice_id'=>$iid,'payment_id'=>$paymentId]);}elseif($sv['status']==='suspended'){unsuspend_service($sid,0);send_template('service_unsuspended',$iv,['service_name'=>$sv['name']]);}}}
+        if($oid&&!oxxa_order_is_domain_only($oid)){$sid=ensure_service_for_order($oid);$sv=service_row($sid);if($sv['status']==='suspended'){unsuspend_service($sid,0);send_template('service_unsuspended',$iv,['service_name'=>$sv['name']]);}}
                 elseif($sid){
                         $sv=service_row($sid);
                         db()->prepare("UPDATE services SET is_trial=0,next_due_at=

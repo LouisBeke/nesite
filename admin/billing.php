@@ -126,18 +126,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Invoice not found.');
             }
             mark_invoice_paid($iid, 'manual', 'ADMIN');
-
-            $q = db()->prepare('SELECT order_id FROM invoices WHERE id=?');
-            $q->execute([$iid]);
-            $oid = (int)$q->fetchColumn();
-            if ($oid) {
-                $sid = oxxa_order_is_domain_only($oid) ? 0 : ensure_service_for_order($oid);
-                if (($_POST['provision'] ?? '') === '1') {
-                    provisioning_dispatch_order($oid, ['source' => 'admin_billing', 'invoice_id' => $iid, 'service_id' => $sid]);
-                }
-            }
-
-            $msg = 'Invoice marked paid'.((($_POST['provision'] ?? '') === '1') ? ' and queued for provisioning.' : '.');
+            $msg = 'Invoice marked paid. Eligible new services are queued for provisioning automatically.';
         } else {
             throw new RuntimeException('Unknown billing action.');
         }
@@ -241,8 +230,7 @@ admin_head($u, 'Billing', 'billing');
                                 <input type="hidden" name="csrf" value="<?=e(csrf())?>">
                                 <input type="hidden" name="invoice_id" value="<?=e($r['id'])?>">
                                 <input type="hidden" name="action" value="mark_paid">
-                                <button class="btn primary">Mark paid</button>
-                                <button class="btn" name="provision" value="1">Paid + provision</button>
+                                <button class="btn primary">Mark paid + auto provision</button>
                             </form>
 
                             <form method="post" class="admin-form-grid" style="gap:8px;min-width:300px">
