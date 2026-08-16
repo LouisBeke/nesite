@@ -53,10 +53,24 @@ try {
     error_log('FoxNetwork client dashboard summary failed: '.$e->getMessage());
 }
 
-if (!empty($u['ptero_client_key'])) {
+try {
+    if(auto_setup_ptero_client_key_for_local_user($u, true)){
+        $refreshUser=db()->prepare('SELECT * FROM users WHERE id=? LIMIT 1');
+        $refreshUser->execute([(int)$u['id']]);
+        $u=$refreshUser->fetch()?:$u;
+    }
+} catch (Throwable $e) {
+    error_log('Pterodactyl automatic customer connection failed for user '.(int)$u['id'].': '.$e->getMessage());
+}
+$hasClientKey = ptero_client_access_available($u);
+
+if ($hasClientKey) {
     try {
         $r = ptero('/');
-        $servers = $r['data'] ?? [];
+        $servers = array_values(array_filter((array)($r['data'] ?? []), static function ($row) use ($serviceMap): bool {
+            $identifier=(string)($row['attributes']['identifier']??'');
+            return $identifier!==''&&isset($serviceMap[$identifier]);
+        }));
     } catch (Throwable $e) {
         $error = $e->getMessage();
     }
@@ -109,8 +123,7 @@ foreach($serviceRows as $svc){
 
 $nameParts = preg_split('/\s+/', trim((string)$u['name'])) ?: [];
 $firstName = (string)($nameParts[0] ?? $u['name']);
-$hasClientKey = !empty($u['ptero_client_key']);
-$hasPteroLink = $hasClientKey;
+$hasPteroLink = !empty($u['ptero_user_id']) && $hasClientKey;
 $initial = mb_strtoupper(mb_substr(trim((string)$u['name']), 0, 1));
 ?>
 <!doctype html>

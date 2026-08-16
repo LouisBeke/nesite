@@ -128,7 +128,8 @@ try {
 
         case 'file-content': {
             $path = (string)($_GET['path'] ?? '');
-            $token = dec($u['ptero_client_key'] ?? null);
+            $token = ptero_client_token_for_user($u);
+            if(!$token)throw new RuntimeException('Pterodactyl client access is not configured.');
             $url = rtrim((string)cfg('pterodactyl.url'), '/') . '/api/client/servers/' . $id . '/files/contents?file=' . rawurlencode($path);
             $ch = curl_init($url);
             curl_setopt_array($ch, [
@@ -147,7 +148,8 @@ try {
         case 'save-file': {
             $path = (string)($body['path'] ?? '');
             $content = (string)($body['content'] ?? '');
-            $token = dec($u['ptero_client_key'] ?? null);
+            $token = ptero_client_token_for_user($u);
+            if(!$token)throw new RuntimeException('Pterodactyl client access is not configured.');
             $url = rtrim((string)cfg('pterodactyl.url'), '/') . '/api/client/servers/' . $id . '/files/write?file=' . rawurlencode($path);
             $ch = curl_init($url);
             curl_setopt_array($ch, [

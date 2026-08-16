@@ -111,7 +111,7 @@ $setup = $_SESSION['2fa_setup_secret'] ?? '';
 $channelSetup=(string)($_SESSION['2fa_channel_setup']??'');
 $recoveryCodes=[];if(!empty($u['two_factor_recovery_codes'])){$recoveryCodes=json_decode((string)(dec($u['two_factor_recovery_codes'])??'[]'),true)?:[];}
 $recoveryCount=count($recoveryCodes);
-$holderFields=['name','phone','street','house_number','postal_code','city','state','country_code'];$holderComplete=count(array_filter($holderFields,fn($field)=>trim((string)($u[$field]??''))!==''));$holderPercent=(int)round(($holderComplete/count($holderFields))*100);$sessionCount=count($sessions);$hasPteroKey=trim((string)($u['ptero_client_key']??''))!=='';
+$holderFields=['name','phone','street','house_number','postal_code','city','state','country_code'];$holderComplete=count(array_filter($holderFields,fn($field)=>trim((string)($u[$field]??''))!==''));$holderPercent=(int)round(($holderComplete/count($holderFields))*100);$sessionCount=count($sessions);$hasPteroKey=ptero_client_access_available($u);
 $totpUri = $setup ? 'otpauth://totp/' . rawurlencode('FoxNetwork:' . $u['email']) . '?secret=' . rawurlencode($setup) . '&issuer=' . rawurlencode('FoxNetwork') . '&algorithm=SHA1&digits=6&period=30' : ''; ?>
 <!doctype html>
 <html>
@@ -221,5 +221,8 @@ $totpUri = $setup ? 'otpauth://totp/' . rawurlencode('FoxNetwork:' . $u['email']
   </script>
 <?php endif ?>
 </body>
+
+</html>
+y>
 
 </html>

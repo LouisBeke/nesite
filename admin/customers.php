@@ -102,6 +102,7 @@ admin_head($u, 'Customers', 'customers');
                     <th>Email</th>
                     <th>Orders</th>
                     <th>Pterodactyl</th>
+                    <th>Client key</th>
                     <th>Joined</th>
                     <th>Action</th>
                 </tr>
@@ -124,6 +125,14 @@ admin_head($u, 'Customers', 'customers');
                         <?php else: ?>
                             Not linked
                         <?php endif ?>
+                    </td>
+                    <td title="Personal customer Client API key; open the profile to validate it">
+                        <?php if (!empty($r['ptero_client_key'])): ?>
+                            <span class="admin-badge status-active">SAVED</span>
+                        <?php else: ?>
+                            <span class="admin-badge status-skipped">NONE</span>
+                        <?php endif ?>
+                        <small>Personal key</small>
                     </td>
                     <td><?= e($r['created_at']) ?></td>
                     <td>

@@ -84,8 +84,8 @@ if ($localServiceId > 0) {
     if ($id === '') out(['ok'=>false,'error'=>'This service is not linked to a panel server yet.']);
 }
 
-$token = dec($u['ptero_client_key'] ?? null);
-if (!$token) out(['ok'=>false,'error'=>'Pterodactyl Client API key is not configured.']);
+$token = ptero_client_token_for_user($u);
+if (!$token) out(['ok'=>false,'error'=>'Pterodactyl client access is not configured.']);
 
 $url = rtrim((string)cfg('pterodactyl.url'), '/') . '/api/client/servers/' . rawurlencode($id) . '/power';
 $payload = json_encode(['signal'=>$signal], JSON_UNESCAPED_SLASHES);
@@ -158,3 +158,5 @@ if ($localServiceId > 0 && ptero_deleted_server_error((string)$detail)) {
     out(['ok'=>false,'error'=>$cleared?deleted_ptero_service_message():inaccessible_ptero_service_message(),'http'=>$code]);
 }
 out(['ok'=>false,'error'=>'Pterodactyl HTTP ' . $code . ': ' . $detail,'http'=>$code]);
+__halt_compiler();
+e]);

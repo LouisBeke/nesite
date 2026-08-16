@@ -4,14 +4,15 @@ require __DIR__.'/app/bootstrap.php';
 $u=require_user();
 $id=preg_replace('/[^a-zA-Z0-9_-]/','',(string)($_GET['id']??$_POST['id']??''));
 if($id===''){header('Location:/services.php');exit;}
-$q=db()->prepare("SELECT id,name,status FROM services WHERE user_id=? AND ptero_identifier=? AND status<>'terminated' LIMIT 1");
+$q=db()->prepare("SELECT * FROM services WHERE user_id=? AND ptero_identifier=? AND status<>'terminated' LIMIT 1");
 $q->execute([(int)$u['id'],$id]);$service=$q->fetch();if(!$service){http_response_code(404);die('Service not found.');}
+if(!service_is_minecraft($service)){http_response_code(403);die('Mods & plugins are available only for Minecraft servers.');}
 $msg='';$err='';
 try{if(auto_setup_ptero_client_key_for_local_user($u,true))$u=user();}catch(Throwable $e){$err='Automatic panel access setup failed: '.$e->getMessage();}
 if($_SERVER['REQUEST_METHOD']==='POST'){
   verify_csrf();
   try{
-    if(empty($u['ptero_client_key']))throw new RuntimeException('Pterodactyl client access is not configured yet.');
+    if(!ptero_client_access_available($u))throw new RuntimeException('Pterodactyl client access is not configured yet.');
     $url=trim((string)($_POST['url']??''));$type=(string)($_POST['type']??'plugin');
     if(!filter_var($url,FILTER_VALIDATE_URL)||strtolower((string)parse_url($url,PHP_URL_SCHEME))!=='https')throw new RuntimeException('Enter a valid HTTPS download URL.');
     $host=strtolower((string)parse_url($url,PHP_URL_HOST));if($host===''||$host==='localhost'||str_ends_with($host,'.local')||filter_var($host,FILTER_VALIDATE_IP,FILTER_FLAG_NO_PRIV_RANGE|FILTER_FLAG_NO_RES_RANGE)===false&&filter_var($host,FILTER_VALIDATE_IP))throw new RuntimeException('Private or local download addresses are not allowed.');

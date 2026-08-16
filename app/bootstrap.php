@@ -207,7 +207,22 @@ function ptero_cache_dir(): string { $dir=rtrim(sys_get_temp_dir(),'\\/').DIRECT
 function ptero_cache_key(string $scope,string $token,string $path,string $method,?array $body): string { return sha1($scope.'|'.$token.'|'.$method.'|'.$path.'|'.($body===null?'':json_encode($body,JSON_UNESCAPED_SLASHES))); }
 function ptero_cache_get(string $key,int $ttl) { $file=ptero_cache_dir().DIRECTORY_SEPARATOR.$key.'.json'; if(!is_file($file)) return null; $raw=@file_get_contents($file); if($raw===false||$raw==='') return null; $data=json_decode($raw,true); if(!is_array($data)||($data['expires_at']??0)<time()) return null; return $data['value'] ?? null; }
 function ptero_cache_set(string $key,$value,int $ttl): void { $file=ptero_cache_dir().DIRECTORY_SEPARATOR.$key.'.json'; @file_put_contents($file,json_encode(['expires_at'=>time()+$ttl,'value'=>$value],JSON_UNESCAPED_SLASHES),LOCK_EX); }
-function ptero(string $path,string $method='GET',?array $body=null){$u=user();$token=dec($u['ptero_client_key']??null);if(!$token)throw new RuntimeException('Pterodactyl API key not configured.');$method=strtoupper($method);$cacheTtl=$method==='GET'?3:0;$cacheKey=$cacheTtl>0?ptero_cache_key('client',$token,$path,$method,$body):null;if($cacheKey){$cached=ptero_cache_get($cacheKey,$cacheTtl);if($cached!==null)return $cached;}$ch=curl_init(rtrim(cfg('pterodactyl.url'),'/').'/api/client'.$path);$headers=['Authorization: Bearer '.$token,'Accept: Application/vnd.pterodactyl.v1+json','Content-Type: application/json'];curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_HTTPHEADER=>$headers,CURLOPT_TIMEOUT=>12,CURLOPT_CUSTOMREQUEST=>$method]);if($body!==null)curl_setopt($ch,CURLOPT_POSTFIELDS,json_encode($body));$raw=curl_exec($ch);$code=curl_getinfo($ch,CURLINFO_HTTP_CODE);if($raw===false)throw new RuntimeException(curl_error($ch));curl_close($ch);$json=json_decode($raw,true);if($code<200||$code>=300)throw new RuntimeException($json['errors'][0]['detail']??('Pterodactyl HTTP '.$code));if($cacheKey)ptero_cache_set($cacheKey,$json,$cacheTtl);return $json;}
+function ptero(string $path,string $method='GET',?array $body=null){
+    $u=user();
+    $token=ptero_client_token_for_user(is_array($u)?$u:[]);
+    if(!$token)throw new RuntimeException('Pterodactyl client access is not configured. Add one administrator Client API key in Admin > Settings > Connections.');
+    $method=strtoupper($method);$cacheTtl=$method==='GET'?3:0;$cacheKey=$cacheTtl>0?ptero_cache_key('client',$token,$path,$method,$body):null;
+    if($cacheKey){$cached=ptero_cache_get($cacheKey,$cacheTtl);if($cached!==null)return $cached;}
+    $ch=curl_init(rtrim((string)cfg('pterodactyl.url'),'/').'/api/client'.$path);
+    $headers=['Authorization: Bearer '.$token,'Accept: Application/vnd.pterodactyl.v1+json','Content-Type: application/json'];
+    curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_HTTPHEADER=>$headers,CURLOPT_TIMEOUT=>12,CURLOPT_CUSTOMREQUEST=>$method]);
+    if($body!==null)curl_setopt($ch,CURLOPT_POSTFIELDS,json_encode($body));
+    $raw=curl_exec($ch);$code=(int)curl_getinfo($ch,CURLINFO_HTTP_CODE);
+    if($raw===false){$error=curl_error($ch);curl_close($ch);throw new RuntimeException($error);}curl_close($ch);
+    $json=$raw!==''?(json_decode($raw,true)?:[]):[];
+    if($code<200||$code>=300)throw new RuntimeException($json['errors'][0]['detail']??('Pterodactyl HTTP '.$code));
+    if($cacheKey)ptero_cache_set($cacheKey,$json,$cacheTtl);return $json;
+}
 function ptero_deleted_server_error(string $message): bool {
     $message = strtolower($message);
     $serverModel=str_contains($message, 'pterodactyl\\models\\server')
@@ -582,6 +597,98 @@ function verify_ptero_client_token(string $token): bool {
     return $raw !== false && $code >= 200 && $code < 300;
 }
 
+function ptero_client_account_for_token(string $token): ?array {
+    $token=trim($token);$base=rtrim((string)cfg('pterodactyl.url'),'/');
+    if($token===''||$base==='')return null;
+    $ch=curl_init($base.'/api/client/account');
+    if($ch===false)return null;
+    curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_HTTPHEADER=>['Authorization: Bearer '.$token,'Accept: Application/vnd.pterodactyl.v1+json'],CURLOPT_TIMEOUT=>15]);
+    $raw=curl_exec($ch);$code=(int)curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);
+    if(!is_string($raw)||$code<200||$code>=300)return null;
+    $json=json_decode($raw,true);$attributes=$json['attributes']??$json['data']['attributes']??null;
+    return is_array($attributes)?$attributes:null;
+}
+
+function ptero_admin_client_token(bool $discover=true): string {
+    static $resolved=[];
+    $cacheKey=$discover?'discover':'configured';
+    if(array_key_exists($cacheKey,$resolved))return $resolved[$cacheKey];
+
+    $stored=(string)setting('pterodactyl_admin_client_key','');
+    if(str_starts_with($stored,'enc:'))$stored=(string)(dec(substr($stored,4))??'');
+    if($stored==='__EMPTY__')$stored='';
+    $stored=trim($stored);
+    if($stored!=='' || !$discover)return $resolved[$cacheKey]=$stored;
+
+    // Reuse a verified Client API key already stored on a local administrator.
+    // This safely upgrades older installations without exposing or duplicating
+    // the token into every customer row.
+    try{
+        $q=db()->query("SELECT ptero_client_key FROM users WHERE role='admin' AND ptero_client_key IS NOT NULL AND ptero_client_key<>'' ORDER BY id");
+        foreach($q->fetchAll() as $row){
+            $candidate=trim((string)(dec((string)($row['ptero_client_key']??''))??''));
+            if($candidate==='')continue;
+            $account=ptero_client_account_for_token($candidate);
+            if(!$account||empty($account['admin'])&&empty($account['root_admin']))continue;
+            save_setting('pterodactyl_admin_client_key','enc:'.enc($candidate));
+            return $resolved[$cacheKey]=$candidate;
+        }
+    }catch(Throwable $e){
+        error_log('Pterodactyl admin Client API key discovery failed: '.$e->getMessage());
+    }
+    return $resolved[$cacheKey]='';
+}
+
+function ptero_client_token_for_user(array $user,bool $discoverAdmin=true): ?string {
+    $personal=trim((string)(dec((string)($user['ptero_client_key']??''))??''));
+    if($personal!=='')return $personal;
+    $shared=ptero_admin_client_token($discoverAdmin);
+    return $shared!==''?$shared:null;
+}
+
+function ptero_client_access_available(array $user): bool {
+    return ptero_client_token_for_user($user)!==null;
+}
+
+function ptero_personal_client_key_status(array $user,bool $verify=false): array {
+    $stored=trim((string)($user['ptero_client_key']??''));
+    if($stored==='')return ['configured'=>false,'decryptable'=>false,'valid'=>null];
+    $token=trim((string)(dec($stored)??''));
+    if($token==='')return ['configured'=>true,'decryptable'=>false,'valid'=>false];
+    return ['configured'=>true,'decryptable'=>true,'valid'=>$verify?verify_ptero_client_token($token):null];
+}
+
+function service_is_minecraft(array $service): bool {
+    if(linode_service_provider($service)==='linode')return false;
+    $config=json_decode((string)($service['config_json']??''),true)?:[];
+    $labels=[
+        (string)($service['category_name']??''),(string)($service['product_name']??''),(string)($service['product_slug']??''),
+        (string)($config['category_name']??''),(string)($config['product_name']??''),(string)($config['game']??''),
+    ];
+    foreach($labels as $label)if(str_contains(strtolower($label),'minecraft'))return true;
+
+    $productId=(int)($service['product_id']??0);
+    if($productId>0){
+        try{
+            $q=db()->prepare('SELECT p.name,p.slug,c.name category_name FROM store_products p LEFT JOIN store_categories c ON c.id=p.category_id WHERE p.id=? LIMIT 1');
+            $q->execute([$productId]);$product=$q->fetch()?:[];
+            foreach([(string)($product['name']??''),(string)($product['slug']??''),(string)($product['category_name']??'')] as $label){
+                if(str_contains(strtolower($label),'minecraft'))return true;
+            }
+        }catch(Throwable $e){}
+    }
+
+    $eggId=(int)($config['egg_id']??$service['ptero_egg_id']??0);
+    if($eggId>0){
+        try{
+            $q=db()->prepare("SELECT COUNT(*) FROM product_eggs pe JOIN store_products p ON p.id=pe.product_id LEFT JOIN store_categories c ON c.id=p.category_id WHERE pe.egg_id=? AND (LOWER(COALESCE(c.name,'')) LIKE '%minecraft%' OR LOWER(p.name) LIKE '%minecraft%' OR LOWER(p.slug) LIKE '%minecraft%')");
+            $q->execute([$eggId]);
+            if((int)$q->fetchColumn()>0)return true;
+        }catch(Throwable $e){}
+    }
+    return false;
+}
+
 function create_ptero_client_key_with_application_api(int $pteroUserId): ?string {
     if ($pteroUserId <= 0) return null;
 
@@ -601,17 +708,53 @@ function create_ptero_client_key_with_application_api(int $pteroUserId): ?string
         }
     }
 
-    // Stock Pterodactyl intentionally cannot mint a client key through the
-    // Application API. A client key belonging to a panel administrator can
-    // access the Client API for every server, so use the explicitly configured
-    // server-side admin client key as the supported fallback.
-    $stored = (string)setting('pterodactyl_admin_client_key', '');
-    if (str_starts_with($stored, 'enc:')) $stored = (string)(dec(substr($stored, 4)) ?? '');
-    if ($stored === '__EMPTY__') $stored = '';
-    $stored = trim($stored);
-    if ($stored !== '' && verify_ptero_client_token($stored)) return $stored;
-
     return null;
+}
+
+function provision_personal_ptero_client_key_for_local_user(array $user, bool $replaceInvalid = false): bool {
+    $uid = (int)($user['id'] ?? 0);
+    if ($uid <= 0) return false;
+
+    $pteroUserId = (int)($user['ptero_user_id'] ?? 0);
+    $localEmail = strtolower(trim((string)($user['email'] ?? '')));
+    $stored = trim((string)($user['ptero_client_key'] ?? ''));
+
+    if ($stored !== '') {
+        $existing = trim((string)(dec($stored) ?? ''));
+        $account = $existing !== '' ? ptero_client_account_for_token($existing) : null;
+        $accountId = (int)($account['id'] ?? 0);
+        $accountEmail = strtolower(trim((string)($account['email'] ?? '')));
+        $belongsToCustomer = is_array($account)
+            && ($pteroUserId <= 0 || $accountId <= 0 || $accountId === $pteroUserId)
+            && ($localEmail === '' || $accountEmail === '' || hash_equals($localEmail, $accountEmail));
+
+        if ($belongsToCustomer) return true;
+        if (!$replaceInvalid) return false;
+        db()->prepare('UPDATE users SET ptero_client_key=NULL WHERE id=?')->execute([$uid]);
+        $user['ptero_client_key'] = null;
+    }
+
+    if ($pteroUserId <= 0) {
+        if ($localEmail === '') return false;
+        $pteroUserId = (int)(ensure_ptero_user_for_local_user($localEmail, (string)($user['name'] ?? ''), true) ?? 0);
+        if ($pteroUserId > 0) {
+            db()->prepare('UPDATE users SET ptero_user_id=? WHERE id=?')->execute([$pteroUserId, $uid]);
+        }
+    }
+    if ($pteroUserId <= 0) return false;
+
+    $token = create_ptero_client_key_with_application_api($pteroUserId);
+    if (!$token) return false;
+
+    $account = ptero_client_account_for_token($token);
+    if (!is_array($account)) return false;
+    $accountId = (int)($account['id'] ?? 0);
+    $accountEmail = strtolower(trim((string)($account['email'] ?? '')));
+    if ($accountId > 0 && $accountId !== $pteroUserId) return false;
+    if ($localEmail !== '' && $accountEmail !== '' && !hash_equals($localEmail, $accountEmail)) return false;
+
+    db()->prepare('UPDATE users SET ptero_client_key=? WHERE id=?')->execute([enc($token), $uid]);
+    return true;
 }
 
 function auto_setup_ptero_client_key_for_local_user(array $user, bool $replaceInvalid = false): bool {
@@ -627,16 +770,31 @@ function auto_setup_ptero_client_key_for_local_user(array $user, bool $replaceIn
 
     $pteroUserId = (int)($user['ptero_user_id'] ?? 0);
     if ($pteroUserId <= 0) {
-        $pteroUserId = (int)(link_existing_ptero_user_for_local_user($user) ?? 0);
+        $email=trim((string)($user['email']??''));
+        if($email!==''){
+            $pteroUserId=(int)(ensure_ptero_user_for_local_user($email,(string)($user['name']??''),true)??0);
+            if($pteroUserId>0){db()->prepare('UPDATE users SET ptero_user_id=? WHERE id=?')->execute([$pteroUserId,$uid]);$user['ptero_user_id']=$pteroUserId;}
+        }
     }
     if ($pteroUserId <= 0) return false;
 
-    $token = create_ptero_client_key_with_application_api($pteroUserId);
-    if (!$token) return false;
-    if (!verify_ptero_client_token($token)) return false;
+    // One administrator Client API key can securely perform Client API calls
+    // for servers after the portal has verified local service ownership.
+    if(ptero_admin_client_token(true)!=='')return true;
 
-    db()->prepare('UPDATE users SET ptero_client_key=? WHERE id=?')->execute([enc($token), $uid]);
-    return true;
+    return provision_personal_ptero_client_key_for_local_user($user, $replaceInvalid);
+}
+
+function ptero_auto_connect_customers(): array {
+    $q=db()->query("SELECT * FROM users WHERE role<>'admin' AND account_status='active' ORDER BY id");
+    $connected=0;$failed=0;$errors=[];
+    foreach($q->fetchAll() as $customer){
+        try{
+            if(auto_setup_ptero_client_key_for_local_user($customer,true))$connected++;
+            else{$failed++;$errors[]='Customer #'.(int)$customer['id'].' has no Client API access.';}
+        }catch(Throwable $e){$failed++;$errors[]='Customer #'.(int)$customer['id'].': '.$e->getMessage();}
+    }
+    return ['connected'=>$connected,'failed'=>$failed,'errors'=>$errors];
 }
 
 function provision_ptero_client_key_for_new_user(int $uid): bool {

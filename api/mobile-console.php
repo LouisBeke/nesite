@@ -55,12 +55,10 @@ if ($identifier === '') {
     exit;
 }
 
-$clientToken = dec($u['ptero_client_key'] ?? null);
+$clientToken = ptero_client_token_for_user($u);
 if (!$clientToken) {
     auto_setup_ptero_client_key_for_local_user($u);
-    $uq = db()->prepare('SELECT ptero_client_key FROM users WHERE id=? LIMIT 1');
-    $uq->execute([(int)$u['id']]);
-    $clientToken = dec((string)($uq->fetchColumn() ?: ''));
+    $clientToken = ptero_client_token_for_user($u);
 }
 
 if (!$clientToken) {
@@ -146,6 +144,12 @@ try {
     echo json_encode([
         'ok' => false,
         'error' => $e->getMessage(),
+        'server' => $identifier,
+        'service_id' => (int)$service['id'],
+    ], JSON_UNESCAPED_SLASHES);
+}
+__halt_compiler();
+e->getMessage(),
         'server' => $identifier,
         'service_id' => (int)$service['id'],
     ], JSON_UNESCAPED_SLASHES);

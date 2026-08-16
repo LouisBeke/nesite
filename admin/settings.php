@@ -102,6 +102,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if(cloudflare_setting('api_token')!==''||cloudflare_setting('account_id')!==''){if(cloudflare_setting('api_token')===''||cloudflare_setting('account_id')==='')throw new RuntimeException('Cloudflare requires both an API token and account ID.');cloudflare_api('/user/tokens/verify');}
             if(trim(oxxa_setting('nginx_egg_ids'))==='')throw new RuntimeException('Set at least one Nginx Egg ID.');
             $msg='Full domain setup passed: OXXA credentials, live .nl pricing (€'.number_format((float)$sampleQuote['price'],2).'), balance, managed DNS group, Egg mapping and configured Cloudflare credentials are valid'.($available!==null?'; OXXA balance €'.number_format((float)$available,2):'.');
+        } elseif ($settingsAction === 'test_pterodactyl') {
+            app_ptero('/users?per_page=1');
+            $adminClientToken=ptero_admin_client_token(true);
+            if($adminClientToken==='')throw new RuntimeException('Add a Pterodactyl administrator Client API key (ptlc_...). Stock Application API keys cannot use the Client API.');
+            $account=ptero_client_account_for_token($adminClientToken);
+            if(!$account||empty($account['admin'])&&empty($account['root_admin']))throw new RuntimeException('The configured Pterodactyl Client API key must belong to a panel administrator.');
+            $connectionResult=ptero_auto_connect_customers();
+            $msg='Pterodactyl connected. '.$connectionResult['connected'].' customer account(s) linked with automatic portal access.';
+            if($connectionResult['failed']>0)$msg.=' '.$connectionResult['failed'].' account(s) need review.';
         } elseif ($settingsAction === 'test_linode') {
             $instances = linode_api('/linode/instances?page_size=25');
             $msg = 'Settings saved. Linode connected; '.count((array)($instances['data']??[])).' instance(s) returned on the first page.';
@@ -133,7 +142,7 @@ $oxxaPasswordConfigured=oxxa_setting('api_password')!=='';
 $cloudflareTokenConfigured=cloudflare_setting('api_token')!=='';
 $telnyxKeyConfigured=telnyx_secret('api_key')!=='';
 $integrationStatus=[
-    ['Pterodactyl',$pteroKeyConfigured,'Application API'],
+    ['Pterodactyl',$pteroKeyConfigured&&$pteroAdminClientConfigured,'Application + Client API'],
     ['OXXA',$oxxaUserConfigured&&$oxxaPasswordConfigured,'Domain registrar'],
     ['Cloudflare',$cloudflareTokenConfigured,'Managed DNS'],
     ['Zoho SSO',zoho_sso_enabled()&&$zohoSsoSecretConfigured,'Admin login'],
@@ -159,7 +168,7 @@ admin_head($u, 'Settings', 'settings');
         <label>Portal URL<input type="url" name="app_url" value="<?=e(setting('app_url',(string)cfg('app_url')))?>" placeholder="https://example.com" required></label>
         <label>Pterodactyl panel URL<input type="url" name="pterodactyl_url" value="<?=e(setting('pterodactyl_url',(string)cfg('pterodactyl.url')))?>" placeholder="https://panel.example.com" required></label>
         <label>Pterodactyl Application API key<input type="password" name="pterodactyl_application_key" value="" placeholder="<?=$pteroKeyConfigured?'Configured — leave empty to keep':'Enter application API key'?>" autocomplete="new-password"></label>
-        <label>Pterodactyl admin Client API key<input type="password" name="pterodactyl_admin_client_key" value="" placeholder="<?=$pteroAdminClientConfigured?'Configured — leave empty to keep':'ptlc_... for automatic customer access'?>" autocomplete="new-password"><small>Create this key in the account settings of a Pterodactyl panel administrator.</small></label>
+        <label>Pterodactyl admin Client API key<input type="password" name="pterodactyl_admin_client_key" value="" placeholder="<?=$pteroAdminClientConfigured?'Configured — leave empty to keep':'ptlc_... for automatic customer access'?>" autocomplete="new-password"><small>One administrator Client API key gives every linked customer secure portal access. The key never leaves the server.</small></label>
         <label>Mollie API key<input type="password" name="mollie_api_key" value="" placeholder="<?=$mollieKeyConfigured?'Configured — leave empty to keep':'Enter Mollie API key'?>" autocomplete="new-password"></label>
         <label>Mollie webhook URL<input type="url" name="mollie_webhook_url" value="<?=e(setting('mollie_webhook_url',(string)cfg('mollie.webhook_url')))?>" required></label>
         <label>Pterodactyl webhook secret<input type="password" name="pterodactyl_webhook_secret" value="" placeholder="<?=$webhookSecretConfigured?'Configured — leave empty to keep':'Optional shared webhook secret'?>" autocomplete="new-password"></label>
@@ -176,7 +185,7 @@ admin_head($u, 'Settings', 'settings');
             <label><input type="checkbox" name="clear_secret[]" value="linode_api_token"> Disable stored Linode API token</label>
             <label><input type="checkbox" name="clear_secret[]" value="soro_webhook_secret"> Clear Soro webhook secret</label>
         </div>
-        <div class="fullfield"><button class="btn" type="submit" name="settings_action" value="test_linode">Save &amp; test Linode</button></div>
+        <div class="fullfield buttons"><button class="btn primary" type="submit" name="settings_action" value="test_pterodactyl">Save, test &amp; auto-connect Pterodactyl</button><button class="btn" type="submit" name="settings_action" value="test_linode">Save &amp; test Linode</button></div>
         <p class="muted fullfield" style="margin:0">Secrets are encrypted in the database. Database host, database name and database credentials remain startup-only because the portal must connect to that database before this Settings page can load.</p>
     </div>
 </section>

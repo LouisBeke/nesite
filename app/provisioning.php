@@ -424,6 +424,19 @@ function provisioning_process_service_job(array $job, array &$runtime = []): voi
         db()->prepare("UPDATE orders SET status='active' WHERE id=?")->execute([(int)$serviceAfter['order_id']]);
     }
 
+    try{
+        $clientAccess=provision_ptero_client_key_for_new_user((int)$serviceAfter['user_id']);
+        provisioning_emit_event(
+            $clientAccess?'provisioning.client_access_ready':'provisioning.client_access_pending',
+            ['service_id'=>$serviceId,'user_id'=>(int)$serviceAfter['user_id']],
+            (int)$job['id'],
+            $clientAccess?'info':'warning',
+            $clientAccess?'Customer portal access connected.':'Customer portal access still needs an administrator Client API key.'
+        );
+    }catch(Throwable $e){
+        provisioning_emit_event('provisioning.client_access_failed',['service_id'=>$serviceId,'user_id'=>(int)$serviceAfter['user_id'],'error'=>$e->getMessage()],(int)$job['id'],'warning',$e->getMessage());
+    }
+
     $qu = db()->prepare('SELECT id,name,email,email_notifications FROM users WHERE id=?');
     $qu->execute([(int)$serviceAfter['user_id']]);
     $recipient = $qu->fetch();

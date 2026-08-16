@@ -15,6 +15,7 @@ function client_sidebar_icon(string $name): string
         'return' => '<path d="m9 6-6 6 6 6M4 12h10a6 6 0 0 1 6 6"/>',
         'settings' => '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/>',
         'logout' => '<path d="M10 5H5v14h5M14 8l4 4-4 4M18 12H9"/>',
+        'more' => '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
     ];
 
     return '<span class="portal-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24">'.($paths[$name] ?? $paths['overview']).'</svg></span>';
@@ -58,6 +59,8 @@ function render_client_sidebar(array $user, string $active = 'overview', ?int $o
         'billing' => ['/billing.php', 'Billing'],
         'support' => ['/support.php', 'Support'],
     ];
+    $mobilePrimary = ['overview', 'services', 'store', 'billing', 'support'];
+    $isImpersonating = !empty($_SESSION['admin_return_uid']);
     ?>
     <aside class="<?=e($asideClass)?>">
         <a class="<?=e($brandClass)?>" href="/client" aria-label="<?=e($appName)?> dashboard">
@@ -72,16 +75,19 @@ function render_client_sidebar(array $user, string $active = 'overview', ?int $o
 
         <nav class="<?=e($navClass)?>" aria-label="Customer navigation">
             <?php foreach ($items as $section => [$href, $label]): ?>
-                <a class="<?=$active === $section ? 'active' : ''?>" href="<?=e($href)?>"<?=$active === $section ? ' aria-current="page"' : ''?>>
+                <a class="<?=$active === $section ? 'active ' : ''?><?=in_array($section, $mobilePrimary, true) ? 'portal-nav-primary' : 'portal-nav-secondary'?>" href="<?=e($href)?>"<?=$active === $section ? ' aria-current="page"' : ''?>>
                     <?=client_sidebar_icon($section)?>
                     <span><?=e($label)?></span>
                     <?php if ($section === 'support' && $openTickets > 0): ?><em><?=e($openTickets)?></em><?php endif ?>
                 </a>
             <?php endforeach ?>
+            <button class="client-mobile-more<?=in_array($active, ['domains', 'orders', 'settings'], true) ? ' active' : ''?>" type="button" aria-controls="client-mobile-menu" aria-expanded="false">
+                <?=client_sidebar_icon('more')?><span>More</span>
+            </button>
         </nav>
 
         <div class="<?=e($footerClass)?>">
-            <?php if (!empty($_SESSION['admin_return_uid'])): ?>
+            <?php if ($isImpersonating): ?>
                 <a href="/return-admin.php"><?=client_sidebar_icon('return')?><span>Return to admin</span></a>
             <?php endif ?>
             <?php if (($user['role'] ?? '') === 'admin'): ?>
@@ -91,6 +97,46 @@ function render_client_sidebar(array $user, string $active = 'overview', ?int $o
             <a href="/logout.php"><?=client_sidebar_icon('logout')?><span>Sign out</span></a>
         </div>
     </aside>
+    <div class="client-mobile-menu-backdrop" data-client-menu-close hidden></div>
+    <section class="client-mobile-menu" id="client-mobile-menu" aria-label="More customer navigation" aria-hidden="true">
+        <div class="client-mobile-menu-handle" aria-hidden="true"></div>
+        <div class="client-mobile-menu-head"><div><small>Customer portal</small><b>More</b></div><button type="button" data-client-menu-close aria-label="Close menu">&times;</button></div>
+        <nav>
+            <a class="<?=$active === 'domains' ? 'active' : ''?>" href="/domains.php"><?=client_sidebar_icon('domains')?><span><b>Domains</b><small>Names and DNS</small></span></a>
+            <a class="<?=$active === 'orders' ? 'active' : ''?>" href="/orders.php"><?=client_sidebar_icon('orders')?><span><b>Orders</b><small>Order history</small></span></a>
+            <a class="<?=$active === 'settings' ? 'active' : ''?>" href="/settings-profile.php"><?=client_sidebar_icon('settings')?><span><b>Account settings</b><small>Profile and security</small></span></a>
+            <?php if (($user['role'] ?? '') === 'admin'): ?><a href="/admin/"><?=client_sidebar_icon('admin')?><span><b>Admin center</b><small>Manage the portal</small></span></a><?php endif ?>
+            <?php if ($isImpersonating): ?><a class="client-mobile-return" href="/return-admin.php"><?=client_sidebar_icon('return')?><span><b>Return to admin</b><small>Back to this customer record</small></span></a><?php endif ?>
+            <a href="/logout.php"><?=client_sidebar_icon('logout')?><span><b>Sign out</b><small>End this session</small></span></a>
+        </nav>
+    </section>
+    <?php if ($isImpersonating): ?>
+        <aside class="client-impersonation-bar" aria-label="Admin customer preview">
+            <span class="client-impersonation-icon"><?=client_sidebar_icon('admin')?></span>
+            <span class="client-impersonation-copy"><small>Admin preview</small><b>Viewing <?=e($user['name'] ?? 'customer')?></b></span>
+            <a href="/return-admin.php"><?=client_sidebar_icon('return')?><span>Return to admin</span></a>
+        </aside>
+    <?php endif ?>
+    <script>
+    (() => {
+        const menu = document.getElementById('client-mobile-menu');
+        const trigger = document.querySelector('.client-mobile-more');
+        const backdrop = document.querySelector('.client-mobile-menu-backdrop');
+        if (!menu || !trigger || !backdrop || menu.dataset.ready === '1') return;
+        menu.dataset.ready = '1';
+        const setOpen = open => {
+            document.documentElement.classList.toggle('client-mobile-menu-open', open);
+            trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+            menu.setAttribute('aria-hidden', open ? 'false' : 'true');
+            backdrop.hidden = !open;
+            if (open) menu.querySelector('a,button')?.focus(); else trigger.focus();
+        };
+        trigger.addEventListener('click', () => setOpen(true));
+        document.querySelectorAll('[data-client-menu-close]').forEach(el => el.addEventListener('click', () => setOpen(false)));
+        document.addEventListener('keydown', event => { if (event.key === 'Escape' && trigger.getAttribute('aria-expanded') === 'true') setOpen(false); });
+        window.matchMedia('(min-width: 961px)').addEventListener?.('change', event => { if (event.matches) setOpen(false); });
+    })();
+    </script>
     <?php
 }
 
