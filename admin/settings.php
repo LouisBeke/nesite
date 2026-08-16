@@ -20,7 +20,7 @@ $keys = [
     'provisioning_remove_failed_queue_item','provisioning_enabled','linode_immediate_provisioning','provisioning_batch_size','provisioning_max_attempts',
     'provisioning_worker_timeout_seconds','provisioning_retry_base_seconds','provisioning_retry_max_seconds',
     'provisioning_online_check_tries','provisioning_online_check_sleep_ms','provisioning_strict_online_check',
-    'automation_batch_size','automation_worker_timeout_seconds','blog_author_name','email_tracking_enabled','telnyx_enabled','telnyx_verify_profile_id','telnyx_whatsapp_from','messaging_notifications_enabled','openai_support_enabled','openai_support_model','inbound_email_enabled',
+    'automation_batch_size','automation_worker_timeout_seconds','blog_author_name','email_tracking_enabled','ticket_closed_email_enabled','telnyx_enabled','telnyx_verify_profile_id','telnyx_whatsapp_from','messaging_notifications_enabled','openai_support_enabled','ai_support_provider','openai_support_model','ollama_api_url','ollama_support_model','inbound_email_enabled',
     'oxxa_enabled','oxxa_api_url','oxxa_identity_handle','oxxa_nsgroup','oxxa_dns_template','oxxa_nginx_egg_ids','oxxa_domain_price','oxxa_test_mode','oxxa_price_markup_percent','oxxa_price_fixed_fee','oxxa_price_minimum','oxxa_price_cache_seconds','cloudflare_account_id',
     'maintenance_mode','maintenance_message','portal_registration','security_session_hours','zoho_sso_enabled','zoho_sso_client_id','zoho_sso_discovery_url','zoho_sso_authorization_endpoint','zoho_sso_token_endpoint','zoho_sso_userinfo_endpoint'
 ];
@@ -44,6 +44,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($url==='' || !filter_var($url,FILTER_VALIDATE_URL) || !in_array(strtolower((string)parse_url($url,PHP_URL_SCHEME)),['http','https'],true)) throw new RuntimeException($label.' must be a complete HTTP or HTTPS URL.');
                 $_POST[$urlKey]=rtrim($url,'/');
             }
+        }
+        if(array_key_exists('ollama_api_url',$_POST)){
+            $ollamaUrl=rtrim(trim((string)$_POST['ollama_api_url']),'/');
+            if(!filter_var($ollamaUrl,FILTER_VALIDATE_URL)||!in_array(strtolower((string)parse_url($ollamaUrl,PHP_URL_SCHEME)),['http','https'],true))throw new RuntimeException('Ollama URL must be a complete HTTP or HTTPS URL.');
+            $_POST['ollama_api_url']=$ollamaUrl;
         }
         if(isset($_POST['currency'])){
             $_POST['currency']=strtoupper(trim((string)$_POST['currency']));
@@ -385,11 +390,15 @@ admin_head($u, 'Settings', 'settings');
         <label>From name<input name="smtp_from_name" value="<?=e(setting('smtp_from_name','FoxNetwork'))?>"></label>
         <div class="fullfield" style="border-top:1px solid #2b313a;margin-top:8px;padding-top:18px"><b>AI TICKET REPLY SUGGESTIONS</b></div>
         <label>AI suggestions<select name="openai_support_enabled"><option value="0" <?=setting('openai_support_enabled','0')==='0'?'selected':''?>>Disabled</option><option value="1" <?=setting('openai_support_enabled','0')==='1'?'selected':''?>>Enabled</option></select></label>
+        <label>AI provider<select name="ai_support_provider"><option value="ollama" <?=setting('ai_support_provider','openai')==='ollama'?'selected':''?>>Ollama (free, local)</option><option value="openai" <?=setting('ai_support_provider','openai')==='openai'?'selected':''?>>OpenAI API (paid)</option></select></label>
+        <label>Ollama URL<input type="url" name="ollama_api_url" value="<?=e(setting('ollama_api_url','http://127.0.0.1:11434'))?>" placeholder="http://127.0.0.1:11434"></label>
+        <label>Ollama model<input name="ollama_support_model" value="<?=e(setting('ollama_support_model','llama3.2:3b'))?>" placeholder="llama3.2:3b"></label>
         <label>OpenAI model<input name="openai_support_model" value="<?=e(setting('openai_support_model','gpt-5.6-luna'))?>"></label>
         <label>OpenAI API key<input type="password" name="openai_api_key" placeholder="<?=$openaiKeyConfigured?'Configured — leave empty to keep':'sk-...'?>" autocomplete="new-password"></label>
         <label class="config-clear-option"><input type="checkbox" name="clear_secret[]" value="openai_api_key"> Clear OpenAI API key</label>
-        <p class="muted fullfield" style="margin:0">Ticket content is sent to OpenAI only after an administrator requests a suggestion. The generated text fills the editor and is never sent automatically.</p>
+        <p class="muted fullfield" style="margin:0">Ollama runs locally without API fees. Ticket content is sent only to the selected provider after an administrator requests a suggestion. Generated text fills the editor and is never sent automatically.</p>
         <label>Ticket notification email<input type="email" name="ticket_notification_email" value="<?=e(setting('ticket_notification_email',setting('support_email','info@foxnetwork.be')))?>" placeholder="you@example.com"><small>New tickets and every customer reply are sent here.</small></label>
+        <label>Email customer when ticket closes<select name="ticket_closed_email_enabled"><option value="1" <?=setting('ticket_closed_email_enabled','1')==='1'?'selected':''?>>Enabled</option><option value="0" <?=setting('ticket_closed_email_enabled','1')==='0'?'selected':''?>>Disabled</option></select><small>Sends one closure email only when the status changes to Closed.</small></label>
         <div class="fullfield" style="border-top:1px solid #2b313a;margin-top:8px;padding-top:18px"><b>REPLY TO TICKETS BY EMAIL</b></div>
         <label>Inbound email processing<select name="inbound_email_enabled"><option value="0" <?=setting('inbound_email_enabled','0')==='0'?'selected':''?>>Disabled</option><option value="1" <?=setting('inbound_email_enabled','0')==='1'?'selected':''?>>Enabled</option></select></label>
         <label>Inbound webhook secret<input type="password" name="inbound_email_secret" minlength="24" placeholder="<?=$inboundSecretConfigured?'Configured — leave empty to keep':'At least 24 random characters'?>" autocomplete="new-password"></label>
