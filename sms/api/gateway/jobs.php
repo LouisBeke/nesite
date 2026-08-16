@@ -1,0 +1,1 @@
+<?php require __DIR__.'/../../lib/bootstrap.php';gateway();$a=rows('messages');$jobs=[];foreach($a as &$x){if($x['status']==='queued'&&count($jobs)<10){$x['status']='processing';$x['updated_at']=date('c');$jobs[]=['id'=>$x['id'],'to'=>$x['to'],'message'=>$x['body']];}}unset($x);save('messages',$a);jout(['jobs'=>$jobs]);

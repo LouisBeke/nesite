@@ -42,9 +42,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 				$_SESSION['2fa_pending_uid'] = $u['id'];
 				$_SESSION['2fa_pending_email'] = $email;
 				$method=(string)($u['two_factor_method']??'totp');
-				if($method==='whatsapp'){
+				if($method==='whatsapp'||$method==='sms'){
 					$last=(int)($_SESSION['2fa_message_sent_at']??0);
-					if(time()-$last>=60){try{messaging_verify_start((string)($u['phone']??''));$_SESSION['2fa_message_sent_at']=time();}catch(Throwable $e){error_log('2FA message delivery failed: '.$e->getMessage());}}
+					if(time()-$last>=60){try{if($method==='sms')sms_verify_start((string)($u['phone']??''));else messaging_verify_start((string)($u['phone']??''));$_SESSION['2fa_message_sent_at']=time();}catch(Throwable $e){error_log('2FA message delivery failed: '.$e->getMessage());}}
 				}
 				header('Location:/two-factor.php');
 				exit;

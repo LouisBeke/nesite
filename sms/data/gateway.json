@@ -1,0 +1,287 @@
+[
+    {
+        "device": "Android connection test",
+        "time": "2026-08-16T20:18:00+00:00",
+        "id": 1
+    },
+    {
+        "device": "Android connection test",
+        "time": "2026-08-16T20:18:01+00:00",
+        "id": 2
+    },
+    {
+        "device": "Android connection test",
+        "time": "2026-08-16T20:18:02+00:00",
+        "id": 3
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:18:15+00:00",
+        "id": 4
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:18:30+00:00",
+        "id": 5
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:18:45+00:00",
+        "id": 6
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:19:00+00:00",
+        "id": 7
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:19:15+00:00",
+        "id": 8
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:19:30+00:00",
+        "id": 9
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:19:45+00:00",
+        "id": 10
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:20:00+00:00",
+        "id": 11
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:20:15+00:00",
+        "id": 12
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:20:31+00:00",
+        "id": 13
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:20:46+00:00",
+        "id": 14
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:21:01+00:00",
+        "id": 15
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:21:16+00:00",
+        "id": 16
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:21:31+00:00",
+        "id": 17
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:21:46+00:00",
+        "id": 18
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:22:02+00:00",
+        "id": 19
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:22:17+00:00",
+        "id": 20
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:22:32+00:00",
+        "id": 21
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:22:47+00:00",
+        "id": 22
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:23:02+00:00",
+        "id": 23
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:23:17+00:00",
+        "id": 24
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:23:32+00:00",
+        "id": 25
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:24:01+00:00",
+        "id": 26
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:24:35+00:00",
+        "id": 27
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:25:43+00:00",
+        "id": 28
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:27:23+00:00",
+        "id": 29
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:28:47+00:00",
+        "id": 30
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:30:11+00:00",
+        "id": 31
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:31:57+00:00",
+        "id": 32
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:33:38+00:00",
+        "id": 33
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:34:44+00:00",
+        "id": 34
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:36:01+00:00",
+        "id": 35
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:37:37+00:00",
+        "id": 36
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:39:13+00:00",
+        "id": 37
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:43:25+00:00",
+        "id": 38
+    },
+    {
+        "device": "Android forced gateway",
+        "time": "2026-08-16T20:43:26+00:00",
+        "id": 39
+    },
+    {
+        "device": "Android forced gateway",
+        "time": "2026-08-16T20:43:31+00:00",
+        "id": 40
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:43:40+00:00",
+        "id": 41
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:43:55+00:00",
+        "id": 42
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:44:10+00:00",
+        "id": 43
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:44:25+00:00",
+        "id": 44
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:44:40+00:00",
+        "id": 45
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:44:55+00:00",
+        "id": 46
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:45:13+00:00",
+        "id": 47
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:45:38+00:00",
+        "id": 48
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:46:05+00:00",
+        "id": 49
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:46:26+00:00",
+        "id": 50
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:46:49+00:00",
+        "id": 51
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:47:15+00:00",
+        "id": 52
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:47:43+00:00",
+        "id": 53
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:48:11+00:00",
+        "id": 54
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:48:29+00:00",
+        "id": 55
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:48:48+00:00",
+        "id": 56
+    },
+    {
+        "device": "Topicon Paceblade SDT-121P",
+        "time": "2026-08-16T20:49:10+00:00",
+        "id": 57
+    }
+]

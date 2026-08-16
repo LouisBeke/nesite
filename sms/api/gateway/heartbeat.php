@@ -1,0 +1,1 @@
+<?php require __DIR__.'/../../lib/bootstrap.php';gateway();$i=json_decode(file_get_contents('php://input'),true)?:[];add('gateway',['device'=>$i['device']??'Android','time'=>date('c')]);jout(['ok'=>true]);

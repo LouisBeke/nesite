@@ -1,0 +1,1 @@
+<?php require __DIR__.'/lib/bootstrap.php';need();require __DIR__.'/lib/header.php';$g=rows('gateway');$last=$g?end($g):null;top('Gateway');?><div class="panel"><h3>Status</h3><p>Last heartbeat: <b><?=htmlspecialchars($last['time']??'Never')?></b></p><p>Device: <?=htmlspecialchars($last['device']??'Not connected')?></p></div><?php bottom();?>

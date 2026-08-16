@@ -48,10 +48,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       unset($_SESSION['2fa_channel_setup']);
       $ok = 'Secret generated. Add it to your authenticator app, then verify a code below.';
     } elseif ($a === '2fa_channel_begin') {
-      $method=(string)($_POST['method']??'');if($method!=='whatsapp')throw new RuntimeException('Choose WhatsApp.');
-      unset($_SESSION['2fa_setup_secret']);messaging_verify_start((string)($u['phone']??''));$_SESSION['2fa_channel_setup']=$method;$ok='A verification code was sent by WhatsApp.';
+      $method=(string)($_POST['method']??'');if(!in_array($method,['whatsapp','sms'],true))throw new RuntimeException('Choose WhatsApp or SMS.');
+      unset($_SESSION['2fa_setup_secret']);if($method==='sms')sms_verify_start((string)($u['phone']??''));else messaging_verify_start((string)($u['phone']??''));$_SESSION['2fa_channel_setup']=$method;$ok='A verification code was sent by '.($method==='sms'?'SMS':'WhatsApp').'.';
     } elseif ($a === '2fa_channel_enable') {
-      $method=(string)($_SESSION['2fa_channel_setup']??'');if($method!=='whatsapp'||!messaging_verify_check((string)($u['phone']??''),(string)($_POST['code']??'')))throw new RuntimeException('Invalid or expired verification code.');
+      $method=(string)($_SESSION['2fa_channel_setup']??'');$valid=$method==='sms'?sms_verify_check((string)($u['phone']??''),(string)($_POST['code']??'')):($method==='whatsapp'&&messaging_verify_check((string)($u['phone']??''),(string)($_POST['code']??'')));if(!$valid)throw new RuntimeException('Invalid or expired verification code.');
       for($i=0;$i<10;$i++)$newRecovery[]=strtoupper(bin2hex(random_bytes(4)));
       db()->prepare('UPDATE users SET two_factor_enabled=1,two_factor_method=?,two_factor_secret=NULL,two_factor_recovery_codes=? WHERE id=?')->execute([$method,enc(json_encode($newRecovery)),$u['id']]);unset($_SESSION['2fa_channel_setup']);$ok=ucfirst($method).' two-factor authentication enabled. Save your recovery codes now.';
     } elseif ($a === '2fa_enable') {
@@ -61,10 +61,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       db()->prepare('UPDATE users SET two_factor_secret=?,two_factor_enabled=1,two_factor_recovery_codes=? WHERE id=?')->execute([enc($secret), enc(json_encode($newRecovery)), $u['id']]);
       db()->prepare("UPDATE users SET two_factor_method='totp' WHERE id=?")->execute([$u['id']]);
       unset($_SESSION['2fa_setup_secret']);
-      unset($_SESSION['2fa_channel_setup']);
+      unset($_SESSION['2fa_channel_setup'],$_SESSION['sms_2fa']);
       $ok = 'Two-factor authentication enabled. Save your recovery codes now.';
     } elseif ($a === '2fa_cancel') {
-      unset($_SESSION['2fa_setup_secret']);
+      unset($_SESSION['2fa_setup_secret'],$_SESSION['sms_2fa']);
       unset($_SESSION['2fa_channel_setup']);
       $ok = 'Two-factor setup cancelled.';
     } elseif ($a === '2fa_regenerate') {
@@ -170,8 +170,8 @@ $totpUri = $setup ? 'otpauth://totp/' . rawurlencode('FoxNetwork:' . $u['email']
           <div class="secret-box"><span>Account</span><code>FoxNetwork:<?= e($u['email']) ?></code></div>
           <form method="post"><input type="hidden" name="csrf" value="<?= csrf() ?>"><input type="hidden" name="action" value="2fa_enable">
             <div class="field"><label>6-digit code</label><input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></div><button class="btn primary">Verify & enable</button>
-          </form><form method="post" style="margin-top:10px"><input type="hidden" name="csrf" value="<?= csrf() ?>"><button class="btn" name="action" value="2fa_cancel">Cancel setup</button></form><?php else: ?><?php if($channelSetup):?><div class="notice">A code was sent by WhatsApp.</div><form method="post"><input type="hidden" name="csrf" value="<?=csrf()?>"><input type="hidden" name="action" value="2fa_channel_enable"><div class="field"><label>Verification code</label><input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4,10}" required></div><button class="btn primary">Verify &amp; enable</button></form><?php else:?><p class="muted">Choose an authenticator app or WhatsApp. You will also receive ten one-time recovery codes.</p>
-          <div class="recovery-actions"><form method="post"><input type="hidden" name="csrf" value="<?= csrf() ?>"><button class="btn primary" name="action" value="2fa_begin">Authenticator app</button></form><?php if(telnyx_enabled()):?><form method="post"><input type="hidden" name="csrf" value="<?=csrf()?>"><input type="hidden" name="action" value="2fa_channel_begin"><button class="btn" name="method" value="whatsapp">WhatsApp</button></form><?php endif?></div><?php endif?><?php endif ?>
+          </form><form method="post" style="margin-top:10px"><input type="hidden" name="csrf" value="<?= csrf() ?>"><button class="btn" name="action" value="2fa_cancel">Cancel setup</button></form><?php else: ?><?php if($channelSetup):?><div class="notice">A code was sent by <?=e($channelSetup==='sms'?'SMS':'WhatsApp')?>.</div><form method="post"><input type="hidden" name="csrf" value="<?=csrf()?>"><input type="hidden" name="action" value="2fa_channel_enable"><div class="field"><label>Verification code</label><input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4,10}" required></div><button class="btn primary">Verify &amp; enable</button></form><?php else:?><p class="muted">Choose an authenticator app, SMS, or WhatsApp. You will also receive ten one-time recovery codes.</p>
+          <div class="recovery-actions"><form method="post"><input type="hidden" name="csrf" value="<?= csrf() ?>"><button class="btn primary" name="action" value="2fa_begin">Authenticator app</button></form><?php if(sms_gateway_enabled()):?><form method="post"><input type="hidden" name="csrf" value="<?=csrf()?>"><input type="hidden" name="action" value="2fa_channel_begin"><button class="btn" name="method" value="sms">SMS</button></form><?php endif?><?php if(telnyx_enabled()):?><form method="post"><input type="hidden" name="csrf" value="<?=csrf()?>"><input type="hidden" name="action" value="2fa_channel_begin"><button class="btn" name="method" value="whatsapp">WhatsApp</button></form><?php endif?></div><?php endif?><?php endif ?>
       </section></div></div>
     <div class="settings-page-section settings-page-sessions"><section class="security-card" id="sessions">
       <div class="security-card-head">

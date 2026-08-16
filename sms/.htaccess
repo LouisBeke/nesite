@@ -1,0 +1,7 @@
+Options -Indexes
+<Files ".env">
+    Require all denied
+</Files>
+<FilesMatch "\.(json|sqlite|db)$">
+    Require all denied
+</FilesMatch>

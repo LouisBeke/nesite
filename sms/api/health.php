@@ -1,0 +1,1 @@
+<?php require __DIR__.'/../lib/bootstrap.php';json_out(['ok'=>true,'php'=>PHP_VERSION,'curl'=>function_exists('curl_init'),'data_writable'=>is_writable($DATA)]);
