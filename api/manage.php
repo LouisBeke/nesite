@@ -391,7 +391,34 @@ try {
             $serverId = service_server_id_by_identifier_for_user($id, (int)$u['id']);
             if ($serverId <= 0) throw new RuntimeException('Could not resolve this service mapping.');
 
-            $payload = [];
+            $serviceId = service_id_by_identifier_for_user($id, (int)$u['id']);
+            $service = $serviceId > 0 ? service_row($serviceId) : [];
+            $current = ptero('/servers/' . $id . '/startup');
+            $current = $current['data']['attributes'] ?? ($current['attributes'] ?? []);
+            $applicationServer = app_ptero('/servers/' . $serverId);
+            $applicationServer = $applicationServer['attributes'] ?? ($applicationServer['data']['attributes'] ?? []);
+            $container = $applicationServer['container'] ?? [];
+            $environment = [];
+            foreach ((array)($current['relationships']['variables']['data'] ?? []) as $variable) {
+                $attributes = $variable['attributes'] ?? [];
+                $key = trim((string)($attributes['env_variable'] ?? ''));
+                if ($key !== '') $environment[$key] = (string)($attributes['server_value'] ?? $attributes['default_value'] ?? '');
+            }
+            if (!$environment) {
+                $environment = is_array($container['environment'] ?? null) ? $container['environment'] : [];
+            }
+            $eggId = (int)($applicationServer['egg'] ?? $current['egg'] ?? 0);
+            $currentStartup = trim((string)($current['startup_command'] ?? $current['startup'] ?? $container['startup_command'] ?? ''));
+            $currentImage = trim((string)($current['docker_image'] ?? $current['image'] ?? $container['image'] ?? ''));
+            if ($eggId <= 0 || $currentStartup === '' || $currentImage === '') throw new RuntimeException('The current Pterodactyl startup configuration is incomplete.');
+
+            $payload = [
+                'startup' => $currentStartup,
+                'environment' => $environment,
+                'egg' => $eggId,
+                'image' => $currentImage,
+                'skip_scripts' => false,
+            ];
             if ($allowStartup) {
                 $startup = trim((string)($body['startup'] ?? ''));
                 if ($startup !== '') $payload['startup'] = $startup;
@@ -400,13 +427,9 @@ try {
                 $image = trim((string)($body['image'] ?? ''));
                 if ($image !== '') $payload['image'] = $image;
             }
-            if (!$payload) throw new RuntimeException('Nothing to update.');
-
             app_ptero('/servers/' . $serverId . '/startup', 'PATCH', $payload);
-            $serviceId = service_id_by_identifier_for_user($id, (int)$u['id']);
             if ($serviceId > 0) {
-                $s = service_row($serviceId);
-                $cfg = json_decode((string)($s['config_json'] ?? ''), true) ?: [];
+                $cfg = json_decode((string)($service['config_json'] ?? ''), true) ?: [];
                 if (isset($payload['startup'])) $cfg['custom_startup'] = $payload['startup'];
                 if (isset($payload['image'])) $cfg['custom_docker_image'] = $payload['image'];
                 db()->prepare('UPDATE services SET config_json=? WHERE id=?')->execute([json_encode($cfg), $serviceId]);

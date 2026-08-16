@@ -56,6 +56,8 @@ try {
             ->execute([$ticketId, (int)$u['id'], $fullMessage]);
 
         zoho_crm_try_sync_ticket($ticketId);
+        ticket_notify_staff($ticketId,'new');
+        ticket_notify_customer($ticketId,'created');
 
         try {
             zoho_crm_sync_customer($u);

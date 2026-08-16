@@ -107,7 +107,7 @@ function email_log_create(?int $userId,string $to,string $subject,?string $templ
 }
 function email_send_logged(?int $userId,string $to,string $subject,string $html,?string $templateKey=null,bool $throw=false):bool{
     $log=email_log_create($userId,$to,$subject,$templateKey);$error=null;
-    try{db()->prepare('UPDATE email_log SET sent_at=NOW() WHERE id=?')->execute([$log['id']]);portal_mail_send($to,$subject,email_tracking_prepare($html,$log['token']));db()->prepare("UPDATE email_log SET status='sent',error_message=NULL WHERE id=?")->execute([$log['id']]);}
+    try{portal_mail_send($to,$subject,email_tracking_prepare($html,$log['token']));db()->prepare("UPDATE email_log SET status='sent',sent_at=NOW(),error_message=NULL WHERE id=?")->execute([$log['id']]);}
     catch(Throwable $e){$error=$e;db()->prepare("UPDATE email_log SET status='failed',error_message=? WHERE id=?")->execute([$e->getMessage(),$log['id']]);}
     if($error&&$throw)throw new RuntimeException($error->getMessage(),0,$error);
     return $error===null;
@@ -124,6 +124,12 @@ function send_template(string $key,array $recipient,array $vars=[]):bool{
     return $sent;
 }
 function send_custom_email(?int $userId,string $to,string $subject,string $html):bool{return email_send_logged($userId,$to,$subject,branded_email($html),null,true);}
+function ticket_notify_staff(int $ticketId,string $event='new'):void{
+    try{$q=db()->prepare('SELECT t.subject,t.priority,u.name,u.email,(SELECT message FROM support_messages WHERE ticket_id=t.id AND is_internal=0 ORDER BY id DESC LIMIT 1) latest_message FROM support_tickets t JOIN users u ON u.id=t.user_id WHERE t.id=?');$q->execute([$ticketId]);$t=$q->fetch();if(!$t)return;$to=trim((string)setting('ticket_notification_email',''));if($to==='')$to=trim((string)setting('support_email','info@foxnetwork.be'));if(!filter_var($to,FILTER_VALIDATE_EMAIL))throw new RuntimeException('Ticket notification email is not configured.');$url=site_url('/admin/support.php?id='.$ticketId);$title=$event==='new'?'New support ticket':'Customer replied to ticket';$message=nl2br(e(mb_substr((string)($t['latest_message']??''),0,2000)));$html='<h2>'.e($title).'</h2><p><b>#'.e($ticketId).' '.e($t['subject']).'</b></p><p>Customer: '.e($t['name']).' ('.e($t['email']).')<br>Priority: '.e(ucfirst((string)$t['priority'])).'</p><div style="margin:18px 0;padding:14px;border-left:3px solid #ff7417;background:#101216">'.$message.'</div><p><a href="'.e($url).'">Open ticket</a></p>';send_custom_email(null,$to,$title.' #'.$ticketId.': '.$t['subject'],$html);}catch(Throwable $e){error_log('Ticket staff email failed: '.$e->getMessage());}
+}
+function ticket_notify_customer(int $ticketId,string $event='reply'):void{
+    try{$q=db()->prepare('SELECT t.subject,u.id,u.name,u.email,u.email_notifications FROM support_tickets t JOIN users u ON u.id=t.user_id WHERE t.id=?');$q->execute([$ticketId]);$t=$q->fetch();if(!$t||empty($t['email_notifications']))return;$url=site_url('/support.php?id='.$ticketId);$created=$event==='created';$heading=$created?'Your support ticket was received':'We replied to your ticket';$copy=$created?'Our support team received your request.':'There is a new staff reply on your ticket.';$html='<h2>'.e($heading).'</h2><p>Hello '.e($t['name']).',</p><p>'.e($copy).' <b>#'.e($ticketId).' '.e($t['subject']).'</b></p><p><a href="'.e($url).'">Open ticket</a></p>';send_custom_email((int)$t['id'],(string)$t['email'],($created?'Ticket received #':'New reply on ticket #').$ticketId,$html);}catch(Throwable $e){error_log('Ticket customer email failed: '.$e->getMessage());}
+}
 function email_verification_send(array $user): bool {
     $id=(int)($user['id']??0);$email=strtolower(trim((string)($user['email']??'')));
     if($id<=0||!filter_var($email,FILTER_VALIDATE_EMAIL))throw new RuntimeException('A valid customer email address is required.');

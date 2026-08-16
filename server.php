@@ -8,6 +8,11 @@ if (!$id) {
 }
 
 $hasClientKey = !empty($u['ptero_client_key']);
+$keySetupError='';
+if(!$hasClientKey){
+  try{if(auto_setup_ptero_client_key_for_local_user($u,true)){$u=user();$hasClientKey=!empty($u['ptero_client_key']);}}
+  catch(Throwable $e){$keySetupError=$e->getMessage();}
+}
 $localService = null;
 $localStatus = 'unknown';
 try {
@@ -508,6 +513,8 @@ if ($hasClientKey) {
         <div class="muted"><?= e($srv['description'] ?? 'FoxNetwork game server') ?></div>
         <?php $localCfg=json_decode((string)($localService['config_json']??''),true)?:[];if(!empty($localCfg['domain']['name'])&&in_array((string)($localCfg['domain']['status']??''),['active','test'],true)):?><p><a class="btn" href="/domain-dns.php?service=<?=e($localService['id'])?>">Manage <?=e($localCfg['domain']['name'])?> DNS</a></p><?php endif?>
         <?php if (!empty($err)): ?><div class="error"><?= e($err) ?></div><?php endif ?>
+        <?php if ($keySetupError !== ''): ?><div class="error">Automatic panel access setup failed: <?=e($keySetupError)?></div><?php endif ?>
+        <?php if ($localService && $hasClientKey): ?><p><a class="btn primary" href="/addons.php?id=<?=e($id)?>"><i class="fas fa-puzzle-piece"></i> Install mods &amp; plugins</a></p><?php endif ?>
 
         <div class="server-tabs">
           <button class="tab active" data-tab="overview">Overview</button>

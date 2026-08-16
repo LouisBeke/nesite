@@ -10,6 +10,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
             if(!$internal)db()->prepare("UPDATE support_tickets SET status='awaiting_customer',assigned_admin_id=COALESCE(assigned_admin_id,?),updated_at=NOW() WHERE id=?")->execute([$u['id'],$tid]);
             else db()->prepare('UPDATE support_tickets SET assigned_admin_id=COALESCE(assigned_admin_id,?),updated_at=NOW() WHERE id=?')->execute([$u['id'],$tid]);
             if(!$internal)zoho_crm_try_sync_ticket($tid);
+            if(!$internal)ticket_notify_customer($tid);
             $msg=$internal?'Internal note added.':'Reply sent.';
         }elseif($act==='update'){
             $status=in_array($_POST['status']??'', ['open','awaiting_customer','awaiting_staff','answered','closed'],true)?$_POST['status']:'open';

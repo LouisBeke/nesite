@@ -9,7 +9,7 @@ unset($_SESSION['zoho_crm_flash_message'], $_SESSION['zoho_crm_flash_error']);
 
 $keys = [
     'app_name','app_url','pterodactyl_url','mollie_webhook_url','linode_api_url','linode_disk_encryption',
-    'company_name','support_email','billing_email','invoice_prefix','currency','vat_rate','invoice_due_days',
+    'company_name','support_email','ticket_notification_email','billing_email','invoice_prefix','currency','vat_rate','invoice_due_days',
     'renewal_days_before','grace_days','auto_suspend','auto_unsuspend','cron_token',
     'smtp_host','smtp_port','smtp_security','smtp_ehlo_domain','smtp_username','smtp_from_email','smtp_from_name','mail_provider',
     'zoho_crm_enabled','zoho_crm_client_id','zoho_crm_pipeline','zoho_crm_deal_stage_open','zoho_crm_deal_stage_won','zoho_crm_deal_stage_lost',
@@ -49,6 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_POST['currency']=strtoupper(trim((string)$_POST['currency']));
             if(!preg_match('/^[A-Z]{3}$/',(string)$_POST['currency']))throw new RuntimeException('Currency must be a three-letter ISO code.');
         }
+        foreach(['support_email'=>'Support email','ticket_notification_email'=>'Ticket notification email','billing_email'=>'Billing email','smtp_username'=>'Zoho mailbox','smtp_from_email'=>'From email'] as $emailKey=>$emailLabel)if(array_key_exists($emailKey,$_POST)&&trim((string)$_POST[$emailKey])!==''&&!filter_var(trim((string)$_POST[$emailKey]),FILTER_VALIDATE_EMAIL))throw new RuntimeException($emailLabel.' must be a valid email address.');
         if(isset($_POST['oxxa_domain_price'])&&(!is_numeric($_POST['oxxa_domain_price'])||(float)$_POST['oxxa_domain_price']<0))throw new RuntimeException('OXXA domain price must be zero or higher.');
         foreach(['oxxa_price_markup_percent','oxxa_price_fixed_fee','oxxa_price_minimum'] as $priceKey)if(isset($_POST[$priceKey])&&(!is_numeric($_POST[$priceKey])||(float)$_POST[$priceKey]<0))throw new RuntimeException('Automatic pricing values must be zero or higher.');
         if(isset($_POST['oxxa_price_cache_seconds'])&&(!ctype_digit((string)$_POST['oxxa_price_cache_seconds'])||(int)$_POST['oxxa_price_cache_seconds']<60))throw new RuntimeException('OXXA price cache must be at least 60 seconds.');
@@ -370,6 +371,7 @@ admin_head($u, 'Settings', 'settings');
         <label class="config-clear-option"><input type="checkbox" name="clear_secret[]" value="smtp_password"> Clear saved SMTP password</label>
         <label>From email<input type="email" name="smtp_from_email" value="<?=e(setting('smtp_from_email','info@foxnetwork.be'))?>"></label>
         <label>From name<input name="smtp_from_name" value="<?=e(setting('smtp_from_name','FoxNetwork'))?>"></label>
+        <label>Ticket notification email<input type="email" name="ticket_notification_email" value="<?=e(setting('ticket_notification_email',setting('support_email','info@foxnetwork.be')))?>" placeholder="you@example.com"><small>New tickets and every customer reply are sent here.</small></label>
         <p class="muted" style="grid-column:1/-1;margin:0">Use the exact SMTP host shown in Zoho Mail's Server Configuration. EU paid organization accounts commonly use smtppro.zoho.eu. Port 587 with TLS is recommended. The EHLO domain must be a complete domain such as foxnetwork.be.</p>
         <div class="fullfield" style="border-top:1px solid #2b313a;margin-top:8px;padding-top:18px"><b>TELNYX WHATSAPP</b></div>
         <label>Telnyx integration<select name="telnyx_enabled"><option value="0" <?=setting('telnyx_enabled','0')==='0'?'selected':''?>>Disabled</option><option value="1" <?=setting('telnyx_enabled','0')==='1'?'selected':''?>>Enabled</option></select></label>

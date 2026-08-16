@@ -35,6 +35,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             db()->prepare('INSERT INTO support_messages(ticket_id,user_id,message) VALUES(?,?,?)')->execute([$tid, $u['id'], $body]);
             ticket_upload((int)db()->lastInsertId());
             zoho_crm_try_sync_ticket($tid);
+            ticket_notify_staff($tid,'new');
+            ticket_notify_customer($tid,'created');
             header('Location: /support.php?id=' . $tid);
             exit;
         }
@@ -49,6 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ticket_upload((int)db()->lastInsertId());
             db()->prepare("UPDATE support_tickets SET status='awaiting_staff',updated_at=NOW() WHERE id=?")->execute([$tid]);
             zoho_crm_try_sync_ticket($tid);
+            ticket_notify_staff($tid,'reply');
             header('Location: /support.php?id=' . $tid);
             exit;
         }

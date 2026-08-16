@@ -13,6 +13,7 @@ if ($p['stock'] !== null && (int)$p['stock'] <= 0) {
    die('This product is currently out of stock.');
 }
 $isDeviceRepair = ((string)($p['slug'] ?? '') === 'device-repair');
+$isDiscordService = str_contains(strtolower((string)($p['slug']??'').' '.(string)($p['name']??'').' '.(string)($p['category_name']??'')),'discord');
 $isLinode = linode_product_provider($p) === 'linode';
 $linodeImages=[];$linodeImageError='';
 if($isLinode){
@@ -81,6 +82,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
    $selectedLinodeImage=trim((string)($_POST['linode_image']??$p['linode_image']??''));
    $domainName=trim((string)($_POST['domain_name']??''));
    $dnsProvider=(string)($_POST['dns_provider']??'oxxa');
+   if($isDiscordService){
+      $q=db()->prepare("SELECT (SELECT COUNT(*) FROM services s JOIN store_products sp ON sp.id=s.product_id JOIN store_categories sc ON sc.id=sp.category_id WHERE s.user_id=? AND s.status NOT IN ('terminated','cancelled') AND LOWER(CONCAT(sp.slug,' ',sp.name,' ',sc.name)) LIKE '%discord%') + (SELECT COUNT(*) FROM order_items oi JOIN orders o ON o.id=oi.order_id JOIN store_products sp ON sp.id=oi.product_id JOIN store_categories sc ON sc.id=sp.category_id WHERE o.user_id=? AND o.status NOT IN ('cancelled','active') AND LOWER(CONCAT(sp.slug,' ',sp.name,' ',sc.name)) LIKE '%discord%')");
+      $q->execute([(int)$u['id'],(int)$u['id']]);
+      if((int)$q->fetchColumn()>0)$error='Only one Discord service is allowed per customer.';
+   }
    if ($name === '') $error = $isDeviceRepair ? 'Enter a device name or model.' : 'Choose a server name.';
    if ($error === '' && !$isDeviceRepair && !$isLinode) {
       if (!$eggId || !in_array($eggId, $allowedIds, true)) $error = 'Choose valid server software.';

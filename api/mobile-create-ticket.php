@@ -32,6 +32,8 @@ db()->prepare("INSERT INTO support_tickets(user_id,service_id,subject,category,p
 $ticketId = (int)db()->lastInsertId();
 db()->prepare('INSERT INTO support_messages(ticket_id,user_id,message) VALUES(?,?,?)')->execute([$ticketId, (int)$u['id'], $message]);
 zoho_crm_try_sync_ticket($ticketId);
+ticket_notify_staff($ticketId,'new');
+ticket_notify_customer($ticketId,'created');
 
 echo json_encode(['ok' => true, 'data' => [
     'id' => $ticketId,
