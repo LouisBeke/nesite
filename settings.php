@@ -20,6 +20,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       if (mb_strlen($profileName) < 2) throw new RuntimeException('Please enter your full name.');
       $profileFields=[];foreach(['company_name','phone','street','house_number','postal_code','city','state','country_code'] as $field)$profileFields[$field]=trim((string)($_POST[$field]??''));
       $profileFields['country_code']=strtoupper($profileFields['country_code']);
+      $activeTwoFactorMethod=(string)($u['two_factor_method']??'totp');
+      if((int)($u['two_factor_enabled']??0)===1&&in_array($activeTwoFactorMethod,['sms','whatsapp'],true)&&!hash_equals(trim((string)($u['phone']??'')),$profileFields['phone']))throw new RuntimeException('Disable phone-based two-factor authentication before changing its phone number, then verify the new number when you enable it again.');
       if($profileFields['country_code']!==''&&!preg_match('/^[A-Z]{2}$/',$profileFields['country_code']))throw new RuntimeException('Country must be a two-letter country code.');
       $notifyWhatsapp=isset($_POST['notify_whatsapp'])?1:0;
       if($notifyWhatsapp&&!preg_match('/^\+[1-9]\d{7,14}$/',preg_replace('/[\s().-]+/','',$profileFields['phone'])))throw new RuntimeException('WhatsApp requires an international phone number such as +32470123456.');
@@ -41,53 +43,68 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       if ($p !== ($_POST['confirm_password'] ?? '')) throw new RuntimeException('New passwords do not match.');
       db()->prepare('UPDATE users SET password_hash=? WHERE id=?')->execute([password_hash($p, PASSWORD_DEFAULT), $u['id']]);
       db()->prepare('DELETE FROM user_sessions WHERE user_id=? AND session_id<>?')->execute([$u['id'], session_id()]);
-      $ok = 'Password changed and other sessions signed out.';
+      security_revoke_trusted_devices((int)$u['id']);
+      security_log_event((int)$u['id'],'password_changed',true,'Password changed; other sessions and trusted browsers were revoked.');
+      $ok = 'Password changed. Other sessions and trusted browsers were signed out.';
     } elseif ($a === '2fa_begin') {
+      if (!password_verify($_POST['current_password'] ?? '', $u['password_hash'])) throw new RuntimeException('Current password is incorrect.');
       $secret = b32encode(random_bytes(20));
       $_SESSION['2fa_setup_secret'] = $secret;
+      $_SESSION['2fa_setup_expires_at'] = time()+600;
+      $_SESSION['2fa_setup_uid'] = (int)$u['id'];
       unset($_SESSION['2fa_channel_setup']);
       $ok = 'Secret generated. Add it to your authenticator app, then verify a code below.';
     } elseif ($a === '2fa_channel_begin' || $a === '2fa_channel_resend') {
+      if($a==='2fa_channel_begin'&&!password_verify($_POST['current_password'] ?? '', $u['password_hash']))throw new RuntimeException('Current password is incorrect.');
       $method=$a==='2fa_channel_resend'?(string)($_SESSION['2fa_channel_setup']??''):(string)($_POST['method']??'');if(!in_array($method,['whatsapp','sms'],true))throw new RuntimeException('Choose WhatsApp or SMS.');
+      if($a==='2fa_channel_resend'&&((int)($_SESSION['2fa_setup_uid']??0)!==(int)$u['id']||(int)($_SESSION['2fa_setup_expires_at']??0)<time()))throw new RuntimeException('Two-factor setup expired. Start again.');
       $last=(int)($_SESSION['2fa_setup_message_sent_at']??0);if($a==='2fa_channel_resend'&&time()-$last<60)throw new RuntimeException('Wait one minute before requesting another code.');
-      unset($_SESSION['2fa_setup_secret']);if($method==='sms')sms_verify_start((string)($u['phone']??''));else messaging_verify_start((string)($u['phone']??''));$_SESSION['2fa_channel_setup']=$method;$_SESSION['2fa_setup_message_sent_at']=time();$ok='A new verification code was sent by '.($method==='sms'?'SMS':'WhatsApp').'.';
+      unset($_SESSION['2fa_setup_secret']);if($method==='sms')sms_verify_start((string)($u['phone']??''));else messaging_verify_start((string)($u['phone']??''));$_SESSION['2fa_channel_setup']=$method;$_SESSION['2fa_setup_message_sent_at']=time();$_SESSION['2fa_setup_expires_at']=time()+600;$_SESSION['2fa_setup_uid']=(int)$u['id'];$ok='A new verification code was sent by '.($method==='sms'?'SMS':'WhatsApp').'.';
     } elseif ($a === '2fa_channel_enable') {
+      if((int)($_SESSION['2fa_setup_uid']??0)!==(int)$u['id']||(int)($_SESSION['2fa_setup_expires_at']??0)<time())throw new RuntimeException('Two-factor setup expired. Start again.');
       $method=(string)($_SESSION['2fa_channel_setup']??'');$valid=$method==='sms'?sms_verify_check((string)($u['phone']??''),(string)($_POST['code']??'')):($method==='whatsapp'&&messaging_verify_check((string)($u['phone']??''),(string)($_POST['code']??'')));if(!$valid)throw new RuntimeException('Invalid or expired verification code.');
-      for($i=0;$i<10;$i++)$newRecovery[]=strtoupper(bin2hex(random_bytes(4)));
-      db()->prepare('UPDATE users SET two_factor_enabled=1,two_factor_method=?,two_factor_secret=NULL,two_factor_recovery_codes=? WHERE id=?')->execute([$method,enc(json_encode($newRecovery)),$u['id']]);unset($_SESSION['2fa_channel_setup'],$_SESSION['2fa_setup_message_sent_at']);$ok=ucfirst($method).' two-factor authentication enabled. Save your recovery codes now.';
+      [$newRecovery,$recoveryStorage]=security_recovery_generate();
+      db()->prepare('UPDATE users SET two_factor_enabled=1,two_factor_method=?,two_factor_secret=NULL,two_factor_recovery_codes=?,two_factor_last_counter=NULL,two_factor_changed_at=NOW() WHERE id=?')->execute([$method,$recoveryStorage,$u['id']]);unset($_SESSION['2fa_channel_setup'],$_SESSION['2fa_setup_message_sent_at'],$_SESSION['2fa_setup_expires_at'],$_SESSION['2fa_setup_uid']);security_log_event((int)$u['id'],'two_factor_enabled',true,ucfirst($method).' was enabled.');$ok=ucfirst($method).' two-factor authentication enabled. Save your recovery codes now.';
     } elseif ($a === '2fa_enable') {
       $secret = $_SESSION['2fa_setup_secret'] ?? '';
-      if (!$secret || !totp_verify($secret, $_POST['code'] ?? '')) throw new RuntimeException('Invalid authenticator code.');
-      for ($i = 0; $i < 10; $i++) $newRecovery[] = strtoupper(bin2hex(random_bytes(4)));
-      db()->prepare('UPDATE users SET two_factor_secret=?,two_factor_enabled=1,two_factor_recovery_codes=? WHERE id=?')->execute([enc($secret), enc(json_encode($newRecovery)), $u['id']]);
-      db()->prepare("UPDATE users SET two_factor_method='totp' WHERE id=?")->execute([$u['id']]);
+      if ((int)($_SESSION['2fa_setup_uid']??0)!==(int)$u['id']||(int)($_SESSION['2fa_setup_expires_at']??0)<time()) throw new RuntimeException('Two-factor setup expired. Start again.');
+      $counter=totp_matching_counter((string)$secret,(string)($_POST['code']??''));
+      if (!$secret || $counter===null) throw new RuntimeException('Invalid authenticator code.');
+      [$newRecovery,$recoveryStorage]=security_recovery_generate();
+      db()->prepare("UPDATE users SET two_factor_secret=?,two_factor_enabled=1,two_factor_method='totp',two_factor_recovery_codes=?,two_factor_last_counter=?,two_factor_changed_at=NOW() WHERE id=?")->execute([enc($secret),$recoveryStorage,$counter,$u['id']]);
       unset($_SESSION['2fa_setup_secret']);
-      unset($_SESSION['2fa_channel_setup'],$_SESSION['sms_2fa'],$_SESSION['2fa_setup_message_sent_at']);
+      unset($_SESSION['2fa_channel_setup'],$_SESSION['sms_2fa'],$_SESSION['2fa_setup_message_sent_at'],$_SESSION['2fa_setup_expires_at'],$_SESSION['2fa_setup_uid']);
+      security_log_event((int)$u['id'],'two_factor_enabled',true,'Authenticator app was enabled.');
       $ok = 'Two-factor authentication enabled. Save your recovery codes now.';
     } elseif ($a === '2fa_cancel') {
       unset($_SESSION['2fa_setup_secret'],$_SESSION['sms_2fa']);
-      unset($_SESSION['2fa_channel_setup'],$_SESSION['2fa_setup_message_sent_at']);
+      unset($_SESSION['2fa_channel_setup'],$_SESSION['2fa_setup_message_sent_at'],$_SESSION['2fa_setup_expires_at'],$_SESSION['2fa_setup_uid']);
       $ok = 'Two-factor setup cancelled.';
     } elseif ($a === '2fa_regenerate') {
       if ((int)($u['two_factor_enabled'] ?? 0) !== 1) throw new RuntimeException('Two-factor authentication is not enabled.');
       if (!password_verify($_POST['current_password'] ?? '', $u['password_hash'])) throw new RuntimeException('Current password is incorrect.');
       $method=(string)($u['two_factor_method']??'totp');$secret=(string)(dec($u['two_factor_secret']??null)??'');
-      if ($method==='totp'&&($secret==='' || !totp_verify($secret, (string)($_POST['code'] ?? '')))) throw new RuntimeException('Enter a valid 6-digit authenticator code.');
-      if ($method!=='totp'){ $codes=json_decode((string)(dec($u['two_factor_recovery_codes']??null)??'[]'),true)?:[];if(!in_array(strtoupper(trim((string)($_POST['code']??''))),$codes,true))throw new RuntimeException('Enter a valid recovery code.'); }
-      for ($i = 0; $i < 10; $i++) $newRecovery[] = strtoupper(bin2hex(random_bytes(4)));
-      db()->prepare('UPDATE users SET two_factor_recovery_codes=? WHERE id=?')->execute([enc(json_encode($newRecovery)), $u['id']]);
-      $ok = 'New recovery codes generated. Your previous recovery codes no longer work.';
+      if ($method==='totp'&&($secret==='' || !totp_verify_and_consume((int)$u['id'],$secret,(string)($_POST['code'] ?? '')))) throw new RuntimeException('Enter a fresh 6-digit authenticator code.');
+      if ($method!=='totp'&&!security_recovery_consume((int)$u['id'],$u['two_factor_recovery_codes']??null,(string)($_POST['code']??'')))throw new RuntimeException('Enter a valid recovery code.');
+      [$newRecovery,$recoveryStorage]=security_recovery_generate();
+      db()->prepare('UPDATE users SET two_factor_recovery_codes=?,two_factor_changed_at=NOW() WHERE id=?')->execute([$recoveryStorage,$u['id']]);
+      security_revoke_trusted_devices((int)$u['id']);db()->prepare('DELETE FROM user_sessions WHERE user_id=? AND session_id<>?')->execute([$u['id'],session_id()]);security_log_event((int)$u['id'],'recovery_codes_regenerated',true,'Recovery codes replaced; trusted browsers and other sessions were revoked.');
+      $ok = 'New recovery codes generated. Previous codes, trusted browsers, and other sessions were revoked.';
     } elseif ($a === '2fa_disable') {
       if (!password_verify($_POST['current_password'] ?? '', $u['password_hash'])) throw new RuntimeException('Current password is incorrect.');
       $method=(string)($u['two_factor_method']??'totp');$secret=(string)(dec($u['two_factor_secret']??null)??'');
-      if ($method==='totp'&&($secret==='' || !totp_verify($secret, (string)($_POST['code'] ?? '')))) throw new RuntimeException('Enter a valid 6-digit authenticator code.');
-      if ($method!=='totp'){ $codes=json_decode((string)(dec($u['two_factor_recovery_codes']??null)??'[]'),true)?:[];if(!in_array(strtoupper(trim((string)($_POST['code']??''))),$codes,true))throw new RuntimeException('Enter a valid recovery code.'); }
-      db()->prepare('UPDATE users SET two_factor_secret=NULL,two_factor_enabled=0,two_factor_recovery_codes=NULL WHERE id=?')->execute([$u['id']]);
+      if ($method==='totp'&&($secret==='' || !totp_verify_and_consume((int)$u['id'],$secret,(string)($_POST['code'] ?? '')))) throw new RuntimeException('Enter a fresh 6-digit authenticator code.');
+      db()->prepare('UPDATE users SET two_factor_secret=NULL,two_factor_enabled=0,two_factor_recovery_codes=NULL,two_factor_last_counter=NULL,two_factor_changed_at=NOW() WHERE id=?')->execute([$u['id']]);
+      security_revoke_trusted_devices((int)$u['id']);db()->prepare('DELETE FROM user_sessions WHERE user_id=? AND session_id<>?')->execute([$u['id'],session_id()]);security_log_event((int)$u['id'],'two_factor_disabled',true,'2FA disabled; trusted browsers and other sessions were revoked.');
       unset($_SESSION['2fa_setup_secret']);
-      $ok = 'Two-factor authentication disabled.';
+      $ok = 'Two-factor authentication disabled. Trusted browsers and other sessions were revoked.';
     } elseif ($a === 'sessions') {
       db()->prepare('DELETE FROM user_sessions WHERE user_id=? AND session_id<>?')->execute([$u['id'], session_id()]);
+      security_log_event((int)$u['id'],'other_sessions_revoked',true,'All other active sessions were signed out.');
       $ok = 'Other sessions signed out.';
+    } elseif ($a === 'trusted_devices') {
+      if (!password_verify($_POST['current_password'] ?? '', $u['password_hash'])) throw new RuntimeException('Current password is incorrect.');
+      security_revoke_trusted_devices((int)$u['id']);security_log_event((int)$u['id'],'trusted_devices_revoked',true,'All trusted browsers were revoked.');$ok='All trusted browsers revoked.';
     }
   } catch (Throwable $e) {
     $err = $e->getMessage();
@@ -96,6 +113,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 $sessions = [];
 $history = [];
+$trustedDevices = [];
+$securityEvents = [];
 try {
   $q = db()->prepare('SELECT * FROM user_sessions WHERE user_id=? ORDER BY last_seen_at DESC');
   $q->execute([$u['id']]);
@@ -108,10 +127,19 @@ try {
   $history = $q->fetchAll();
 } catch (Throwable $e) {
 }
-$setup = $_SESSION['2fa_setup_secret'] ?? '';
-$channelSetup=(string)($_SESSION['2fa_channel_setup']??'');
-$recoveryCodes=[];if(!empty($u['two_factor_recovery_codes'])){$recoveryCodes=json_decode((string)(dec($u['two_factor_recovery_codes'])??'[]'),true)?:[];}
-$recoveryCount=count($recoveryCodes);
+try {
+  db()->prepare('DELETE FROM trusted_devices WHERE user_id=? AND expires_at<=NOW()')->execute([$u['id']]);
+  $q=db()->prepare('SELECT * FROM trusted_devices WHERE user_id=? AND expires_at>NOW() ORDER BY last_used_at DESC,created_at DESC');$q->execute([$u['id']]);$trustedDevices=$q->fetchAll();
+} catch (Throwable $e) {
+}
+try {
+  $q=db()->prepare('SELECT * FROM account_security_events WHERE user_id=? ORDER BY id DESC LIMIT 20');$q->execute([$u['id']]);$securityEvents=$q->fetchAll();
+} catch (Throwable $e) {
+}
+$setup = ((int)($_SESSION['2fa_setup_uid']??0)===(int)$u['id']&&(int)($_SESSION['2fa_setup_expires_at']??0)>=time())?($_SESSION['2fa_setup_secret']??''):'';
+$channelSetup=((int)($_SESSION['2fa_setup_uid']??0)===(int)$u['id']&&(int)($_SESSION['2fa_setup_expires_at']??0)>=time())?(string)($_SESSION['2fa_channel_setup']??''):'';
+$u['two_factor_recovery_codes']=security_recovery_upgrade((int)$u['id'],$u['two_factor_recovery_codes']??null);
+$recoveryCount=security_recovery_count($u['two_factor_recovery_codes']??null);
 $holderFields=['name','phone','street','house_number','postal_code','city','state','country_code'];$holderComplete=count(array_filter($holderFields,fn($field)=>trim((string)($u[$field]??''))!==''));$holderPercent=(int)round(($holderComplete/count($holderFields))*100);$sessionCount=count($sessions);$hasPteroKey=ptero_client_access_available($u);
 $totpUri = $setup ? 'otpauth://totp/' . rawurlencode('FoxNetwork:' . $u['email']) . '?secret=' . rawurlencode($setup) . '&issuer=' . rawurlencode('FoxNetwork') . '&algorithm=SHA1&digits=6&period=30' : ''; ?>
 <!doctype html>
@@ -121,14 +149,14 @@ $totpUri = $setup ? 'otpauth://totp/' . rawurlencode('FoxNetwork:' . $u['email']
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width">
   <title><?=e($settingsPage==='profile'?'Profile settings':($settingsPage==='security'?'Security settings':'Sessions & login history'))?> | FoxNetwork</title>
-  <link rel="stylesheet" href="/assets/portal.css?v=<?= rawurlencode((string)@filemtime(__DIR__ . '/assets/portal.css')) ?>"><style>.settings-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}.settings-summary article{padding:16px 18px;border:1px solid #2a3038;border-radius:13px;background:#15191f}.settings-summary span,.settings-summary small{display:block;color:#7f8996;font-size:9px}.settings-summary b{display:block;margin:6px 0 4px;font-size:16px}.settings-nav{display:flex;gap:7px;overflow:auto;margin-bottom:18px;padding:5px;border:1px solid #292f37;border-radius:12px;background:#101419}.settings-nav a{padding:9px 12px;border-radius:8px;color:#9ca6b3;text-decoration:none;font-size:11px;white-space:nowrap}.settings-nav a:hover,.settings-nav a.active{background:#252b33;color:#fff}.security-card{scroll-margin-top:20px}.recovery-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.two-factor-actions{display:grid;gap:14px;margin-top:16px;padding-top:16px;border-top:1px solid #2a3038}.two-factor-actions form{margin:0}.settings-page-section{display:none}.settings-page-<?=e($settingsPage)?>{display:block}.settings-page-security .security-grid{grid-template-columns:repeat(2,minmax(0,1fr))}@media(max-width:750px){.settings-summary{grid-template-columns:1fr 1fr}.settings-page-security .security-grid{grid-template-columns:1fr}}@media(max-width:430px){.settings-summary{grid-template-columns:1fr}}</style>
+  <link rel="stylesheet" href="/assets/portal.css?v=<?= rawurlencode((string)@filemtime(__DIR__ . '/assets/portal.css')) ?>"><style>.settings-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}.settings-summary article{padding:16px 18px;border:1px solid #2a3038;border-radius:13px;background:#15191f}.settings-summary span,.settings-summary small{display:block;color:#7f8996;font-size:9px}.settings-summary b{display:block;margin:6px 0 4px;font-size:16px}.settings-nav{display:flex;gap:7px;overflow:auto;margin-bottom:18px;padding:5px;border:1px solid #292f37;border-radius:12px;background:#101419}.settings-nav a{padding:9px 12px;border-radius:8px;color:#9ca6b3;text-decoration:none;font-size:11px;white-space:nowrap}.settings-nav a:hover,.settings-nav a.active{background:#252b33;color:#fff}.security-card{scroll-margin-top:20px}.recovery-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.two-factor-actions{display:grid;gap:14px;margin-top:16px;padding-top:16px;border-top:1px solid #2a3038}.two-factor-actions form{margin:0}.method-choices{display:grid;gap:12px;margin-top:14px}.method-choice{padding:14px;border:1px solid #2a3038;border-radius:11px;background:#11151a}.method-choice h3{margin-top:0}.full-card{margin-top:16px}.settings-page-section{display:none}.settings-page-<?=e($settingsPage)?>{display:block}.settings-page-security .security-grid{grid-template-columns:repeat(2,minmax(0,1fr))}@media(max-width:750px){.settings-summary{grid-template-columns:1fr 1fr}.settings-page-security .security-grid{grid-template-columns:1fr}}@media(max-width:430px){.settings-summary{grid-template-columns:1fr}}</style>
 </head>
 
 <body class="portal-page"><?php render_client_page_start($u, 'settings', 'Account settings'); ?><div class="security-page">
     <div class="security-top"><a class="link" href="/client">← Dashboard</a>
       <h1><?=e($settingsPage==='profile'?'Profile settings':($settingsPage==='security'?'Security settings':'Sessions & login history'))?></h1>
       <p class="muted"><?=e($settingsPage==='profile'?'Manage your personal and domain-holder information.':($settingsPage==='security'?'Manage your password, authenticator and recovery codes.':'Review signed-in devices and recent account access.'))?></p>
-    </div><section class="settings-summary"><article><span>ACCOUNT</span><b><?=e(ucfirst((string)($u['account_status']??'active')))?></b><small><?=e($u['email'])?></small></article><article><span>DOMAIN PROFILE</span><b><?=$holderPercent?>% complete</b><small><?=$holderComplete?> of <?=count($holderFields)?> required fields</small></article><article><span>TWO-FACTOR</span><b><?=!empty($u['two_factor_enabled'])?'Enabled':'Disabled'?></b><small><?=!empty($u['two_factor_enabled'])?'Extra login protection':'Setup recommended'?></small></article><article><span>GAME PANEL</span><b><?=$hasPteroKey?'Connected':'Not connected'?></b><small><?=$sessionCount?> active session<?=$sessionCount===1?'':'s'?></small></article></section><nav class="settings-nav" aria-label="Settings pages"><a class="<?=$settingsPage==='profile'?'active':''?>" href="/settings-profile.php">Profile &amp; domain holder</a><a class="<?=$settingsPage==='security'?'active':''?>" href="/settings-security.php">Password &amp; 2FA</a><a class="<?=$settingsPage==='sessions'?'active':''?>" href="/settings-sessions.php">Sessions &amp; history</a></nav>
+    </div><section class="settings-summary"><article><span>ACCOUNT</span><b><?=e(ucfirst((string)($u['account_status']??'active')))?></b><small><?=e($u['email'])?></small></article><article><span>DOMAIN PROFILE</span><b><?=$holderPercent?>% complete</b><small><?=$holderComplete?> of <?=count($holderFields)?> required fields</small></article><article><span>TWO-FACTOR</span><b><?=!empty($u['two_factor_enabled'])?'Enabled':'Disabled'?></b><small><?=!empty($u['two_factor_enabled'])?e(ucfirst((string)($u['two_factor_method']??'totp')).' · '.$recoveryCount.' recovery codes'):'Setup recommended'?></small></article><article><span>TRUSTED BROWSERS</span><b><?=count($trustedDevices)?></b><small><?=$sessionCount?> active session<?=$sessionCount===1?'':'s'?></small></article></section><nav class="settings-nav" aria-label="Settings pages"><a class="<?=$settingsPage==='profile'?'active':''?>" href="/settings-profile.php">Profile &amp; domain holder</a><a class="<?=$settingsPage==='security'?'active':''?>" href="/settings-security.php">Password &amp; 2FA</a><a class="<?=$settingsPage==='sessions'?'active':''?>" href="/settings-sessions.php">Sessions &amp; history</a></nav>
     <?php if ($ok): ?><div class="notice"><?= e($ok) ?></div><?php endif ?><?php if ($err): ?><div class="error"><?= e($err) ?></div><?php endif ?><div class="settings-page-section settings-page-security"><?php if ($newRecovery): ?><section class="security-card">
         <h2>Recovery codes</h2>
         <p class="muted">Store these somewhere safe. Each code can be used once.</p>
@@ -159,9 +187,9 @@ $totpUri = $setup ? 'otpauth://totp/' . rawurlencode('FoxNetwork:' . $u['email']
         </form>
       </section>
       <section class="security-card" id="two-factor">
-        <h2>Two-factor authentication</h2><?php if ((int)($u['two_factor_enabled'] ?? 0) === 1): $activeMethod=(string)($u['two_factor_method']??'totp'); ?><div class="notice"><?=e(ucfirst($activeMethod))?> 2FA is enabled. <?= $recoveryCount ?> recovery code<?= $recoveryCount===1?'':'s' ?> remaining.</div><p class="muted">Your selected second-factor channel protects password sign-ins.</p><div class="two-factor-actions"><form method="post"><input type="hidden" name="csrf" value="<?= csrf() ?>"><input type="hidden" name="action" value="2fa_regenerate"><h3>Generate new recovery codes</h3><p class="muted">This immediately invalidates every previous recovery code.</p><div class="field"><label>Current password</label><input type="password" name="current_password" autocomplete="current-password" required></div><div class="field"><label><?=$activeMethod==='totp'?'6-digit authenticator code':'Recovery code'?></label><input name="code" autocomplete="one-time-code" maxlength="12" required></div><button class="btn">Generate new codes</button></form>
+        <h2>Two-factor authentication</h2><?php if ((int)($u['two_factor_enabled'] ?? 0) === 1): $activeMethod=(string)($u['two_factor_method']??'totp'); ?><div class="notice"><?=e(ucfirst($activeMethod))?> 2FA is enabled. <?= $recoveryCount ?> recovery code<?= $recoveryCount===1?'':'s' ?> remaining.</div><?php if($recoveryCount<3):?><div class="error">You are running low on recovery codes. Generate a fresh set now.</div><?php endif?><p class="muted">Authenticator apps are the strongest available option. Every authenticator code and recovery code can now be accepted only once.</p><div class="two-factor-actions"><form method="post"><input type="hidden" name="csrf" value="<?= csrf() ?>"><input type="hidden" name="action" value="2fa_regenerate"><h3>Generate new recovery codes</h3><p class="muted">This immediately invalidates every previous recovery code.</p><div class="field"><label>Current password</label><input type="password" name="current_password" autocomplete="current-password" required></div><div class="field"><label><?=$activeMethod==='totp'?'6-digit authenticator code':'Recovery code'?></label><input name="code" autocomplete="one-time-code" maxlength="12" required></div><button class="btn">Generate new codes</button></form>
           <form method="post"><input type="hidden" name="csrf" value="<?= csrf() ?>"><input type="hidden" name="action" value="2fa_disable">
-            <h3>Disable two-factor authentication</h3><div class="field"><label>Current password</label><input type="password" name="current_password" autocomplete="current-password" required></div><div class="field"><label><?=$activeMethod==='totp'?'6-digit authenticator code':'Recovery code'?></label><input name="code" autocomplete="one-time-code" maxlength="12" required></div><button class="btn danger" onclick="return confirm('Disable two-factor authentication for this account?')">Disable 2FA</button>
+            <h3>Disable two-factor authentication</h3><div class="field"><label>Current password</label><input type="password" name="current_password" autocomplete="current-password" required></div><?php if($activeMethod==='totp'):?><div class="field"><label>6-digit authenticator code</label><input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></div><?php else:?><p class="muted">Your current password is enough to disable phone-based 2FA. No recovery code is required.</p><?php endif?><button class="btn danger" onclick="return confirm('Disable two-factor authentication for this account?')">Disable 2FA</button>
           </form></div><?php elseif ($setup): ?><p class="muted">Scan this QR code with Microsoft Authenticator, Google Authenticator, 1Password, Authy or another TOTP-compatible app.</p>
           <div class="totp-qr-wrap">
             <div id="totp-qrcode" class="totp-qrcode" aria-label="Two-factor authentication QR code"></div>
@@ -171,9 +199,9 @@ $totpUri = $setup ? 'otpauth://totp/' . rawurlencode('FoxNetwork:' . $u['email']
           <div class="secret-box"><span>Account</span><code>FoxNetwork:<?= e($u['email']) ?></code></div>
           <form method="post"><input type="hidden" name="csrf" value="<?= csrf() ?>"><input type="hidden" name="action" value="2fa_enable">
             <div class="field"><label>6-digit code</label><input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></div><button class="btn primary">Verify & enable</button>
-          </form><form method="post" style="margin-top:10px"><input type="hidden" name="csrf" value="<?= csrf() ?>"><button class="btn" name="action" value="2fa_cancel">Cancel setup</button></form><?php else: ?><?php if($channelSetup):?><div class="notice">A code was sent by <?=e($channelSetup==='sms'?'SMS':'WhatsApp')?>.</div><form method="post"><input type="hidden" name="csrf" value="<?=csrf()?>"><input type="hidden" name="action" value="2fa_channel_enable"><div class="field"><label>Verification code</label><input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4,10}" required></div><button class="btn primary">Verify &amp; enable</button></form><form method="post" style="margin-top:10px"><input type="hidden" name="csrf" value="<?=csrf()?>"><button class="btn" name="action" value="2fa_channel_resend">Send a new <?=e($channelSetup==='sms'?'SMS':'WhatsApp')?> code</button> <button class="btn" name="action" value="2fa_cancel">Cancel setup</button></form><?php else:?><p class="muted">Choose an authenticator app, SMS, or WhatsApp. You will also receive ten one-time recovery codes.</p>
-          <div class="recovery-actions"><form method="post"><input type="hidden" name="csrf" value="<?= csrf() ?>"><button class="btn primary" name="action" value="2fa_begin">Authenticator app</button></form><?php if(sms_gateway_enabled()):?><form method="post"><input type="hidden" name="csrf" value="<?=csrf()?>"><input type="hidden" name="action" value="2fa_channel_begin"><button class="btn" name="method" value="sms">SMS</button></form><?php endif?><?php if(telnyx_enabled()):?><form method="post"><input type="hidden" name="csrf" value="<?=csrf()?>"><input type="hidden" name="action" value="2fa_channel_begin"><button class="btn" name="method" value="whatsapp">WhatsApp</button></form><?php endif?></div><?php endif?><?php endif ?>
-      </section></div></div>
+          </form><form method="post" style="margin-top:10px"><input type="hidden" name="csrf" value="<?= csrf() ?>"><button class="btn" name="action" value="2fa_cancel">Cancel setup</button></form><?php else: ?><?php if($channelSetup):?><div class="notice">A code was sent by <?=e($channelSetup==='sms'?'SMS':'WhatsApp')?>. This setup expires in 10 minutes.</div><form method="post"><input type="hidden" name="csrf" value="<?=csrf()?>"><input type="hidden" name="action" value="2fa_channel_enable"><div class="field"><label>Verification code</label><input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4,10}" required></div><button class="btn primary">Verify &amp; enable</button></form><form method="post" style="margin-top:10px"><input type="hidden" name="csrf" value="<?=csrf()?>"><button class="btn" name="action" value="2fa_channel_resend">Send a new <?=e($channelSetup==='sms'?'SMS':'WhatsApp')?> code</button> <button class="btn" name="action" value="2fa_cancel">Cancel setup</button></form><?php else:?><p class="muted">Choose a method and confirm your current password. You will also receive ten one-time recovery codes.</p>
+          <div class="method-choices"><form method="post" class="method-choice"><input type="hidden" name="csrf" value="<?= csrf() ?>"><input type="hidden" name="action" value="2fa_begin"><h3>Authenticator app · Recommended</h3><p class="muted">Works offline and resists phone-number takeover.</p><div class="field"><label>Current password</label><input type="password" name="current_password" autocomplete="current-password" required></div><button class="btn primary">Set up authenticator</button></form><?php if(sms_gateway_enabled()):?><form method="post" class="method-choice"><input type="hidden" name="csrf" value="<?=csrf()?>"><input type="hidden" name="action" value="2fa_channel_begin"><input type="hidden" name="method" value="sms"><h3>SMS</h3><p class="muted">Receive a code at your saved phone number.</p><div class="field"><label>Current password</label><input type="password" name="current_password" autocomplete="current-password" required></div><button class="btn">Set up SMS</button></form><?php endif?><?php if(telnyx_enabled()):?><form method="post" class="method-choice"><input type="hidden" name="csrf" value="<?=csrf()?>"><input type="hidden" name="action" value="2fa_channel_begin"><input type="hidden" name="method" value="whatsapp"><h3>WhatsApp</h3><p class="muted">Receive a code through WhatsApp.</p><div class="field"><label>Current password</label><input type="password" name="current_password" autocomplete="current-password" required></div><button class="btn">Set up WhatsApp</button></form><?php endif?></div><?php endif?><?php endif ?>
+      </section></div><section class="security-card full-card" id="trusted-devices"><div class="security-card-head"><div><h2>Trusted browsers</h2><p class="muted">Browsers you allowed to skip the second-factor prompt for 30 days.</p></div></div><?php if($trustedDevices):?><div class="security-list"><?php foreach($trustedDevices as $device):?><div><b>Trusted browser</b><span><?=e($device['ip_address']?:'Unknown IP')?> · expires <?=e($device['expires_at'])?></span><small><?=e($device['user_agent']?:'Unknown device')?></small></div><?php endforeach?></div><form method="post" class="two-factor-actions"><input type="hidden" name="csrf" value="<?=csrf()?>"><input type="hidden" name="action" value="trusted_devices"><div class="field"><label>Current password</label><input type="password" name="current_password" autocomplete="current-password" required></div><button class="btn danger" onclick="return confirm('Revoke every trusted browser?')">Revoke all trusted browsers</button></form><?php else:?><p class="muted">No browsers are currently trusted.</p><?php endif?></section></div>
     <div class="settings-page-section settings-page-sessions"><section class="security-card" id="sessions">
       <div class="security-card-head">
         <div>
@@ -187,7 +215,7 @@ $totpUri = $setup ? 'otpauth://totp/' . rawurlencode('FoxNetwork:' . $u['email']
     <section class="security-card" id="history">
       <h2>Login history</h2>
       <div class="security-list"><?php foreach ($history as $h): ?><div><b><?= $h['success'] ? 'Successful login' : 'Failed login' ?></b><span><?= e($h['ip_address'] ?: 'Unknown IP') ?> · <?= e($h['created_at']) ?></span><small><?= e($h['user_agent'] ?: 'Unknown device') ?></small></div><?php endforeach ?></div>
-    </section></div>
+    </section><section class="security-card" id="security-activity"><h2>Security activity</h2><p class="muted">Recent changes and second-factor activity on your account.</p><div class="security-list"><?php if(!$securityEvents):?><div><b>No security activity recorded yet</b></div><?php endif?><?php foreach($securityEvents as $event):?><div><b><?=e(ucwords(str_replace('_',' ',(string)$event['event_type'])))?><?=empty($event['success'])?' · Blocked':''?></b><span><?=e($event['ip_address']?:'Unknown IP')?> · <?=e($event['created_at'])?></span><small><?=e($event['details']?:'Account security event')?></small></div><?php endforeach?></div></section></div>
   </div><?php render_client_page_end(); ?><?php if ($setup): ?>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSQX0FslNhTDadL4O5SAGapGt4FodqL8My0mA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script>
@@ -224,6 +252,14 @@ $totpUri = $setup ? 'otpauth://totp/' . rawurlencode('FoxNetwork:' . $u['email']
 </body>
 
 </html>
+>
+y>
+
+</html>
+</body>
+
+</html>
+>
 y>
 
 </html>

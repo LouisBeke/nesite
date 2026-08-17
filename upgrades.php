@@ -42,7 +42,7 @@ $hist = $hist->fetchAll();
 <body class="portal-page"><?php render_client_page_start($u, 'billing', 'Service upgrade'); ?><div class="upgrade-page">
         <div class="eyebrow">SERVICE UPGRADE</div>
         <h1><?= e($s['name']) ?></h1>
-        <p class="muted">Current package: <b><?= e($s['product_name'] ?? 'Imported / unmapped') ?></b> · €<?= number_format((float)$s['price_monthly'], 2) ?>/month</p><?php if ($err): ?><div class="error"><?= e($err) ?></div><?php endif ?><section class="upgrade-grid"><?php foreach ($products as $p): ?><form method="post" class="card upgrade-card"><input type="hidden" name="csrf" value="<?= e(csrf()) ?>"><input type="hidden" name="service_id" value="<?= e($sid) ?>"><input type="hidden" name="product_id" value="<?= e($p['id']) ?>">
+        <p class="muted">Current package: <b><?= e($s['product_name'] ?? 'Imported / unmapped') ?></b> · €<?= number_format((float)$s['price_monthly'], 2) ?>/month</p><?php if ($err): ?><div class="error"><?= e($err) ?></div><?php endif ?><section class="upgrade-grid"><?php foreach ($products as $p): $limitReached=(int)$p['id']!==(int)$s['product_id']&&!empty($p['one_per_customer'])&&customer_has_product_purchase((int)$u['id'],(int)$p['id']); ?><form method="post" class="card upgrade-card"><input type="hidden" name="csrf" value="<?= e(csrf()) ?>"><input type="hidden" name="service_id" value="<?= e($sid) ?>"><input type="hidden" name="product_id" value="<?= e($p['id']) ?>">
                     <div class="eyebrow"><?= ((int)$p['id'] === (int)$s['product_id']) ? 'CURRENT' : 'PACKAGE' ?></div>
                     <h2><?= e($p['name']) ?></h2>
                     <div class="upgrade-price">€<?= number_format((float)$p['price_monthly'], 2) ?><small>/month</small></div>
@@ -52,7 +52,8 @@ $hist = $hist->fetchAll();
                         <li><?= e($p['disk_mb']) ?> MB storage</li>
                         <li><?= e($p['backups']) ?> backups</li>
                         <li><?= e($p['database_limit']) ?> databases</li>
-                    </ul><button class="btn primary" <?= ((int)$p['id'] === (int)$s['product_id']) ? 'disabled' : '' ?>>Choose package</button>
+                        <?php if(!empty($p['one_per_customer'])):?><li>One per customer</li><?php endif?>
+                    </ul><button class="btn primary" <?=((int)$p['id']===(int)$s['product_id']||$limitReached)?'disabled':''?>><?=$limitReached?'Product limit reached':'Choose package'?></button>
                 </form><?php endforeach ?></section>
         <section class="card" style="margin-top:20px">
             <div class="cardhead"><b>CHANGE HISTORY</b></div><?php if (!$hist): ?><div class="empty muted">No package changes yet.</div><?php endif ?><?php foreach ($hist as $h): ?><div class="order-row">

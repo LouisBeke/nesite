@@ -15,7 +15,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $r) {
         db()->prepare('UPDATE users SET password_hash=? WHERE id=?')->execute([password_hash($p, PASSWORD_DEFAULT), $r['user_id']]);
         db()->prepare('UPDATE password_reset_tokens SET used_at=NOW() WHERE id=?')->execute([$r['id']]);
         db()->prepare('DELETE FROM user_sessions WHERE user_id=?')->execute([$r['user_id']]);
+        try{db()->prepare('DELETE FROM trusted_devices WHERE user_id=?')->execute([$r['user_id']]);}catch(Throwable $e){}
         db()->commit();
+        security_forget_trusted_cookie();
+        security_log_event((int)$r['user_id'],'password_reset',true,'Password reset completed; sessions and trusted browsers were revoked.');
         $done = true;
     }
 } ?>
@@ -32,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $r) {
 <body>
     <div class="auth">
         <form class="authbox" method="post"><img src="/images/logo.png">
-            <h1>Choose a new password</h1><?php if ($done): ?><div class="notice">Password changed. You can sign in now.</div>
+            <h1>Choose a new password</h1><?php if ($done): ?><div class="notice">Password changed. All sessions and trusted browsers were signed out. You can sign in now.</div>
                 <p><a class="btn primary wide" href="/login.php">Sign in</a></p><?php elseif (!$r): ?><div class="error">This reset link is invalid or expired.</div><?php else: ?><?php if ($err): ?><div class="error"><?= e($err) ?></div><?php endif ?><input type="hidden" name="csrf" value="<?= csrf() ?>"><input type="hidden" name="token" value="<?= e($token) ?>">
             <div class="field"><label>New password</label><input type="password" name="password" minlength="10" required></div>
             <div class="field"><label>Confirm password</label><input type="password" name="password_confirm" minlength="10" required></div><button class="btn primary wide">Change password</button><?php endif ?>

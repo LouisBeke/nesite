@@ -13,8 +13,8 @@ if ($p['stock'] !== null && (int)$p['stock'] <= 0) {
    die('This product is currently out of stock.');
 }
 $isDeviceRepair = ((string)($p['slug'] ?? '') === 'device-repair');
-$isDiscordService = str_contains(strtolower((string)($p['slug']??'').' '.(string)($p['name']??'').' '.(string)($p['category_name']??'')),'discord');
 $isLinode = linode_product_provider($p) === 'linode';
+$customerLimitReached = !empty($p['one_per_customer']) && customer_has_product_purchase((int)$u['id'], (int)$p['id']);
 $linodeImages=[];$linodeImageError='';
 if($isLinode){
    try{$linodeImages=linode_public_images();}catch(Throwable $imageError){$linodeImageError=$imageError->getMessage();}
@@ -82,12 +82,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
    $selectedLinodeImage=trim((string)($_POST['linode_image']??$p['linode_image']??''));
    $domainName=trim((string)($_POST['domain_name']??''));
    $dnsProvider=(string)($_POST['dns_provider']??'oxxa');
-   if($isDiscordService){
-      $q=db()->prepare("SELECT (SELECT COUNT(*) FROM services s JOIN store_products sp ON sp.id=s.product_id JOIN store_categories sc ON sc.id=sp.category_id WHERE s.user_id=? AND s.status NOT IN ('terminated','cancelled') AND LOWER(CONCAT(sp.slug,' ',sp.name,' ',sc.name)) LIKE '%discord%') + (SELECT COUNT(*) FROM order_items oi JOIN orders o ON o.id=oi.order_id JOIN store_products sp ON sp.id=oi.product_id JOIN store_categories sc ON sc.id=sp.category_id WHERE o.user_id=? AND o.status NOT IN ('cancelled','active') AND LOWER(CONCAT(sp.slug,' ',sp.name,' ',sc.name)) LIKE '%discord%')");
-      $q->execute([(int)$u['id'],(int)$u['id']]);
-      if((int)$q->fetchColumn()>0)$error='Only one Discord service is allowed per customer.';
-   }
-   if ($name === '') $error = $isDeviceRepair ? 'Enter a device name or model.' : 'Choose a server name.';
+   if($customerLimitReached)$error='Only one '.$p['name'].' is allowed per customer.';
+   if ($error === '' && $name === '') $error = $isDeviceRepair ? 'Enter a device name or model.' : 'Choose a server name.';
    if ($error === '' && !$isDeviceRepair && !$isLinode) {
       if (!$eggId || !in_array($eggId, $allowedIds, true)) $error = 'Choose valid server software.';
       else {
@@ -151,9 +147,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       }
    }
    if ($error === '') {
-      db()->beginTransaction();
-      try {
-         $num = 'FN-' . date('ymd') . '-' . strtoupper(bin2hex(random_bytes(3)));
+       db()->beginTransaction();
+       try {
+          $productLock=db()->prepare('SELECT one_per_customer FROM store_products WHERE id=? FOR UPDATE');
+          $productLock->execute([(int)$p['id']]);
+          $lockedProduct=$productLock->fetch();
+          if(!$lockedProduct)throw new RuntimeException('This product is no longer available.');
+          if(!empty($lockedProduct['one_per_customer'])&&customer_has_product_purchase((int)$u['id'],(int)$p['id'])){
+             throw new RuntimeException('Only one '.$p['name'].' is allowed per customer.');
+          }
+          $num = 'FN-' . date('ymd') . '-' . strtoupper(bin2hex(random_bytes(3)));
          $orderAmount = ($isDeviceRepair ? 0.00 : (float)$p['price_monthly']) + ($domainName!==''?$domainPrice:0);
          $initialStatus = $orderAmount <= 0 ? 'paid' : 'pending';
          $q = db()->prepare("INSERT INTO orders(user_id,order_number,status,subtotal,total,currency) VALUES(?,?,?,?,?,'EUR')");
@@ -243,7 +246,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
          <div class="content">
             <div class="eyebrow">Advanced Configurator</div>
             <h1><?= e($p['name']) ?></h1>
-            <div class="muted"><?= e($p['category_name']) ?> · €<?= number_format($displayPrice, 2) ?><?= $isDeviceRepair ? '' : ' / month' ?></div><?php if ($error): ?><div class="error"><?= e($error) ?></div><?php endif ?>
+            <div class="muted"><?= e($p['category_name']) ?> · €<?= number_format($displayPrice, 2) ?><?= $isDeviceRepair ? '' : ' / month' ?></div><?php if ($error): ?><div class="error"><?= e($error) ?></div><?php elseif($customerLimitReached):?><div class="error">You already have this product. Only one is allowed per customer.</div><?php endif ?>
             <div class="checkout-steps"><span class="active"><?= $isDeviceRepair ? '1 Intake' : ($isLinode ? '1 VPS' : '1 Software') ?></span><span><?= $isDeviceRepair ? '2 Details' : ($isLinode ? '2 Access' : '2 Options') ?></span><span>3 Summary</span><span>4 Payment</span></div>
             <div class="checkout-grid">
                <section class="card form-card">
@@ -264,14 +267,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                  <div class="muted small">Fixed by FoxNetwork</div><?php elseif ($v['input_type'] === 'select' && $opts): ?><select name="env[<?= e($key) ?>]" <?= !empty($v['required']) ? 'required' : '' ?>><?php foreach ($opts as $o): ?><option value="<?= e($o) ?>" <?= $value === $o ? 'selected' : '' ?>><?= e($o) ?></option><?php endforeach ?></select><?php else: ?><input type="<?= $v['input_type'] === 'number' ? 'number' : 'text' ?>" name="env[<?= e($key) ?>]" value="<?= e($value) ?>" <?= !empty($v['required']) ? 'required' : '' ?>><?php endif ?><?php if (!empty($v['description'])): ?><div class="muted small"><?= e($v['description']) ?></div><?php endif ?>
                            </div><?php endforeach ?>
                      </div><?php endforeach ?><?php endif ?>
-                     <button class="btn primary wide" type="submit">Continue to payment</button>
+                     <button class="btn primary wide" type="submit" <?=$customerLimitReached?'disabled aria-disabled="true"':''?>><?=$customerLimitReached?'Product limit reached':'Continue to payment'?></button>
                      <div class="muted small checkout-note"><?= $isDeviceRepair ? 'A support ticket is created automatically and billing is confirmed later in that ticket.' : ($isLinode ? 'VPS plan, region and image availability are checked before the invoice is created.' : 'Stock and node capacity are checked before the invoice is created.') ?></div>
                   </form>
                </section>
                <aside class="card summary">
                   <div class="cardhead"><b>ORDER SUMMARY</b></div>
                   <div class="summary-body">
-                     <h3><?= e($p['name']) ?></h3><?php if ($isDeviceRepair): ?><div class="summary-row"><span>Service</span><b>Repair intake ticket</b></div>
+                     <h3><?= e($p['name']) ?></h3><?php if(!empty($p['one_per_customer'])):?><div class="summary-row"><span>Purchase limit</span><b>One per customer</b></div><?php endif?><?php if ($isDeviceRepair): ?><div class="summary-row"><span>Service</span><b>Repair intake ticket</b></div>
                         <div class="summary-row"><span>Workflow</span><b>Order + ticket (invoice after confirmation)</b></div><?php else: ?><div class="summary-row"><span>RAM</span><b><?= e((string)round($p['ram_mb'] / 1024, 1)) ?> GB</b></div>
                         <div class="summary-row"><span>CPU</span><b><?= e($p['cpu_percent']) ?>%</b></div>
                         <div class="summary-row"><span>Storage</span><b><?= e((string)round($p['disk_mb'] / 1000)) ?> GB</b></div><?php if($isLinode):?><div class="summary-row"><span>Platform</span><b>FoxNetwork Cloud</b></div><div class="summary-row"><span>Plan</span><b><?=e($p['linode_type'])?></b></div><div class="summary-row"><span>Region</span><b><?=e($p['linode_region'])?></b></div><?php endif?><?php endif ?><div class="summary-row"><span>Stock</span><b><?= $p['stock'] === null ? 'Unlimited' : e($p['stock']) ?></b></div>

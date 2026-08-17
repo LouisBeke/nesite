@@ -870,3 +870,54 @@ function fox_v24_inbound_email_migrate(): void {
     if(fox_table_exists($pdo,'app_settings'))$pdo->prepare("INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES('inbound_email_enabled','0'),('inbound_email_secret','')")->execute();
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v24-inbound-email']);
 }
+
+function fox_v25_two_factor_security_migrate(): void {
+    static $ran=false;if($ran)return;$ran=true;$pdo=db();
+    if(fox_migration_applied($pdo,'v25-two-factor-security'))return;
+    if(fox_table_exists($pdo,'users'))foreach([
+        'two_factor_last_counter'=>'BIGINT UNSIGNED NULL',
+        'two_factor_changed_at'=>'DATETIME NULL',
+    ] as $column=>$definition)if(!fox_column_exists($pdo,'users',$column))$pdo->exec("ALTER TABLE users ADD COLUMN `$column` $definition");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS trusted_devices (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        user_id BIGINT UNSIGNED NOT NULL,
+        selector CHAR(32) NOT NULL UNIQUE,
+        validator_hash CHAR(64) NOT NULL,
+        ip_address VARCHAR(45) NULL,
+        user_agent VARCHAR(500) NULL,
+        last_used_at DATETIME NULL,
+        expires_at DATETIME NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_trusted_user(user_id),
+        INDEX idx_trusted_expiry(expires_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS account_security_events (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        user_id BIGINT UNSIGNED NULL,
+        event_type VARCHAR(80) NOT NULL,
+        success TINYINT(1) NOT NULL DEFAULT 1,
+        details VARCHAR(500) NULL,
+        ip_address VARCHAR(45) NULL,
+        user_agent VARCHAR(500) NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_security_event_user(user_id,created_at),
+        INDEX idx_security_event_type(event_type,created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v25-two-factor-security']);
+}
+
+function fox_v26_product_customer_limit_migrate(): void {
+    static $ran=false;if($ran)return;$ran=true;$pdo=db();
+    if(fox_migration_applied($pdo,'v26-product-customer-limit'))return;
+    if(fox_table_exists($pdo,'store_products')&&!fox_column_exists($pdo,'store_products','one_per_customer')){
+        $pdo->exec('ALTER TABLE store_products ADD COLUMN `one_per_customer` TINYINT(1) NOT NULL DEFAULT 0');
+    }
+    // Preserve the previous Discord-only limit when upgrading an existing
+    // installation; administrators can change it per product afterwards.
+    if(fox_table_exists($pdo,'store_products')&&fox_table_exists($pdo,'store_categories')){
+        $pdo->exec("UPDATE store_products p JOIN store_categories c ON c.id=p.category_id
+            SET p.one_per_customer=1
+            WHERE LOWER(CONCAT(p.slug,' ',p.name,' ',c.name)) LIKE '%discord%'");
+    }
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v26-product-customer-limit']);
+}

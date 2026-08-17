@@ -70,6 +70,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new RuntimeException('Could not create your account. Please try again.');
         }
 
+        // Create an actual per-customer Client API key. Do this explicitly:
+        // the general auto-setup helper may use shared administrator access,
+        // which is useful for portal operations but is not a personal key.
+        try {
+            $personalKeyCreated = provision_personal_ptero_client_key_for_local_user($u, true);
+            $activityAction = $personalKeyCreated ? 'ptero_personal_key_created' : 'ptero_personal_key_pending';
+            $activityDetails = $personalKeyCreated
+                ? 'Personal Pterodactyl Client API key created automatically during registration.'
+                : 'Pterodactyl account linked, but personal Client API key creation is pending.';
+            try {
+                db()->prepare('INSERT INTO customer_activity(user_id,admin_user_id,action,details) VALUES(?,NULL,?,?)')
+                    ->execute([$uid, $activityAction, $activityDetails]);
+            } catch (Throwable $activityError) {
+            }
+            if (!$personalKeyCreated) {
+                error_log('FoxNetwork registration could not create a personal Pterodactyl Client API key for user '.$uid.'. Check the panel API-key endpoint/add-on.');
+            }
+        } catch (Throwable $e) {
+            error_log('FoxNetwork registration Pterodactyl personal-key provisioning failed for user '.$uid.': '.$e->getMessage());
+            try {
+                db()->prepare('INSERT INTO customer_activity(user_id,admin_user_id,action,details) VALUES(?,NULL,?,?)')
+                    ->execute([$uid, 'ptero_personal_key_pending', 'Automatic Pterodactyl personal Client API key creation failed and requires an administrator retry.']);
+            } catch (Throwable $activityError) {
+            }
+        }
+
         try {
             zoho_crm_sync_customer($u);
         } catch (Throwable $e) {

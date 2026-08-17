@@ -172,6 +172,8 @@ if($migrationDue)try {
     if (function_exists('fox_v22_telnyx_migrate')) fox_v22_telnyx_migrate();
     if (function_exists('fox_v23_whatsapp_only_migrate')) fox_v23_whatsapp_only_migrate();
     if (function_exists('fox_v24_inbound_email_migrate')) fox_v24_inbound_email_migrate();
+    if (function_exists('fox_v25_two_factor_security_migrate')) fox_v25_two_factor_security_migrate();
+    if (function_exists('fox_v26_product_customer_limit_migrate')) fox_v26_product_customer_limit_migrate();
     @touch($migrationMarker);
 } catch (Throwable $e) {
     error_log('FoxNetwork migrations skipped: '.$e->getMessage());
@@ -198,6 +200,30 @@ function user():?array{
         $s=db()->prepare('SELECT * FROM users WHERE id=?');
         $s->execute([$uid]);
         $cache[$key]=$s->fetch() ?: null;
+        if($cache[$key])try{
+            $hours=max(1,min(168,(int)app_setting('security_session_hours','12')));
+            $adminReturnUid=!empty($_SESSION['admin_return_uid'])?(int)$_SESSION['admin_return_uid']:0;
+            $registryUid=$adminReturnUid?:$uid;
+            $session=db()->prepare("SELECT user_id FROM user_sessions WHERE session_id=? AND last_seen_at>=DATE_SUB(NOW(),INTERVAL {$hours} HOUR) LIMIT 1");
+            $session->execute([session_id()]);
+            $storedSessionUid=(int)($session->fetchColumn()?:0);
+            $sessionValid=$storedSessionUid===$registryUid;
+            if(!$sessionValid&&$adminReturnUid>0&&$storedSessionUid===$uid){
+                $adminCheck=db()->prepare("SELECT 1 FROM users WHERE id=? AND role='admin' AND account_status='active' LIMIT 1");
+                $adminCheck->execute([$adminReturnUid]);
+                if($adminCheck->fetchColumn()){
+                    db()->prepare('UPDATE user_sessions SET user_id=? WHERE session_id=? AND user_id=?')->execute([$adminReturnUid,session_id(),$uid]);
+                    $sessionValid=true;
+                }
+            }
+            if(!$sessionValid){
+                db()->prepare('DELETE FROM user_sessions WHERE session_id=?')->execute([session_id()]);
+                unset($_SESSION['uid']);
+                $cache[$key]=null;
+            }else{
+                db()->prepare('UPDATE user_sessions SET last_seen_at=NOW(),ip_address=?,user_agent=? WHERE session_id=? AND user_id=?')->execute([$_SERVER['REMOTE_ADDR']??null,substr((string)($_SERVER['HTTP_USER_AGENT']??''),0,500),session_id(),$registryUid]);
+            }
+        }catch(Throwable $e){}
     }
     return $cache[$key];
 }
@@ -550,7 +576,7 @@ function link_existing_ptero_user_for_local_user(array $user): ?int {
     return null;
 }
 
-function extract_ptero_client_token_from_response(array $resp): ?string {
+function ptero_client_token_candidates_from_response(array $resp): array {
     $candidates = [
         (string)($resp['data']['attributes']['token'] ?? ''),
         (string)($resp['data']['attributes']['plain_text_token'] ?? ''),
@@ -566,16 +592,27 @@ function extract_ptero_client_token_from_response(array $resp): ?string {
 
     $identifier = (string)($resp['attributes']['identifier'] ?? $resp['data']['attributes']['identifier'] ?? '');
     $secret = (string)($resp['meta']['secret_token'] ?? $resp['data']['meta']['secret_token'] ?? '');
+    if ($secret !== '') {
+        // Some panel add-ons return the complete plaintext token here, while
+        // older versions return only the secret portion.
+        $candidates[] = $secret;
+    }
     if ($identifier !== '' && $secret !== '') {
         $candidates[] = $identifier . $secret;
         $candidates[] = $identifier . '.' . $secret;
     }
 
+    $tokens = [];
     foreach ($candidates as $token) {
         $token = trim($token);
-        if ($token !== '') return $token;
+        if ($token !== '' && !in_array($token, $tokens, true)) $tokens[] = $token;
     }
-    return null;
+    return $tokens;
+}
+
+function extract_ptero_client_token_from_response(array $resp): ?string {
+    $tokens = ptero_client_token_candidates_from_response($resp);
+    return $tokens[0] ?? null;
 }
 
 function verify_ptero_client_token(string $token): bool {
@@ -704,8 +741,13 @@ function create_ptero_client_key_with_application_api(int $pteroUserId): ?string
     foreach ($attempts as [$path, $payload]) {
         try {
             $resp = app_ptero((string)$path, 'POST', $payload);
-            $token = extract_ptero_client_token_from_response(is_array($resp) ? $resp : []);
-            if ($token !== null) return $token;
+            foreach (ptero_client_token_candidates_from_response(is_array($resp) ? $resp : []) as $token) {
+                if (ptero_client_account_for_token($token) !== null) return $token;
+            }
+
+            // The request succeeded and may already have created a key. Do not
+            // repeat it with alternate payloads and leave duplicate panel keys.
+            return null;
         } catch (Throwable $e) {
         }
     }
@@ -825,6 +867,31 @@ function provision_ptero_client_key_for_new_user(int $uid): bool {
     }
 
     return auto_setup_ptero_client_key_for_local_user($user);
+}
+
+function customer_has_product_purchase(int $userId, int $productId): bool {
+    if ($userId <= 0 || $productId <= 0) return false;
+
+    // Count a current service, or an order that has not yet produced a
+    // service. Cancelled orders and terminated/cancelled services can be
+    // purchased again.
+    $q = db()->prepare("SELECT
+        EXISTS(
+            SELECT 1 FROM services s
+            WHERE s.user_id=? AND s.product_id=?
+              AND s.status NOT IN ('terminated','cancelled')
+        ) OR EXISTS(
+            SELECT 1 FROM order_items oi
+            JOIN orders o ON o.id=oi.order_id
+            WHERE o.user_id=? AND oi.product_id=? AND o.status<>'cancelled'
+              AND NOT EXISTS(SELECT 1 FROM services os WHERE os.order_id=o.id)
+        ) OR EXISTS(
+            SELECT 1 FROM service_changes c
+            WHERE c.user_id=? AND c.new_product_id=?
+              AND c.status IN ('pending_payment','paid','applying','failed')
+        )");
+    $q->execute([$userId,$productId,$userId,$productId,$userId,$productId]);
+    return (bool)$q->fetchColumn();
 }
 
 function invoice_for_order(int $orderId): int {
@@ -1058,12 +1125,38 @@ function terminate_service(int $serviceId,int $adminId,string $confirmation): vo
 
 // Stage 9 security helpers.
 function security_log_login(?int $uid,string $email,bool $success):void{try{$q=db()->prepare('INSERT INTO login_history(user_id,email,ip_address,user_agent,success) VALUES(?,?,?,?,?)');$q->execute([$uid,$email,$_SERVER['REMOTE_ADDR']??null,substr($_SERVER['HTTP_USER_AGENT']??'',0,500),$success?1:0]);}catch(Throwable $e){}}
-function security_touch_session(int $uid):void{try{$sid=session_id();$q=db()->prepare('INSERT INTO user_sessions(session_id,user_id,ip_address,user_agent,last_seen_at) VALUES(?,?,?,?,NOW()) ON DUPLICATE KEY UPDATE user_id=VALUES(user_id),ip_address=VALUES(ip_address),user_agent=VALUES(user_agent),last_seen_at=NOW()');$q->execute([$sid,$uid,$_SERVER['REMOTE_ADDR']??null,substr($_SERVER['HTTP_USER_AGENT']??'',0,500)]);}catch(Throwable $e){}}
+function security_touch_session(int $uid):void{try{$sid=session_id();$registryUid=!empty($_SESSION['admin_return_uid'])?(int)$_SESSION['admin_return_uid']:$uid;$q=db()->prepare('INSERT INTO user_sessions(session_id,user_id,ip_address,user_agent,last_seen_at) VALUES(?,?,?,?,NOW()) ON DUPLICATE KEY UPDATE user_id=VALUES(user_id),ip_address=VALUES(ip_address),user_agent=VALUES(user_agent),last_seen_at=NOW()');$q->execute([$sid,$registryUid,$_SERVER['REMOTE_ADDR']??null,substr($_SERVER['HTTP_USER_AGENT']??'',0,500)]);}catch(Throwable $e){}}
 function security_logout_session():void{try{db()->prepare('DELETE FROM user_sessions WHERE session_id=?')->execute([session_id()]);}catch(Throwable $e){}}
 function b32encode(string $data):string{$abc='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';$bits='';foreach(str_split($data) as $c)$bits.=str_pad(decbin(ord($c)),8,'0',STR_PAD_LEFT);$out='';foreach(str_split($bits,5) as $b){$b=str_pad($b,5,'0');$out.=$abc[bindec($b)];}return $out;}
 function b32decode(string $s):string{$abc='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';$bits='';foreach(str_split(strtoupper(preg_replace('/[^A-Z2-7]/','',$s))) as $c){$p=strpos($abc,$c);if($p===false)continue;$bits.=str_pad(decbin($p),5,'0',STR_PAD_LEFT);} $out='';foreach(str_split($bits,8) as $b)if(strlen($b)===8)$out.=chr(bindec($b));return $out;}
 function totp_code(string $secret,?int $time=null):string{$key=b32decode($secret);$counter=intdiv($time??time(),30);$bin=pack('N2',0,$counter);$hash=hash_hmac('sha1',$bin,$key,true);$o=ord($hash[19])&15;$n=((ord($hash[$o])&127)<<24)|((ord($hash[$o+1])&255)<<16)|((ord($hash[$o+2])&255)<<8)|(ord($hash[$o+3])&255);return str_pad((string)($n%1000000),6,'0',STR_PAD_LEFT);}
-function totp_verify(string $secret,string $code):bool{$code=preg_replace('/\D/','',$code);if(strlen($code)!==6)return false;for($i=-1;$i<=1;$i++)if(hash_equals(totp_code($secret,time()+$i*30),$code))return true;return false;}
+function totp_matching_counter(string $secret,string $code,int $window=1):?int{$code=preg_replace('/\D/','',$code);if($secret===''||strlen($code)!==6)return null;$current=intdiv(time(),30);for($i=-$window;$i<=$window;$i++){if(hash_equals(totp_code($secret,($current+$i)*30),$code))return $current+$i;}return null;}
+function totp_verify(string $secret,string $code):bool{return totp_matching_counter($secret,$code)!==null;}
+function totp_verify_and_consume(int $uid,string $secret,string $code):bool{$counter=totp_matching_counter($secret,$code);if($counter===null)return false;try{$q=db()->prepare('UPDATE users SET two_factor_last_counter=? WHERE id=? AND (two_factor_last_counter IS NULL OR two_factor_last_counter<?)');$q->execute([$counter,$uid,$counter]);return $q->rowCount()===1;}catch(Throwable $e){return false;}}
+
+function security_log_event(?int $uid,string $event,bool $success=true,string $details=''):void{try{$q=db()->prepare('INSERT INTO account_security_events(user_id,event_type,success,details,ip_address,user_agent) VALUES(?,?,?,?,?,?)');$q->execute([$uid,substr($event,0,80),$success?1:0,substr($details,0,500)?:null,$_SERVER['REMOTE_ADDR']??null,substr((string)($_SERVER['HTTP_USER_AGENT']??''),0,500)]);}catch(Throwable $e){}}
+function security_login_rate_limited(string $email):bool{try{$ip=$_SERVER['REMOTE_ADDR']??null;$q=db()->prepare("SELECT COUNT(*) FROM login_history failed WHERE failed.success=0 AND failed.email=? AND failed.ip_address <=> ? AND failed.created_at>=DATE_SUB(NOW(),INTERVAL 15 MINUTE) AND NOT EXISTS(SELECT 1 FROM login_history successful WHERE successful.success=1 AND successful.email=failed.email AND successful.ip_address <=> failed.ip_address AND successful.created_at>failed.created_at)");$q->execute([strtolower(trim($email)),$ip]);return(int)$q->fetchColumn()>=5;}catch(Throwable $e){return false;}}
+function security_two_factor_rate_limited(int $uid):bool{try{$q=db()->prepare("SELECT COUNT(*) FROM account_security_events failed WHERE failed.user_id=? AND failed.event_type='two_factor_failed' AND failed.success=0 AND failed.ip_address <=> ? AND failed.created_at>=DATE_SUB(NOW(),INTERVAL 15 MINUTE) AND NOT EXISTS(SELECT 1 FROM account_security_events verified WHERE verified.user_id=failed.user_id AND verified.success=1 AND verified.event_type IN('two_factor_verified','recovery_code_used') AND verified.ip_address <=> failed.ip_address AND verified.created_at>failed.created_at)");$q->execute([$uid,$_SERVER['REMOTE_ADDR']??null]);return(int)$q->fetchColumn()>=10;}catch(Throwable $e){return false;}}
+function security_recovery_normalize(string $code):string{return strtoupper((string)preg_replace('/[^A-Z0-9]/','',trim($code)));}
+function security_recovery_hash(string $code):string{$key=hash('sha256','foxnetwork-recovery|'.(string)cfg('db.pass'),true);return hash_hmac('sha256',security_recovery_normalize($code),$key);}
+function security_recovery_generate(int $count=10):array{$plain=[];$hashes=[];for($i=0;$i<$count;$i++){$raw=strtoupper(bin2hex(random_bytes(5)));$code=substr($raw,0,5).'-'.substr($raw,5);$plain[]=$code;$hashes[]=security_recovery_hash($code);}return[$plain,'v2:'.json_encode(['hashes'=>$hashes],JSON_UNESCAPED_SLASHES)];}
+function security_recovery_hashes(?string $stored):?array{if(!$stored||!str_starts_with($stored,'v2:'))return null;$data=json_decode(substr($stored,3),true);if(!is_array($data)||!is_array($data['hashes']??null))return[];return array_values(array_filter($data['hashes'],fn($hash)=>is_string($hash)&&preg_match('/^[a-f0-9]{64}$/',$hash)));}
+function security_recovery_legacy_codes(?string $stored):array{if(!$stored||str_starts_with($stored,'v2:'))return[];$codes=json_decode((string)(dec($stored)??'[]'),true);return is_array($codes)?array_values(array_filter($codes,'is_string')):[];}
+function security_recovery_count(?string $stored):int{$hashes=security_recovery_hashes($stored);return $hashes!==null?count($hashes):count(security_recovery_legacy_codes($stored));}
+function security_recovery_upgrade(int $uid,?string $stored):?string{if(!$stored||str_starts_with($stored,'v2:'))return $stored;$codes=security_recovery_legacy_codes($stored);if(!$codes)return $stored;$next='v2:'.json_encode(['hashes'=>array_map('security_recovery_hash',$codes)],JSON_UNESCAPED_SLASHES);try{$q=db()->prepare('UPDATE users SET two_factor_recovery_codes=? WHERE id=? AND two_factor_recovery_codes=?');$q->execute([$next,$uid,$stored]);return $q->rowCount()===1?$next:$stored;}catch(Throwable $e){return $stored;}}
+function security_recovery_consume(int $uid,?string $stored,string $code):bool{$normalized=security_recovery_normalize($code);if($normalized==='')return false;$hashes=security_recovery_hashes($stored);if($hashes!==null){$needle=security_recovery_hash($normalized);$idx=false;foreach($hashes as $i=>$hash)if(hash_equals($hash,$needle)){$idx=$i;break;}if($idx===false)return false;unset($hashes[$idx]);$next='v2:'.json_encode(['hashes'=>array_values($hashes)],JSON_UNESCAPED_SLASHES);}else{$codes=security_recovery_legacy_codes($stored);$idx=false;foreach($codes as $i=>$candidate)if(hash_equals(security_recovery_normalize($candidate),$normalized)){$idx=$i;break;}if($idx===false)return false;unset($codes[$idx]);$next='v2:'.json_encode(['hashes'=>array_map('security_recovery_hash',array_values($codes))],JSON_UNESCAPED_SLASHES);}try{$q=db()->prepare('UPDATE users SET two_factor_recovery_codes=? WHERE id=? AND two_factor_recovery_codes=?');$q->execute([$next,$uid,$stored]);return $q->rowCount()===1;}catch(Throwable $e){return false;}}
+
+function security_clear_two_factor_challenge(bool $clearDelivery=true):void{unset($_SESSION['2fa_challenge'],$_SESSION['2fa_pending_uid'],$_SESSION['2fa_pending_email'],$_SESSION['2fa_message_sent_at']);if($clearDelivery)unset($_SESSION['sms_2fa']);}
+function security_begin_two_factor_challenge(array $u):void{session_regenerate_id(true);security_clear_two_factor_challenge();$now=time();$_SESSION['2fa_challenge']=['uid'=>(int)$u['id'],'email_hash'=>hash('sha256',strtolower((string)$u['email'])),'issued_at'=>$now,'expires_at'=>$now+600,'attempts'=>0,'ua_hash'=>hash('sha256',(string)($_SERVER['HTTP_USER_AGENT']??''))];}
+function security_two_factor_challenge():?array{$challenge=$_SESSION['2fa_challenge']??null;if(!is_array($challenge)||(int)($challenge['uid']??0)<1||(int)($challenge['expires_at']??0)<time()||!hash_equals((string)($challenge['ua_hash']??''),hash('sha256',(string)($_SERVER['HTTP_USER_AGENT']??'')))){security_clear_two_factor_challenge();return null;}return $challenge;}
+function security_two_factor_attempt_allowed():bool{$challenge=security_two_factor_challenge();if(!$challenge)return false;$attempts=(int)($challenge['attempts']??0)+1;$_SESSION['2fa_challenge']['attempts']=$attempts;return $attempts<=5;}
+
+function security_trusted_cookie_name():string{return 'fox_trusted_device';}
+function security_cookie_secure():bool{return str_starts_with(strtolower((string)cfg('app_url')),'https://')||(!empty($_SERVER['HTTPS'])&&in_array((string)$_SERVER['HTTPS'],['on','1'],true))||strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO']??''))==='https';}
+function security_forget_trusted_cookie():void{setcookie(security_trusted_cookie_name(),'', ['expires'=>time()-3600,'path'=>'/','secure'=>security_cookie_secure(),'httponly'=>true,'samesite'=>'Lax']);unset($_COOKIE[security_trusted_cookie_name()]);}
+function security_create_trusted_device(int $uid):void{$selector=bin2hex(random_bytes(16));$validator=bin2hex(random_bytes(32));$expires=time()+2592000;try{$q=db()->prepare('INSERT INTO trusted_devices(user_id,selector,validator_hash,ip_address,user_agent,last_used_at,expires_at) VALUES(?,?,?,?,?,NOW(),FROM_UNIXTIME(?))');$q->execute([$uid,$selector,hash('sha256',$validator),$_SERVER['REMOTE_ADDR']??null,substr((string)($_SERVER['HTTP_USER_AGENT']??''),0,500),$expires]);setcookie(security_trusted_cookie_name(),$selector.'.'.$validator,['expires'=>$expires,'path'=>'/','secure'=>security_cookie_secure(),'httponly'=>true,'samesite'=>'Lax']);security_log_event($uid,'trusted_device_added',true,'Browser trusted for 30 days.');}catch(Throwable $e){security_forget_trusted_cookie();}}
+function security_trusted_device_valid(int $uid):bool{$raw=(string)($_COOKIE[security_trusted_cookie_name()]??'');if(!preg_match('/^([a-f0-9]{32})\.([a-f0-9]{64})$/',$raw,$m))return false;try{$q=db()->prepare('SELECT * FROM trusted_devices WHERE user_id=? AND selector=? AND expires_at>NOW() LIMIT 1');$q->execute([$uid,$m[1]]);$device=$q->fetch();if(!$device||!hash_equals((string)$device['validator_hash'],hash('sha256',$m[2]))){if($device)db()->prepare('DELETE FROM trusted_devices WHERE id=?')->execute([$device['id']]);security_forget_trusted_cookie();return false;}db()->prepare('UPDATE trusted_devices SET last_used_at=NOW(),ip_address=? WHERE id=?')->execute([$_SERVER['REMOTE_ADDR']??null,$device['id']]);return true;}catch(Throwable $e){return false;}}
+function security_revoke_trusted_devices(int $uid):void{$clearCurrent=false;$raw=(string)($_COOKIE[security_trusted_cookie_name()]??'');try{if(preg_match('/^([a-f0-9]{32})\.[a-f0-9]{64}$/',$raw,$m)){$q=db()->prepare('SELECT 1 FROM trusted_devices WHERE user_id=? AND selector=? LIMIT 1');$q->execute([$uid,$m[1]]);$clearCurrent=(bool)$q->fetchColumn();}db()->prepare('DELETE FROM trusted_devices WHERE user_id=?')->execute([$uid]);}catch(Throwable $e){}if($clearCurrent)security_forget_trusted_cookie();}
 
 /* Stage 10: service upgrades and add-ons */
 function service_effective_limits(array $s): array {
@@ -1098,6 +1191,9 @@ function create_upgrade_invoice(int $serviceId,int $newProductId,array $extras=[
     $addon=(float)($extras['addon_monthly']??0);$newTotal=$new+$addon;$due=max(0,$newTotal-$old);
     $num='INV-'.date('ymd').'-'.strtoupper(bin2hex(random_bytes(3)));$dueAt=date('Y-m-d H:i:s',strtotime('+7 days'));
     db()->beginTransaction();try{
+      $productLock=db()->prepare('SELECT one_per_customer FROM store_products WHERE id=? FOR UPDATE');$productLock->execute([$newProductId]);$lockedProduct=$productLock->fetch();
+      if(!$lockedProduct)throw new RuntimeException('Selected product is unavailable.');
+      if((int)$s['product_id']!==$newProductId&&!empty($lockedProduct['one_per_customer'])&&customer_has_product_purchase((int)$s['user_id'],$newProductId))throw new RuntimeException('Only one '.$np['name'].' is allowed per customer.');
       db()->prepare("INSERT INTO invoices(user_id,service_id,invoice_number,status,subtotal,total,currency,due_at) VALUES(?,?,?,'unpaid',?,?,?,?)")->execute([$s['user_id'],$serviceId,$num,$due,$due,$s['currency'],$dueAt]);$iid=(int)db()->lastInsertId();
       db()->prepare('INSERT INTO invoice_items(invoice_id,description,amount,quantity) VALUES(?,?,?,1)')->execute([$iid,'Service upgrade to '.$np['name'],$due]);
       $oldCfg=json_encode(service_effective_limits($s));$newCfg=json_encode(['ram_mb'=>(int)$np['ram_mb'],'disk_mb'=>(int)$np['disk_mb'],'cpu_percent'=>(int)$np['cpu_percent'],'backups'=>(int)$np['backups'],'database_limit'=>(int)$np['database_limit'],'allocation_limit'=>(int)$np['allocation_limit'],'addons'=>$extras]);

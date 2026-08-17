@@ -8,6 +8,12 @@ if (empty($_SESSION['admin_return_uid'])) {
     exit;
 }
 
+if(!user()){
+    unset($_SESSION['admin_return_uid'],$_SESSION['admin_return_customer_id']);
+    header('Location: /login.php');
+    exit;
+}
+
 $adminId = (int)$_SESSION['admin_return_uid'];
 $customerId = max(0, (int)($_SESSION['admin_return_customer_id'] ?? 0));
 
@@ -23,8 +29,10 @@ if (!$adminExists) {
     exit;
 }
 
+security_logout_session();
 session_regenerate_id(true);
 $_SESSION['uid'] = $adminId;
+security_touch_session($adminId);
 $destination = $customerId > 0 ? '/admin/customer.php?id='.$customerId : '/admin/';
 header('Location: '.$destination);
 exit;
