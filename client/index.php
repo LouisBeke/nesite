@@ -177,6 +177,7 @@ $latestTicketLabel=$latestTicketStatus!==''?($ticketStatusLabels[$latestTicketSt
                 </div>
                 <div class="hero-actions">
                     <a class="client-btn client-btn-ghost" href="/support.php"><i class="far fa-comment-dots" aria-hidden="true"></i> Get support</a>
+                    <a class="client-btn client-btn-ghost" href="/service-request.php"><i class="fas fa-file-signature" aria-hidden="true"></i> Request a service</a>
                     <a class="client-btn client-btn-primary" href="/store.php"><i class="fas fa-plus" aria-hidden="true"></i> Add a service</a>
                 </div>
                 <div class="hero-orb" aria-hidden="true"></div>

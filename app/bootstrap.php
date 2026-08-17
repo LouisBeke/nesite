@@ -63,6 +63,33 @@ function is_suspicious_request_path(?string $path): bool {
     return preg_match('#(^|/)(\.env|\.git|\.htpasswd|\.svn|\.gitignore|\.gitmodules|config\.php|wp-config|phpinfo)(/|$)#', $decoded) === 1;
 }
 
+function fox_set_security_headers(): void {
+    if (PHP_SAPI === 'cli') return;
+
+    $isHttps = (!empty($_SERVER['HTTPS']) && in_array((string)$_SERVER['HTTPS'], ['on', '1'], true))
+        || strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
+    $scheme = $isHttps ? 'https' : 'http';
+    $host = strtolower((string)($_SERVER['HTTP_HOST'] ?? 'localhost'));
+    $host = trim((string)strtok($host, ':'));
+
+    header('X-Content-Type-Options: nosniff', true);
+    header('X-Frame-Options: SAMEORIGIN', true);
+    header('X-XSS-Protection: 0', true);
+    header('Referrer-Policy: strict-origin-when-cross-origin', true);
+    header('Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=(), interest-cohort=()', true);
+    header('Cross-Origin-Opener-Policy: same-origin', true);
+    header('Cross-Origin-Resource-Policy: same-origin', true);
+    header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: data:; style-src 'self' 'unsafe-inline' https: data:; img-src 'self' data: https:; font-src 'self' data: https:; connect-src 'self' https:; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self' https:; upgrade-insecure-requests", false);
+
+    if ($isHttps && $host !== '') {
+        header('Strict-Transport-Security: max-age=31536000; includeSubDomains', true);
+    }
+
+    if ($scheme === 'https') {
+        header("Content-Security-Policy-Report-Only: default-src 'self'; object-src 'none'; frame-ancestors 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: data:; style-src 'self' 'unsafe-inline' https: data:; img-src 'self' data: https:; connect-src 'self' https:; font-src 'self' data: https:; form-action 'self' https:; frame-src 'self' https:; worker-src 'self' blob:; report-uri /api/report.php", false);
+    }
+}
+
 if (is_suspicious_request_path($_SERVER['REQUEST_URI'] ?? '')) {
     http_response_code(404);
     header('Content-Type: text/plain; charset=utf-8');
@@ -72,6 +99,7 @@ if (is_suspicious_request_path($_SERVER['REQUEST_URI'] ?? '')) {
 $configFile=__DIR__.'/../config.php';
 if(!file_exists($configFile)){http_response_code(500);die('Copy config.example.php to config.php and configure it.');}
 $config=require $configFile;
+fox_set_security_headers();
 function cfg(?string $key=null){
     global $config;
     if($key===null)return $config;

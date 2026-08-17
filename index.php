@@ -10,6 +10,14 @@ if (!is_file($homepage)) {
 }
 
 header('Content-Type: text/html; charset=utf-8');
+header('X-Content-Type-Options: nosniff', true);
+header('X-Frame-Options: SAMEORIGIN', true);
+header('X-XSS-Protection: 0', true);
+header('Referrer-Policy: strict-origin-when-cross-origin', true);
+header('Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=(), interest-cohort=()', true);
+header('Cross-Origin-Opener-Policy: same-origin', true);
+header('Cross-Origin-Resource-Policy: same-origin', true);
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: data:; style-src 'self' 'unsafe-inline' https: data:; img-src 'self' data: https:; font-src 'self' data: https:; connect-src 'self' https:; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self' https:; upgrade-insecure-requests", false);
 $lastModified = filemtime($homepage) ?: time();
 $etag = '"' . md5_file($homepage) . '"';
 

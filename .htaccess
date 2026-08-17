@@ -44,6 +44,16 @@ DirectoryIndex index.html
 </IfModule>
 
 <IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-XSS-Protection "0"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(), usb=(), interest-cohort=()"
+    Header always set Cross-Origin-Opener-Policy "same-origin"
+    Header always set Cross-Origin-Resource-Policy "same-origin"
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: data:; style-src 'self' 'unsafe-inline' https: data:; img-src 'self' data: https:; font-src 'self' data: https:; connect-src 'self' https:; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self' https:; upgrade-insecure-requests"
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains" env=HTTPS
+
     # Account, checkout, admin, and API screens are functional pages, not search results.
     <FilesMatch "^(?:login|logout|register|verify-email|forgot-password|reset-password|two-factor|billing|invoice|order|orders|pay|payment-return|settings|server|store|support|setup|upgrades|cron|mollie-webhook|pterodactyl-webhook|email-track|email-click|return-admin)\.php$">
         Header always set X-Robots-Tag "noindex, nofollow, noarchive"
