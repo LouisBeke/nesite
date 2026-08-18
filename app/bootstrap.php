@@ -259,10 +259,9 @@ function require_user():array{$u=user();if(!$u){header('Location: '.site_url('/l
 function enc(string $plain):string{$key=hash('sha256',cfg('db.pass'),true);$iv=random_bytes(12);$tag='';$ct=openssl_encrypt($plain,'aes-256-gcm',$key,OPENSSL_RAW_DATA,$iv,$tag);return base64_encode($iv.$tag.$ct);}
 function dec(?string $blob):?string{if(!$blob)return null;$raw=base64_decode($blob,true);if($raw===false||strlen($raw)<28)return null;$key=hash('sha256',cfg('db.pass'),true);$iv=substr($raw,0,12);$tag=substr($raw,12,16);$pt=openssl_decrypt(substr($raw,28),'aes-256-gcm',$key,OPENSSL_RAW_DATA,$iv,$tag);return $pt===false?null:$pt;}
 enforce_https_redirect();
-function ptero_cache_dir(): string { $dir=rtrim(sys_get_temp_dir(),'\\/').DIRECTORY_SEPARATOR.'foxnetwork-ptero-cache'; if(!is_dir($dir)) @mkdir($dir,0777,true); return $dir; }
 function ptero_cache_key(string $scope,string $token,string $path,string $method,?array $body): string { return sha1($scope.'|'.$token.'|'.$method.'|'.$path.'|'.($body===null?'':json_encode($body,JSON_UNESCAPED_SLASHES))); }
-function ptero_cache_get(string $key,int $ttl) { $file=ptero_cache_dir().DIRECTORY_SEPARATOR.$key.'.json'; if(!is_file($file)) return null; $raw=@file_get_contents($file); if($raw===false||$raw==='') return null; $data=json_decode($raw,true); if(!is_array($data)||($data['expires_at']??0)<time()) return null; return $data['value'] ?? null; }
-function ptero_cache_set(string $key,$value,int $ttl): void { $file=ptero_cache_dir().DIRECTORY_SEPARATOR.$key.'.json'; @file_put_contents($file,json_encode(['expires_at'=>time()+$ttl,'value'=>$value],JSON_UNESCAPED_SLASHES),LOCK_EX); }
+function ptero_cache_get(string $key,int $ttl) { if(!function_exists('apcu_fetch') || !filter_var(ini_get('apc.enabled'),FILTER_VALIDATE_BOOLEAN)) return null; $ok=false;$value=apcu_fetch('foxnetwork-ptero-'.$key,$ok);return $ok?$value:null; }
+function ptero_cache_set(string $key,$value,int $ttl): void { if(function_exists('apcu_store') && filter_var(ini_get('apc.enabled'),FILTER_VALIDATE_BOOLEAN)) apcu_store('foxnetwork-ptero-'.$key,$value,$ttl); }
 function ptero(string $path,string $method='GET',?array $body=null){
     $u=user();
     $token=ptero_client_token_for_user(is_array($u)?$u:[]);

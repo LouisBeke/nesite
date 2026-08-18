@@ -616,7 +616,8 @@ if ($hasClientKey) {
                   <div class="sftp-copy"><input id="sftpcommand" readonly value=""><button class="btn" type="button" data-copy="sftpcommand">Copy</button></div>
                 </div>
               </div>
-              <p class="muted small">SFTP authentication is separate from your FoxNetwork login. Contact support if you need access credentials.</p>
+              <form class="manage-form" id="sftppasswordform"><label for="sftppassword">SFTP password<input id="sftppassword" type="password" autocomplete="current-password" required placeholder="Your current FoxNetwork password"></label><button class="btn primary" type="submit">Set SFTP password</button></form>
+              <p class="muted small">Set the SFTP password to your current FoxNetwork password. It is never displayed or stored by this page.</p>
               <div class="sftp-actions"><button class="btn" type="button" id="reloadsftp">Reload details</button><a class="btn primary" id="opensftp" href="#">Open SFTP application</a></div>
             </div>
           </div>
@@ -1342,6 +1343,19 @@ if ($hasClientKey) {
       }
     }
     q('#reloadsftp').onclick = loadSftp;
+    q('#sftppasswordform').onsubmit = async event => {
+      event.preventDefault();
+      const password = q('#sftppassword').value;
+      try {
+        await api('sftp-password', { method: 'POST', body: { password } });
+        q('#sftppassword').value = '';
+        q('#sftperror').textContent = 'SFTP password updated.';
+        q('#sftperror').style.display = 'block';
+      } catch (e) {
+        q('#sftperror').textContent = e.message || String(e);
+        q('#sftperror').style.display = 'block';
+      }
+    };
 
     async function loadDB() {
       try {

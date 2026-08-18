@@ -95,7 +95,7 @@ try {
 
         case 'files': {
             $path = (string)($_GET['path'] ?? '/');
-            $r = ptero('/servers/' . $id . '/files/list?directory=' . rawurlencode($path) . '&_=' . ptero_cache_buster());
+            $r = ptero('/servers/' . $id . '/files/list?directory=' . rawurlencode($path));
             outm(true, $r['data'] ?? []);
         }
 
@@ -124,6 +124,34 @@ try {
                 'uri' => 'sftp://' . rawurlencode($username) . '@' . $uriHost . ':' . $port,
                 'command' => 'sftp -P ' . $port . ' ' . $username . '@' . $host,
             ]);
+        }
+
+        case 'sftp-password': {
+            $password = (string)($body['password'] ?? '');
+            if ($password === '' || !password_verify($password, (string)($u['password_hash'] ?? ''))) {
+                throw new RuntimeException('Enter your current FoxNetwork password.');
+            }
+            $pteroUserId = (int)($u['ptero_user_id'] ?? 0);
+            if ($pteroUserId <= 0) $pteroUserId = (int)(link_existing_ptero_user_for_local_user($u) ?? 0);
+            if ($pteroUserId <= 0) throw new RuntimeException('Your Pterodactyl account is not ready yet.');
+            $pteroUser = app_ptero('/users/' . $pteroUserId);
+            $attributes = $pteroUser['attributes'] ?? ($pteroUser['data']['attributes'] ?? []);
+            $email = trim((string)($attributes['email'] ?? ''));
+            $username = trim((string)($attributes['username'] ?? ''));
+            $firstName = trim((string)($attributes['first_name'] ?? ''));
+            $lastName = trim((string)($attributes['last_name'] ?? ''));
+            if ($email === '' || $username === '' || $firstName === '' || $lastName === '') {
+                throw new RuntimeException('Your Pterodactyl account profile is incomplete.');
+            }
+            app_ptero('/users/' . $pteroUserId, 'PATCH', [
+                'email' => $email,
+                'username' => $username,
+                'first_name' => $firstName,
+                'last_name' => $lastName,
+                'password' => $password,
+            ]);
+            log_service_activity_by_identifier($id, 'sftp_password_updated', 'Customer updated their SFTP password.');
+            outm(true, []);
         }
 
         case 'file-content': {
