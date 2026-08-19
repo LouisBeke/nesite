@@ -65,6 +65,9 @@ try {
             error_log('FoxNetwork contact Zoho CRM customer sync failed: '.$crmError->getMessage());
         }
 
+        try { opinly_track('generate_lead', ['source' => 'contact_form', 'subject' => $subject], ['externalEventId' => 'lead_ticket_'.$ticketId, 'email' => $email, 'anonId' => opinly_anon_id()]); }
+        catch (Throwable $trackError) { error_log('Opinly generate_lead tracking failed: '.$trackError->getMessage()); }
+
         contact_out(true, 'Ticket created. Our team will reply shortly.', ['mode' => 'ticket', 'ticket_id' => $ticketId]);
     }
 
@@ -81,6 +84,10 @@ try {
         error_log('FoxNetwork contact Zoho CRM lead sync failed: '.$crmError->getMessage());
     }
     send_custom_email(null, $supportTo, $emailSubject, $body);
+
+    try { opinly_track('generate_lead', ['source' => 'contact_form', 'subject' => $subject], ['externalEventId' => 'lead_'.sha1($email.'|'.$subject.'|'.date('Y-m-d')), 'email' => $email, 'anonId' => opinly_anon_id()]); }
+    catch (Throwable $trackError) { error_log('Opinly generate_lead tracking failed: '.$trackError->getMessage()); }
+
     contact_out(true, 'Thanks, your message has been sent by email.', ['mode' => 'email']);
 } catch (Throwable $e) {
     http_response_code(500);

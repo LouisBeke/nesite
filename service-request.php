@@ -37,6 +37,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         zoho_crm_try_sync_ticket($ticketId);
         ticket_notify_staff($ticketId, 'new');
 
+        try { opinly_track('generate_lead', ['source' => 'service_request', 'service_type' => $serviceType], ['externalEventId' => 'lead_ticket_'.$ticketId, 'email' => (string)$u['email'], 'anonId' => opinly_anon_id()]); }
+        catch (Throwable $e) { error_log('Opinly generate_lead tracking failed for ticket '.$ticketId.': '.$e->getMessage()); }
+
         header('Location: /support.php?id=' . $ticketId);
         exit;
     } catch (Throwable $e) {
@@ -56,6 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <style>
         .request-page-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:18px}.request-panel,.request-info{background:linear-gradient(145deg,#14181e,#0d1015);border:1px solid var(--client-line);border-radius:18px;padding:24px}.request-card-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:15px}.request-card-head h2{margin:0;font-size:22px}.request-card-head small{color:#7f8997}.request-form{display:grid;gap:14px}.request-form label{display:grid;gap:7px;color:#dfe6ee;font-size:12px;font-weight:700}.request-form input,.request-form select,.request-form textarea{width:100%;box-sizing:border-box;border:1px solid rgba(255,255,255,.08);background:#0b0e12;border-radius:10px;padding:12px 14px;color:#edf4ff}.request-form textarea{min-height:160px;resize:vertical}.request-form .inline-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.request-badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.request-badges span{padding:7px 10px;border-radius:999px;border:1px solid rgba(255,116,23,.3);background:rgba(255,116,23,.08);color:#ffb37d;font-size:11px;font-weight:700}.request-details{display:grid;gap:12px}.request-details p{margin:0;color:#95a1af;line-height:1.65}.request-inline{display:flex;justify-content:space-between;align-items:center;gap:10px}.request-inline strong{font-size:20px}.request-cta{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:12px;padding:12px 16px;background:linear-gradient(135deg,#ff7417,#ff9a4d);color:#111317;font-weight:800;cursor:pointer;text-decoration:none}.request-note{padding:10px 12px;border-radius:10px;background:rgba(53,207,131,.09);color:#b5f5d0;border:1px solid rgba(53,207,131,.25)}@media(max-width:900px){.request-page-grid{grid-template-columns:1fr}.request-form .inline-grid{grid-template-columns:1fr}}
     </style>
+<?= opinly_head() ?>
 </head>
 <body class="client-body">
 <div class="client-shell">

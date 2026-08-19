@@ -104,6 +104,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         try { email_verification_send($u); }
         catch (Throwable $e) { error_log('FoxNetwork verification email failed for user '.$uid.': '.$e->getMessage()); }
+        try { opinly_track('sign_up', ['method' => 'password'], ['externalEventId' => 'signup_'.$uid, 'email' => $email, 'anonId' => opinly_anon_id()]); }
+        catch (Throwable $e) { error_log('Opinly sign_up tracking failed for user '.$uid.': '.$e->getMessage()); }
         $_SESSION['email_verification_pending_email']=$email;
         header('Location:/verify-email.php?pending=1');
         exit;
@@ -119,6 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width">
     <title>FoxNetwork Register</title>
     <link rel="stylesheet" href="/assets/portal.css?v=<?=rawurlencode((string)@filemtime(__DIR__.'/assets/portal.css'))?>">
+<?= opinly_head() ?>
 </head>
 <body>
 <div class="auth">

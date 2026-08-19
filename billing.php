@@ -23,6 +23,7 @@ foreach ($services as $s) if (!empty($s['next_due_at']) && (!$next || strtotime(
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Billing | FoxNetwork</title>
     <link rel="stylesheet" href="/assets/portal.css?v=<?= rawurlencode((string)@filemtime(__DIR__ . '/assets/portal.css')) ?>">
+<?= opinly_head() ?>
 </head>
 
 <body class="portal-page">

@@ -671,7 +671,7 @@ function fox_v15k_migrate(): void {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     if (fox_table_exists($pdo, 'app_settings')) {
-        $pdo->prepare("INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES('automation_batch_size','20'),('automation_worker_timeout_seconds','300')")->execute();
+        $pdo->prepare("INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES('automation_batch_size','20'),('automation_worker_timeout_seconds','300'),('automation_inline_enabled','1')")->execute();
     }
 
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15k-automation-jobs']);
@@ -920,4 +920,19 @@ function fox_v26_product_customer_limit_migrate(): void {
             WHERE LOWER(CONCAT(p.slug,' ',p.name,' ',c.name)) LIKE '%discord%'");
     }
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v26-product-customer-limit']);
+}
+
+function fox_v27_moneybird_sync_migrate(): void {
+    static $ran=false;if($ran)return;$ran=true;$pdo=db();
+    if(fox_migration_applied($pdo,'v27-moneybird-sync'))return;
+    if(fox_table_exists($pdo,'invoices')){
+        if(!fox_column_exists($pdo,'invoices','moneybird_invoice_id'))$pdo->exec('ALTER TABLE invoices ADD COLUMN `moneybird_invoice_id` VARCHAR(64) NULL');
+        if(!fox_column_exists($pdo,'invoices','moneybird_synced_at'))$pdo->exec('ALTER TABLE invoices ADD COLUMN `moneybird_synced_at` DATETIME NULL');
+        if(!fox_column_exists($pdo,'invoices','moneybird_error'))$pdo->exec('ALTER TABLE invoices ADD COLUMN `moneybird_error` VARCHAR(255) NULL');
+        try{$pdo->exec('CREATE INDEX idx_invoices_moneybird ON invoices(moneybird_invoice_id)');}catch(Throwable $e){}
+    }
+    if(fox_table_exists($pdo,'users')&&!fox_column_exists($pdo,'users','moneybird_contact_id')){
+        $pdo->exec('ALTER TABLE users ADD COLUMN `moneybird_contact_id` VARCHAR(64) NULL');
+    }
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v27-moneybird-sync']);
 }

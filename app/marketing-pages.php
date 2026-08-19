@@ -137,6 +137,7 @@ function render_marketing_page(string $key): void
  <link rel="icon" href="/images/logo.png"><link rel="stylesheet" href="/css/fontawesome-all.min.css"><link rel="stylesheet" href="/assets/marketing.css?v=20260811a">
  <script type="application/ld+json"><?=json_encode($schema, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)?></script>
  <?php if($faqs):?><script type="application/ld+json"><?=json_encode(['@context'=>'https://schema.org','@type'=>'FAQPage','mainEntity'=>array_map(fn($faq)=>['@type'=>'Question','name'=>$faq[0],'acceptedAnswer'=>['@type'=>'Answer','text'=>$faq[1]]],$faqs)],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)?></script><?php endif?>
+<?= opinly_head() ?>
 </head>
 <body class="marketing-body">
 <nav class="mk-nav" data-nav><div class="mk-wrap mk-nav-inner"><a class="mk-brand" href="/"><img src="/images/logo.png" alt="FoxNetwork"><span>FOX<b>NETWORK</b></span></a><button class="mk-mobile-toggle" type="button" data-nav-toggle aria-label="Open navigation"><i class="fas fa-bars"></i></button><div class="mk-links"><a href="/#hosting">Hosting</a><a href="/game-hosting/minecraft/">Game servers</a><a href="/vps-hosting/">Cloud VPS</a><a href="/discord-bot-hosting/">Free Discord hosting</a><a href="/blog/">Blog</a><a href="/contact.html">Contact</a></div><div class="mk-actions"><a class="mk-button" href="/login.php">Sign in</a><a class="mk-button primary" href="/register.php">Create account</a></div></div></nav>

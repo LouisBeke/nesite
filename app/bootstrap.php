@@ -202,6 +202,7 @@ if($migrationDue)try {
     if (function_exists('fox_v24_inbound_email_migrate')) fox_v24_inbound_email_migrate();
     if (function_exists('fox_v25_two_factor_security_migrate')) fox_v25_two_factor_security_migrate();
     if (function_exists('fox_v26_product_customer_limit_migrate')) fox_v26_product_customer_limit_migrate();
+    if (function_exists('fox_v27_moneybird_sync_migrate')) fox_v27_moneybird_sync_migrate();
     @touch($migrationMarker);
 } catch (Throwable $e) {
     error_log('FoxNetwork migrations skipped: '.$e->getMessage());
@@ -217,6 +218,8 @@ require_once __DIR__.'/zoho-sso.php';
 require_once __DIR__.'/automation.php';
 require_once __DIR__.'/oxxa.php';
 require_once __DIR__.'/provisioning.php';
+require_once __DIR__.'/opinly.php';
+require_once __DIR__.'/moneybird.php';
 function csrf():string{if(empty($_SESSION['csrf']))$_SESSION['csrf']=bin2hex(random_bytes(32));return $_SESSION['csrf'];}
 function verify_csrf():void{if(!hash_equals($_SESSION['csrf']??'',$_POST['csrf']??'')){http_response_code(419);die('Invalid request token');}}
 function user():?array{
@@ -930,12 +933,15 @@ function invoice_for_order(int $orderId): int {
     db()->prepare("UPDATE orders SET status='awaiting_payment' WHERE id=?")->execute([$orderId]);
     try{$uq=db()->prepare('SELECT * FROM users WHERE id=?');$uq->execute([$o['user_id']]);$cu=$uq->fetch();if($cu)send_template('invoice_created',$cu,['invoice_number'=>$num,'total'=>number_format((float)$o['total'],2),'currency'=>$o['currency'],'due_date'=>date('d M Y',strtotime($due))]);}catch(Throwable $e){}
     zoho_crm_try_sync_order($orderId);
+    moneybird_try_sync_invoice($iid,'created');
     return $iid;
 }
 function mark_invoice_paid(int $invoiceId,string $provider='manual',?string $reference=null): void {
     $newlyPaid=false;$orderId=0;
     db()->beginTransaction();try{$q=db()->prepare('SELECT * FROM invoices WHERE id=? FOR UPDATE');$q->execute([$invoiceId]);$i=$q->fetch();if(!$i)throw new RuntimeException('Invoice not found.');$orderId=(int)($i['order_id']??0);if($i['status']!=='paid'){$newlyPaid=true;if($orderId){$sq=db()->prepare('SELECT p.id,p.stock,oi.quantity FROM order_items oi JOIN store_products p ON p.id=oi.product_id WHERE oi.order_id=? FOR UPDATE');$sq->execute([$orderId]);foreach($sq->fetchAll() as $sp){if($sp['stock']!==null){$need=max(1,(int)$sp['quantity']);if((int)$sp['stock']<$need)throw new RuntimeException('Product is out of stock. Payment cannot be completed automatically.');db()->prepare('UPDATE store_products SET stock=stock-? WHERE id=?')->execute([$need,(int)$sp['id']]);}}}$q=db()->prepare("UPDATE invoices SET status='paid',paid_at=NOW() WHERE id=?");$q->execute([$invoiceId]);$q=db()->prepare("INSERT INTO payments(user_id,invoice_id,provider,provider_reference,amount,currency,status) VALUES(?,?,?,?,?,?,'completed')");$q->execute([$i['user_id'],$invoiceId,$provider,$reference,$i['total'],$i['currency']]);if($orderId)db()->prepare("UPDATE orders SET status='paid' WHERE id=?")->execute([$orderId]);}db()->commit();}catch(Throwable $e){db()->rollBack();throw $e;}
     zoho_crm_try_sync_invoice($invoiceId);
+    if($newlyPaid){try{opinly_report_invoice_purchase($invoiceId);}catch(Throwable $e){error_log('Opinly purchase tracking failed for invoice #'.$invoiceId.': '.$e->getMessage());}}
+    if($newlyPaid)moneybird_try_sync_invoice($invoiceId,'paid');
     if($newlyPaid&&$orderId){
         try{
             if(oxxa_order_is_domain_only($orderId))provisioning_dispatch_order($orderId,['source'=>'invoice_paid','invoice_id'=>$invoiceId,'provider'=>$provider]);

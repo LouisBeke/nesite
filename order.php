@@ -199,6 +199,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
          }
          if ($orderAmount > 0) {
             invoice_for_order($oid);
+            try { opinly_track('begin_checkout', ['value' => round((float)$orderAmount, 2), 'currency' => 'EUR', 'items' => [(string)$p['name']]], ['externalEventId' => 'checkout_'.$num, 'email' => (string)($u['email'] ?? ''), 'anonId' => opinly_anon_id()]); }
+            catch (Throwable $e) { error_log('Opinly begin_checkout tracking failed for order '.$oid.': '.$e->getMessage()); }
             header('Location: /billing.php?created=' . urlencode($num));
             exit;
          }
@@ -229,6 +231,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
    <title>FoxNetwork | Configure Order</title>
    <link rel="stylesheet" href="/css/fontawesome-all.min.css">
    <link rel="stylesheet" href="/assets/portal.css?v=<?=rawurlencode((string)@filemtime(__DIR__.'/assets/portal.css'))?>">
+<?= opinly_head() ?>
 </head>
 
 <body class="portal-page">

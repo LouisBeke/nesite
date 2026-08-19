@@ -27,7 +27,23 @@ function automation_enqueue(string $provider, string $jobType, string $entityTyp
     db()->prepare($sql)->execute([$jobKey, $provider, $jobType, $entityType, $entityId, $encoded]);
     $q = db()->prepare('SELECT id FROM automation_jobs WHERE job_key=? LIMIT 1');
     $q->execute([$jobKey]);
-    return (int)$q->fetchColumn();
+    $jobId = (int)$q->fetchColumn();
+    automation_maybe_run_inline();
+    return $jobId;
+}
+
+function automation_maybe_run_inline(): void {
+    static $running = false;
+    if ($running || PHP_SAPI === 'cli' || setting('automation_inline_enabled', '1') !== '1') return;
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') return;
+    $running = true;
+    try {
+        automation_run_worker(1);
+    } catch (Throwable $e) {
+        error_log('FoxNetwork inline automation worker failed: '.$e->getMessage());
+    } finally {
+        $running = false;
+    }
 }
 
 function automation_claim_job(): ?array {

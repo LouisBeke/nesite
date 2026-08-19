@@ -148,6 +148,7 @@ $latestTicketLabel=$latestTicketStatus!==''?($ticketStatusLabels[$latestTicketSt
     <title>FoxNetwork | Control Center</title>
     <link rel="stylesheet" href="/css/fontawesome-all.min.css">
     <link rel="stylesheet" href="/assets/portal.css?v=<?=rawurlencode((string)@filemtime(__DIR__.'/../assets/portal.css'))?>">
+<?= opinly_head() ?>
 </head>
 <body class="client-body">
 <div class="client-shell">

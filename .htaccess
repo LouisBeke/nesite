@@ -19,6 +19,11 @@ DirectoryIndex index.html
     RewriteRule ^privacy(?:\.php)?$ https://foxnetwork.be/privacy.html [R=301,L]
 
     # Public blog articles use clean, shareable URLs.
+    # Specific blog routes must precede the flat post permalink rule.
+    RewriteRule ^blog/rss\.xml$ blog/rss.php [L]
+    RewriteRule ^blog/category/([a-z0-9-]+)/?$ blog/category.php?slug=$1 [L,QSA]
+    RewriteRule ^blog/authors/?$ blog/author.php [L,QSA]
+    RewriteRule ^blog/authors/([a-z0-9-]+)/?$ blog/author.php?slug=$1 [L,QSA]
     RewriteRule ^blog/([a-z0-9-]+)/?$ blog/post.php?slug=$1 [L,QSA]
 </IfModule>
 

@@ -127,6 +127,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             mark_invoice_paid($iid, 'manual', 'ADMIN');
             $msg = 'Invoice marked paid. Eligible new services are queued for provisioning automatically.';
+        } elseif ($action === 'moneybird_push') {
+            $iid = (int)($_POST['invoice_id'] ?? 0);
+            if ($iid < 1) {
+                throw new RuntimeException('Invoice not found.');
+            }
+            $result = moneybird_push_invoice($iid, ($_POST['force'] ?? '') === '1');
+            if (!$result['ok']) {
+                throw new RuntimeException($result['error'] !== '' ? $result['error'] : 'Moneybird push failed.');
+            }
+            $msg = $result['status'] === 'already_synced'
+                ? 'This invoice is already in Moneybird (' . $result['moneybird_id'] . ').'
+                : 'Invoice sent to Moneybird as sales invoice ' . $result['moneybird_id'] . '.';
+            audit_log('moneybird.push', 'invoice', $iid, 'Portal invoice pushed to Moneybird.');
         } else {
             throw new RuntimeException('Unknown billing action.');
         }
@@ -209,6 +222,7 @@ admin_head($u, 'Billing', 'billing');
                 <th>Total</th>
                 <th>Due</th>
                 <th>Status</th>
+                <th>Moneybird</th>
                 <th>Action</th>
             </tr>
             </thead>
@@ -224,6 +238,28 @@ admin_head($u, 'Billing', 'billing');
                     <td>€<?=number_format((float)$r['total'], 2)?></td>
                     <td><?=e(date('d M Y', strtotime($r['due_at'])))?></td>
                     <td><?=admin_badge($r['status'])?></td>
+                    <td>
+                        <?php
+                        $moneybirdId = trim((string)($r['moneybird_invoice_id'] ?? ''));
+                        $moneybirdPending = str_starts_with($moneybirdId, 'pending:');
+                        $moneybirdError = trim((string)($r['moneybird_error'] ?? ''));
+                        ?>
+                        <?php if ($moneybirdId !== '' && !$moneybirdPending): ?>
+                            <span class="admin-badge status-paid">SYNCED</span>
+                            <small><?=e($moneybirdId)?></small>
+                        <?php else: ?>
+                            <span class="muted small"><?=$moneybirdPending ? 'In progress' : 'Not synced'?></span>
+                            <?php if ($moneybirdError !== ''): ?><small style="color:#ff8590"><?=e($moneybirdError)?></small><?php endif ?>
+                            <?php if (moneybird_enabled() && $r['status'] !== 'cancelled'): ?>
+                                <form method="post" class="inline-form" style="margin-top:6px">
+                                    <input type="hidden" name="csrf" value="<?=e(csrf())?>">
+                                    <input type="hidden" name="invoice_id" value="<?=e($r['id'])?>">
+                                    <input type="hidden" name="action" value="moneybird_push">
+                                    <button class="btn">Send to Moneybird</button>
+                                </form>
+                            <?php endif ?>
+                        <?php endif ?>
+                    </td>
                     <td>
                         <?php if ($r['status'] !== 'paid'): ?>
                             <form method="post" class="inline-form" style="margin-bottom:8px">

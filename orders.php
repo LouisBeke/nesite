@@ -9,6 +9,7 @@ $u = require_user(); ?>
     <title>FoxNetwork | Orders</title>
     <link rel="stylesheet" href="/css/fontawesome-all.min.css">
     <link rel="stylesheet" href="/assets/portal.css?v=<?= rawurlencode((string)@filemtime(__DIR__ . '/assets/portal.css')) ?>">
+<?= opinly_head() ?>
 </head>
 
 <body class="portal-page">

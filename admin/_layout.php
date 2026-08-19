@@ -12,6 +12,7 @@ function admin_icon(string $name): string
         'products' => '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/>',
         'categories' => '<path d="M3 6h6l2 2h10v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M3 10h18"/>',
         'billing' => '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/>',
+        'revenue' => '<path d="M3 17l6-6 4 4 7-7"/><path d="M14 8h6v6"/>',
         'services' => '<rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/><path d="M7 7h.01M7 17h.01"/>',
         'domains' => '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>',
         'email' => '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
@@ -40,6 +41,7 @@ function admin_head(array $u, string $title, string $active = 'dashboard'): void
             'domains' => ['/admin/domains.php', 'Domains'],
             'orders' => ['/admin/orders.php', 'Orders'],
             'billing' => ['/admin/billing.php', 'Billing'],
+            'revenue' => ['/admin/revenue.php', 'Revenue'],
         ],
         'Operations' => [
             'support' => ['/admin/support.php', 'Support'],

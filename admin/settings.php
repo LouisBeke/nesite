@@ -9,6 +9,7 @@ unset($_SESSION['zoho_crm_flash_message'], $_SESSION['zoho_crm_flash_error']);
 
 $keys = [
     'app_name','app_url','pterodactyl_url','mollie_webhook_url','linode_api_url','linode_disk_encryption',
+    'moneybird_enabled','moneybird_administration_id','moneybird_sync_mode','moneybird_send_method','moneybird_tax_rate_id','moneybird_prices_incl_tax',
     'company_name','support_email','ticket_notification_email','billing_email','invoice_prefix','currency','vat_rate','invoice_due_days',
     'renewal_days_before','grace_days','auto_suspend','auto_unsuspend','cron_token',
     'smtp_host','smtp_port','smtp_security','smtp_ehlo_domain','smtp_username','smtp_from_email','smtp_from_name','mail_provider',
@@ -20,7 +21,7 @@ $keys = [
     'provisioning_remove_failed_queue_item','provisioning_enabled','linode_immediate_provisioning','provisioning_batch_size','provisioning_max_attempts',
     'provisioning_worker_timeout_seconds','provisioning_retry_base_seconds','provisioning_retry_max_seconds',
     'provisioning_online_check_tries','provisioning_online_check_sleep_ms','provisioning_strict_online_check',
-    'automation_batch_size','automation_worker_timeout_seconds','blog_author_name','email_tracking_enabled','ticket_closed_email_enabled','telnyx_enabled','telnyx_verify_profile_id','telnyx_whatsapp_from','messaging_notifications_enabled','openai_support_enabled','ai_support_provider','openai_support_model','ollama_api_url','ollama_support_model','inbound_email_enabled',
+    'automation_batch_size','automation_worker_timeout_seconds','automation_inline_enabled','blog_author_name','email_tracking_enabled','ticket_closed_email_enabled','telnyx_enabled','telnyx_verify_profile_id','telnyx_whatsapp_from','messaging_notifications_enabled','openai_support_enabled','ai_support_provider','openai_support_model','ollama_api_url','ollama_support_model','inbound_email_enabled',
     'oxxa_enabled','oxxa_api_url','oxxa_identity_handle','oxxa_nsgroup','oxxa_dns_template','oxxa_nginx_egg_ids','oxxa_domain_price','oxxa_test_mode','oxxa_price_markup_percent','oxxa_price_fixed_fee','oxxa_price_minimum','oxxa_price_cache_seconds','cloudflare_account_id',
     'maintenance_mode','maintenance_message','portal_registration','security_session_hours','zoho_sso_enabled','zoho_sso_client_id','zoho_sso_discovery_url','zoho_sso_authorization_endpoint','zoho_sso_token_endpoint','zoho_sso_userinfo_endpoint'
 ];
@@ -68,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($_POST['smtp_password']) && trim((string)$_POST['smtp_password']) !== '') {
             save_setting('smtp_password', 'enc:' . enc(trim((string)$_POST['smtp_password'])));
         }
-        foreach (['zoho_crm_client_secret','zoho_crm_refresh_token','zoho_sso_client_secret','pterodactyl_application_key','pterodactyl_admin_client_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token','telnyx_api_key','openai_api_key','inbound_email_secret'] as $secretKey) {
+        foreach (['zoho_crm_client_secret','zoho_crm_refresh_token','zoho_sso_client_secret','pterodactyl_application_key','pterodactyl_admin_client_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token','telnyx_api_key','openai_api_key','inbound_email_secret','moneybird_api_token'] as $secretKey) {
             if (isset($_POST[$secretKey]) && trim((string)$_POST[$secretKey]) !== '') {
                 if($secretKey==='inbound_email_secret'&&strlen(trim((string)$_POST[$secretKey]))<24)throw new RuntimeException('Inbound email secret must be at least 24 characters.');
                 save_setting($secretKey, 'enc:' . enc(trim((string)$_POST[$secretKey])));
@@ -76,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         $fallbackSecrets=['pterodactyl_application_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token'];
-        $clearableSecrets=array_merge($fallbackSecrets,['pterodactyl_admin_client_key','smtp_password','zoho_crm_client_secret','zoho_crm_refresh_token','zoho_sso_client_secret','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token','telnyx_api_key','openai_api_key','inbound_email_secret']);
+        $clearableSecrets=array_merge($fallbackSecrets,['pterodactyl_admin_client_key','smtp_password','zoho_crm_client_secret','zoho_crm_refresh_token','zoho_sso_client_secret','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token','telnyx_api_key','openai_api_key','inbound_email_secret','moneybird_api_token']);
         foreach((array)($_POST['clear_secret']??[]) as $secretKey){
             if(!in_array($secretKey,$clearableSecrets,true))continue;
             save_setting($secretKey,in_array($secretKey,$fallbackSecrets,true)?'__EMPTY__':'');
@@ -120,6 +121,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($settingsAction === 'test_linode') {
             $instances = linode_api('/linode/instances?page_size=25');
             $msg = 'Settings saved. Linode connected; '.count((array)($instances['data']??[])).' instance(s) returned on the first page.';
+        } elseif ($settingsAction === 'test_moneybird') {
+            $administrations = moneybird_administrations();
+            if (!$administrations) throw new RuntimeException('The Moneybird token is valid but no administrations are accessible.');
+            $known = [];
+            foreach ($administrations as $administration) $known[(string)($administration['id'] ?? '')] = trim((string)($administration['name'] ?? 'Unnamed'));
+            $currentId = moneybird_administration_id();
+            if ($currentId === '') {
+                $first = array_key_first($known);
+                save_setting('moneybird_administration_id', (string)$first);
+                $currentId = (string)$first;
+            }
+            if (!isset($known[$currentId])) {
+                throw new RuntimeException('Administration ID '.$currentId.' is not accessible by this token. Available: '.implode(', ', array_map(static fn($id,$name)=>$id.' ('.$name.')', array_keys($known), $known)).'.');
+            }
+            moneybird_purge_cache();
+            $probe = moneybird_sales_invoices('this_year', true);
+            if (!$probe['ok']) throw new RuntimeException($probe['error']);
+            $msg = 'Settings saved. Moneybird connected to "'.$known[$currentId].'" ('.$currentId.'); '.count($probe['invoices']).' sales invoice(s) found this year.';
         } elseif ($settingsAction === 'test_zoho_crm') {
             if (!$crmGrantExchanged) zoho_crm_access_token(true);
             $msg = 'Settings saved. Zoho CRM OAuth connection successful.';
@@ -149,6 +168,7 @@ $cloudflareTokenConfigured=cloudflare_setting('api_token')!=='';
 $telnyxKeyConfigured=telnyx_secret('api_key')!=='';
 $openaiKeyConfigured=openai_secret()!=='';
 $inboundSecretRaw=(string)setting('inbound_email_secret','');$inboundSecretConfigured=$inboundSecretRaw!=='';
+$moneybirdTokenConfigured=moneybird_api_token()!=='';
 $integrationStatus=[
     ['Pterodactyl',$pteroKeyConfigured&&$pteroAdminClientConfigured,'Application + Client API'],
     ['OXXA',$oxxaUserConfigured&&$oxxaPasswordConfigured,'Domain registrar'],
@@ -156,6 +176,7 @@ $integrationStatus=[
     ['Zoho SSO',zoho_sso_enabled()&&$zohoSsoSecretConfigured,'Admin login'],
     ['Zoho CRM',zoho_crm_enabled()&&zoho_crm_secret('zoho_crm_refresh_token')!=='','Customer sync'],
     ['Mollie',$mollieKeyConfigured,'Payments'],
+    ['Moneybird',moneybird_configured(),'Revenue reporting'],
 ];
 admin_head($u, 'Settings', 'settings');
 ?>
@@ -185,6 +206,24 @@ admin_head($u, 'Settings', 'settings');
         <label>Linode disk encryption<select name="linode_disk_encryption"><option value="enabled" <?=setting('linode_disk_encryption','enabled')==='enabled'?'selected':''?>>Enabled</option><option value="disabled" <?=setting('linode_disk_encryption','enabled')==='disabled'?'selected':''?>>Disabled</option></select></label>
         <label>Blog author name<input name="blog_author_name" value="<?=e(setting('blog_author_name','FoxNetwork Team'))?>" maxlength="160"></label>
         <label>Soro webhook secret<input type="password" name="soro_webhook_secret" value="" placeholder="<?=$soroSecretConfigured?'Configured — leave empty to keep':'Paste or generate from Blog admin'?>" autocomplete="new-password"></label>
+        <label>Moneybird revenue<select name="moneybird_enabled"><option value="0" <?=moneybird_setting('enabled','0')==='0'?'selected':''?>>Disabled</option><option value="1" <?=moneybird_setting('enabled','0')==='1'?'selected':''?>>Enabled</option></select></label>
+        <label>Moneybird administration ID<input name="moneybird_administration_id" value="<?=e(moneybird_administration_id())?>" placeholder="Leave empty to detect on test" inputmode="numeric"></label>
+        <label>Moneybird API token<input type="password" name="moneybird_api_token" value="" placeholder="<?=$moneybirdTokenConfigured?'Configured — leave empty to keep':'Personal access token with sales invoice read access'?>" autocomplete="new-password"><small>Read-only usage: the portal only reads sales invoices for revenue reporting.</small></label>
+        <label>Push portal invoices<select name="moneybird_sync_mode">
+            <option value="off" <?=moneybird_sync_mode()==='off'?'selected':''?>>Off — reporting only</option>
+            <option value="paid" <?=moneybird_sync_mode()==='paid'?'selected':''?>>When an invoice is paid</option>
+            <option value="created" <?=moneybird_sync_mode()==='created'?'selected':''?>>As soon as an invoice is created</option>
+        </select><small>Creates a Moneybird sales invoice per portal invoice. Each invoice is pushed once.</small></label>
+        <label>Moneybird delivery<select name="moneybird_send_method">
+            <option value="none" <?=moneybird_send_method()==='none'?'selected':''?>>Leave as draft</option>
+            <option value="Manual" <?=moneybird_send_method()==='Manual'?'selected':''?>>Mark as sent (no email)</option>
+            <option value="Email" <?=moneybird_send_method()==='Email'?'selected':''?>>Send by email from Moneybird</option>
+        </select><small>Paid invoices are always marked as sent so the payment can be booked.</small></label>
+        <label>Moneybird tax rate ID<input name="moneybird_tax_rate_id" value="<?=e(moneybird_setting('tax_rate_id'))?>" placeholder="Empty = highest active sales rate"></label>
+        <label>Portal prices include VAT<select name="moneybird_prices_incl_tax">
+            <option value="1" <?=moneybird_prices_incl_tax()?'selected':''?>>Yes — totals stay identical</option>
+            <option value="0" <?=moneybird_prices_incl_tax()?'':'selected'?>>No — add VAT on top</option>
+        </select></label>
         <div class="fullfield config-secret-actions">
             <label><input type="checkbox" name="clear_secret[]" value="pterodactyl_application_key"> Disable stored Pterodactyl application key</label>
             <label><input type="checkbox" name="clear_secret[]" value="pterodactyl_admin_client_key"> Disable stored Pterodactyl admin client key</label>
@@ -192,8 +231,9 @@ admin_head($u, 'Settings', 'settings');
             <label><input type="checkbox" name="clear_secret[]" value="pterodactyl_webhook_secret"> Disable webhook signature secret</label>
             <label><input type="checkbox" name="clear_secret[]" value="linode_api_token"> Disable stored Linode API token</label>
             <label><input type="checkbox" name="clear_secret[]" value="soro_webhook_secret"> Clear Soro webhook secret</label>
+            <label><input type="checkbox" name="clear_secret[]" value="moneybird_api_token"> Clear stored Moneybird API token</label>
         </div>
-        <div class="fullfield buttons"><button class="btn primary" type="submit" name="settings_action" value="test_pterodactyl">Save, test &amp; auto-connect Pterodactyl</button><button class="btn" type="submit" name="settings_action" value="test_linode">Save &amp; test Linode</button></div>
+        <div class="fullfield buttons"><button class="btn primary" type="submit" name="settings_action" value="test_pterodactyl">Save, test &amp; auto-connect Pterodactyl</button><button class="btn" type="submit" name="settings_action" value="test_linode">Save &amp; test Linode</button><button class="btn" type="submit" name="settings_action" value="test_moneybird">Save &amp; test Moneybird</button></div>
         <p class="muted fullfield" style="margin:0">Secrets are encrypted in the database. Database host, database name and database credentials remain startup-only because the portal must connect to that database before this Settings page can load.</p>
     </div>
 </section>
@@ -324,7 +364,8 @@ admin_head($u, 'Settings', 'settings');
         <label>Online check delay (ms)<input type="number" min="300" name="provisioning_online_check_sleep_ms" value="<?=e(setting('provisioning_online_check_sleep_ms','1500'))?>"></label>
         <label>Automation batch size<input type="number" min="1" name="automation_batch_size" value="<?=e(setting('automation_batch_size','20'))?>"></label>
         <label>Automation timeout (seconds)<input type="number" min="60" name="automation_worker_timeout_seconds" value="<?=e(setting('automation_worker_timeout_seconds','300'))?>"></label>
-        <div class="fullfield"><button class="btn primary" type="submit" name="settings_action" value="fast_automation">Apply fast automation preset</button><p class="muted small">Uses larger worker batches and shorter bounded retries. Keep cron running every minute for the fastest queue response.</p></div>
+        <label>Inline Zoho sync<select name="automation_inline_enabled"><option value="1" <?=setting('automation_inline_enabled','1')==='1'?'selected':''?>>Enabled</option><option value="0" <?=setting('automation_inline_enabled','1')==='0'?'selected':''?>>Disabled</option></select><small>Runs one queued Zoho job after a customer, order, invoice or ticket change when cron has not processed it yet.</small></label>
+        <div class="fullfield"><button class="btn primary" type="submit" name="settings_action" value="fast_automation">Apply fast automation preset</button><p class="muted small">Cron still processes retries and larger batches. Inline sync keeps normal portal actions from waiting for cron.</p></div>
         <label class="fullfield">Cron token<input name="cron_token" value="<?=e(setting('cron_token',''))?>"></label>
     </div>
 </section>
