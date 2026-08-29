@@ -41,6 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $r) {
             <div class="field"><label>Confirm password</label><input type="password" name="password_confirm" minlength="10" required></div><button class="btn primary wide">Change password</button><?php endif ?>
         </form>
     </div>
+<script defer src="/js/marketing-animations.js?v=20260829b"></script>
 </body>
 
 </html>

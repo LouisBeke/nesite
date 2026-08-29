@@ -200,5 +200,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <p><a class="link" href="/login.php">Already have an account? Sign in</a></p>
     </form>
 </div>
+<script defer src="/js/marketing-animations.js?v=20260829b"></script>
 </body>
 </html>

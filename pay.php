@@ -41,6 +41,7 @@ try {
             <p><a class="btn primary wide" href="/billing.php">Back to billing</a></p>
         </main>
     </div>
+    <script defer src="/js/marketing-animations.js?v=20260829b"></script>
     </body>
     </html>
     <?php

@@ -149,6 +149,7 @@ function admin_foot(): void
         </div>
     </dialog>
 
+    <script defer src="/js/marketing-animations.js?v=20260829b"></script>
     <script>
     (()=>{
         const body=document.body;

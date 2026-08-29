@@ -85,6 +85,8 @@ function opinly_layout_foot(): void
     <div class="mk-footer-bottom"><span>© 2020–2026 FoxNetwork BV.</span><span>info@foxnetwork.be · +32 (0)2 615 76 80</span></div>
   </div>
 </footer>
+<script defer src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js" integrity="sha384-InMmvD3VoYcY7hGjSC80aLb2bNNE4CzpX+Eq6FVDlmB0IKgDvmfPw4UY8L/M++iG" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script defer src="/js/marketing-animations.js?v=20260829b"></script>
 <script>
 (() => {
   const toggle = document.querySelector('[data-nav-toggle]');
