@@ -3,6 +3,19 @@ DirectoryIndex index.html
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
+    # Serve the complete FoxFlix application on the main hostname while its
+    # account, payment, and streaming workers remain isolated at the origin.
+    <IfModule mod_proxy.c>
+        RewriteCond %{HTTP_HOST} ^foxnetwork\.be$ [NC]
+        RewriteRule ^foxflix/?$ https://foxflix.foxnetwork.be/ [P,L,NE]
+        RewriteCond %{HTTP_HOST} ^foxnetwork\.be$ [NC]
+        RewriteRule ^foxflix/(.*)$ https://foxflix.foxnetwork.be/$1 [P,L,NE]
+    </IfModule>
+
+    # Send visitors from the legacy hostname to the canonical main-site path.
+    RewriteCond %{HTTP_HOST} ^foxflix\.foxnetwork\.be$ [NC]
+    RewriteRule ^ https://foxnetwork.be/foxflix/ [R=301,L,NE]
+
     # Keep one protocol, hostname, and homepage URL in Google's index.
     RewriteCond %{HTTPS} !=on [OR]
     RewriteCond %{HTTP_HOST} !^foxnetwork\.be$ [NC]

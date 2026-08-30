@@ -1,0 +1,16 @@
+# Add these directives to the HTTPS VirtualHost for foxnetwork.be.
+# The repository's root .htaccess supplies the [P] rewrite rules.
+
+SSLProxyEngine On
+ProxyRequests Off
+ProxyAddHeaders On
+ProxyPreserveHost Off
+ProxyTimeout 300
+ProxyPass /foxflix/ https://foxflix.foxnetwork.be/ nocanon
+ProxyPassReverse /foxflix/ https://foxflix.foxnetwork.be/
+
+<Location "/foxflix">
+    RequestHeader set X-Forwarded-Proto "https"
+    RequestHeader set X-Forwarded-Host "foxnetwork.be"
+    RequestHeader set X-FoxFlix-Main-Proxy "1"
+</Location>
