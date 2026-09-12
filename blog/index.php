@@ -31,7 +31,7 @@ opinly_layout_head([
             'name' => 'FoxNetwork Blog',
             'description' => $description,
             'url' => opinly_absolute(opinly_blog_path()),
-            'publisher' => ['@type' => 'Organization', 'name' => 'FoxNetwork BV', 'url' => opinly_absolute('/')],
+            'publisher' => ['@type' => 'Person', 'name' => 'Beke, Louis', 'url' => opinly_absolute('/')],
         ],
     ],
 ]);
