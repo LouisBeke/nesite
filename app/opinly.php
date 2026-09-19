@@ -472,7 +472,7 @@ function opinly_blogposting_jsonld(array $post): array
         'dateModified' => (string)($post['modifiedAt'] ?? $post['firstPublishedAt'] ?? ''),
         'publisher' => [
             '@type' => 'Organization',
-            'name' => 'FoxNetwork BV',
+            'name' => 'Beke, Louis',
             'url' => opinly_absolute('/'),
             'logo' => ['@type' => 'ImageObject', 'url' => opinly_absolute('/images/logo.png')],
         ],
@@ -486,7 +486,7 @@ function opinly_blogposting_jsonld(array $post): array
             'url' => opinly_absolute(opinly_author_path((string)($author['slug'] ?? ''))),
         ];
     } else {
-        $schema['author'] = ['@type' => 'Organization', 'name' => 'FoxNetwork BV'];
+        $schema['author'] = ['@type' => 'Person', 'name' => 'Beke, Louis'];
     }
     if (is_array($post['category'] ?? null) && trim((string)($post['category']['name'] ?? '')) !== '') {
         $schema['articleSection'] = (string)$post['category']['name'];
