@@ -208,6 +208,7 @@ if($migrationDue)try {
     error_log('FoxNetwork migrations skipped: '.$e->getMessage());
 }
 function e($v):string{return htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');}
+require_once __DIR__.'/email-policy.php';
 require_once __DIR__.'/client-layout.php';
 require_once __DIR__.'/messaging.php';
 require_once __DIR__.'/mail.php';

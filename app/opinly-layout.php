@@ -59,6 +59,7 @@ function opinly_layout_head(array $meta): void
       <a href="/#hosting">Hosting</a>
       <a href="/game-hosting/minecraft/">Game servers</a>
       <a href="/vps-hosting/">Cloud VPS</a>
+      <a href="/foxflix/">FoxFlix</a>
       <a href="/discord-bot-hosting/">Free Discord hosting</a>
       <a href="/blog/" aria-current="page">Blog</a>
       <a href="/contact.html">Contact</a>
@@ -79,14 +80,14 @@ function opinly_layout_foot(): void
     <div class="mk-footer-grid">
       <div><a class="mk-brand" href="/"><img src="/images/logo.png" alt=""><span>FOX<b>NETWORK</b></span></a><p>Independent Belgian hosting on European infrastructure, with automated deployment and direct support.</p></div>
       <div><h3>Game hosting</h3><a href="/game-hosting/minecraft/">Minecraft</a><a href="/game-hosting/rust/">Rust</a><a href="/game-hosting/palworld/">Palworld</a><a href="/game-hosting/ark/">ARK</a></div>
-      <div><h3>Cloud &amp; web</h3><a href="/vps-hosting/">Cloud VPS</a><a href="/discord-bot-hosting/">Discord bot hosting</a><a href="/web-hosting/">Web hosting</a></div>
+      <div><h3>Cloud &amp; web</h3><a href="/vps-hosting/">Cloud VPS</a><a href="/discord-bot-hosting/">Discord bot hosting</a><a href="/web-hosting/">Web hosting</a><a href="/foxflix/">FoxFlix preview</a></div>
       <div><h3>Blog</h3><a href="/blog/">All articles</a><a href="<?= e(opinly_authors_path()) ?>">Authors</a><a href="/blog/rss.xml">RSS feed</a><a href="/contact.html">Contact</a></div>
     </div>
     <div class="mk-footer-bottom"><span>© 2020–2026 FoxNetwork BV.</span><span>info@foxnetwork.be · +32 (0)2 615 76 80</span></div>
   </div>
 </footer>
 <script defer src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js" integrity="sha384-InMmvD3VoYcY7hGjSC80aLb2bNNE4CzpX+Eq6FVDlmB0IKgDvmfPw4UY8L/M++iG" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script defer src="/js/marketing-animations.js?v=20260829b"></script>
+<script defer src="/js/marketing-animations.js?v=20260830a"></script>
 <script>
 (() => {
   const toggle = document.querySelector('[data-nav-toggle]');

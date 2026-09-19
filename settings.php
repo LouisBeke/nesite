@@ -18,15 +18,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($a === 'profile') {
       $profileName = trim((string)($_POST['name'] ?? $u['name']));
       if (mb_strlen($profileName) < 2) throw new RuntimeException('Please enter your full name.');
+      if (mb_strlen($profileName) > 120) throw new RuntimeException('Name must be 120 characters or fewer.');
+      $profileEmail=fox_email_normalize((string)($_POST['email']??$u['email']));
+      $emailChanged=!hash_equals(fox_email_normalize((string)$u['email']),$profileEmail);
+      if(!filter_var($profileEmail,FILTER_VALIDATE_EMAIL)||mb_strlen($profileEmail)>190)throw new RuntimeException('Please enter a valid email address.');
+      if($emailChanged){
+        if(!fox_email_is_personal($profileEmail))throw new RuntimeException(fox_personal_email_required_message());
+        if(!password_verify((string)($_POST['current_password']??''),(string)$u['password_hash']))throw new RuntimeException('Enter your current password to change your email address.');
+        $emailOwner=db()->prepare('SELECT id FROM users WHERE email=? AND id<>? LIMIT 1');$emailOwner->execute([$profileEmail,$u['id']]);
+        if($emailOwner->fetchColumn())throw new RuntimeException('An account with this email already exists.');
+      }
       $profileFields=[];foreach(['company_name','phone','street','house_number','postal_code','city','state','country_code'] as $field)$profileFields[$field]=trim((string)($_POST[$field]??''));
       $profileFields['country_code']=strtoupper($profileFields['country_code']);
+      foreach(['company_name'=>190,'phone'=>40,'street'=>190,'house_number'=>30,'postal_code'=>30,'city'=>120,'state'=>120] as $field=>$max){if(mb_strlen($profileFields[$field])>$max)throw new RuntimeException(ucwords(str_replace('_',' ',$field)).' is too long.');}
       $activeTwoFactorMethod=(string)($u['two_factor_method']??'totp');
       if((int)($u['two_factor_enabled']??0)===1&&in_array($activeTwoFactorMethod,['sms','whatsapp'],true)&&!hash_equals(trim((string)($u['phone']??'')),$profileFields['phone']))throw new RuntimeException('Disable phone-based two-factor authentication before changing its phone number, then verify the new number when you enable it again.');
       if($profileFields['country_code']!==''&&!preg_match('/^[A-Z]{2}$/',$profileFields['country_code']))throw new RuntimeException('Country must be a two-letter country code.');
       $notifyWhatsapp=isset($_POST['notify_whatsapp'])?1:0;
       if($notifyWhatsapp&&!preg_match('/^\+[1-9]\d{7,14}$/',preg_replace('/[\s().-]+/','',$profileFields['phone'])))throw new RuntimeException('WhatsApp requires an international phone number such as +32470123456.');
-      db()->prepare('UPDATE users SET name=?,email_notifications=?,notify_whatsapp=?,company_name=?,phone=?,street=?,house_number=?,postal_code=?,city=?,state=?,country_code=? WHERE id=?')->execute([$profileName,isset($_POST['email_notifications'])?1:0,$notifyWhatsapp,$profileFields['company_name']?:null,$profileFields['phone']?:null,$profileFields['street']?:null,$profileFields['house_number']?:null,$profileFields['postal_code']?:null,$profileFields['city']?:null,$profileFields['state']?:null,$profileFields['country_code']?:null,$u['id']]);
+      $database=db();$database->beginTransaction();
+      try{
+        $database->prepare('UPDATE users SET name=?,email_notifications=?,notify_whatsapp=?,company_name=?,phone=?,street=?,house_number=?,postal_code=?,city=?,state=?,country_code=? WHERE id=?')->execute([$profileName,isset($_POST['email_notifications'])?1:0,$notifyWhatsapp,$profileFields['company_name']?:null,$profileFields['phone']?:null,$profileFields['street']?:null,$profileFields['house_number']?:null,$profileFields['postal_code']?:null,$profileFields['city']?:null,$profileFields['state']?:null,$profileFields['country_code']?:null,$u['id']]);
+        if($emailChanged)$database->prepare('UPDATE users SET email=?,email_verified_at=NULL,email_verification_token_hash=NULL,email_verification_expires_at=NULL WHERE id=?')->execute([$profileEmail,$u['id']]);
+        $database->commit();
+      }catch(Throwable $databaseError){if($database->inTransaction())$database->rollBack();throw $databaseError;}
       $u['name'] = $profileName;
+      $u['email'] = $profileEmail;
+      if($emailChanged)$u['email_verified_at']=null;
       $u['email_notifications'] = isset($_POST['email_notifications']) ? 1 : 0;
       foreach($profileFields as $profileKey=>$profileValue)$u[$profileKey]=$profileValue;
       $u['notify_whatsapp']=$notifyWhatsapp;
@@ -35,7 +53,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       } catch (Throwable $crmError) {
         error_log('FoxNetwork profile Zoho CRM sync failed for user ' . (int)$u['id'] . ': ' . $crmError->getMessage());
       }
-      $ok = 'Account settings saved.';
+      if($emailChanged){
+        db()->prepare('DELETE FROM user_sessions WHERE user_id=? AND session_id<>?')->execute([$u['id'],session_id()]);
+        security_revoke_trusted_devices((int)$u['id']);
+        security_log_event((int)$u['id'],'email_changed',true,'Email address changed; verification is required and other sessions and trusted browsers were revoked.');
+        $_SESSION['email_verification_pending_email']=$profileEmail;
+        try{$verificationSent=email_verification_send($u);}catch(Throwable $mailError){$verificationSent=false;error_log('FoxNetwork changed-email verification failed for user '.(int)$u['id'].': '.$mailError->getMessage());}
+        $ok=$verificationSent?'Account settings saved. Check your new inbox and verify the email address before your next sign-in.':'Your email was changed, but the verification message could not be sent. Use the resend option on the verification page.';
+      }else{$ok = 'Account settings saved.';}
     } elseif ($a === 'password') {
       if (!password_verify($_POST['current_password'] ?? '', $u['password_hash'])) throw new RuntimeException('Current password is incorrect.');
       $p = $_POST['new_password'] ?? '';
@@ -166,7 +191,8 @@ $totpUri = $setup ? 'otpauth://totp/' . rawurlencode('FoxNetwork:' . $u['email']
         <h2>Profile</h2>
         <form method="post"><input type="hidden" name="csrf" value="<?= csrf() ?>"><input type="hidden" name="action" value="profile">
           <div class="field"><label>Name</label><input name="name" value="<?= e($u['name']) ?>" required></div>
-          <div class="field"><label>Email</label><input value="<?= e($u['email']) ?>" disabled></div><label class="check"><input type="checkbox" name="email_notifications" <?= ((int)($u['email_notifications'] ?? 1)) ? 'checked' : '' ?>> Email notifications</label><label class="check"><input type="checkbox" name="notify_whatsapp" <?=!empty($u['notify_whatsapp'])?'checked':''?>> WhatsApp notifications</label>
+          <div class="field"><label>Email</label><input type="email" name="email" autocomplete="email" value="<?= e($u['email']) ?>" required><small class="muted"><?=empty($u['email_verified_at'])?'Not verified.':'Verified.'?> Changing this signs out other sessions and requires verification of the new address.</small></div>
+          <div class="field"><label>Current password <span class="muted">(required only to change email)</span></label><input type="password" name="current_password" autocomplete="current-password"><small class="muted">Self-service email changes accept personal providers such as Gmail, Yahoo, Outlook, iCloud, and Proton. For business email, <a class="link" href="mailto:info@foxnetwork.be?subject=FoxNetwork%20business%20email%20change">email us</a>.</small></div><label class="check"><input type="checkbox" name="email_notifications" <?= ((int)($u['email_notifications'] ?? 1)) ? 'checked' : '' ?>> Email notifications</label><label class="check"><input type="checkbox" name="notify_whatsapp" <?=!empty($u['notify_whatsapp'])?'checked':''?>> WhatsApp notifications</label>
           <div class="field"><label>Company <span class="muted">(optional)</span></label><input name="company_name" value="<?=e($u['company_name']??'')?>"></div>
           <div class="field"><label>Phone</label><input name="phone" value="<?=e($u['phone']??'')?>"></div>
           <div class="field"><label>Street</label><input name="street" value="<?=e($u['street']??'')?>"></div>

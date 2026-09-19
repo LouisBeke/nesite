@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <p><a class="link" href="/login.php">← Sign in</a></p>
         </form>
     </div>
-<script defer src="/js/marketing-animations.js?v=20260829b"></script>
+<script defer src="/js/marketing-animations.js?v=20260830a"></script>
 </body>
 
 </html>

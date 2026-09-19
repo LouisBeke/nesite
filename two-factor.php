@@ -91,7 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php if(in_array((string)($u['two_factor_method']??'totp'),['whatsapp','sms'],true)):?><form method="post" style="margin-top:10px"><input type="hidden" name="csrf" value="<?=csrf()?>"><button class="btn wide" name="action" value="resend">Send a new code</button></form><?php endif?>
         <form method="post" style="margin-top:10px"><input type="hidden" name="csrf" value="<?=csrf()?>"><button class="btn wide" name="action" value="cancel">Cancel sign-in</button></form>
     </div>
-<script defer src="/js/marketing-animations.js?v=20260829b"></script>
+<script defer src="/js/marketing-animations.js?v=20260830a"></script>
 </body>
 
 </html>

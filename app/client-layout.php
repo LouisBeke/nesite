@@ -137,7 +137,7 @@ function render_client_sidebar(array $user, string $active = 'overview', ?int $o
         window.matchMedia('(min-width: 961px)').addEventListener?.('change', event => { if (event.matches) setOpen(false); });
     })();
     </script>
-    <script defer src="/js/marketing-animations.js?v=20260829b"></script>
+    <script defer src="/js/marketing-animations.js?v=20260830a"></script>
     <?php
 }
 

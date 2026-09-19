@@ -1,5 +1,5 @@
 <?php
 function top(string $title): void { ?><!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="<?=htmlspecialchars(app_url('assets/style.css'))?>"><title><?=htmlspecialchars($title)?></title></head><body><nav class="bar"><span class="brand">FoxNetwork SMS</span><a href="<?=htmlspecialchars(app_url())?>">Dashboard</a><a href="<?=htmlspecialchars(app_url('send.php'))?>">Send SMS</a><a href="<?=htmlspecialchars(app_url('messages.php'))?>">Messages</a><a href="<?=htmlspecialchars(app_url('contacts.php'))?>">Contacts</a><a href="<?=htmlspecialchars(app_url('templates.php'))?>">Templates</a><a href="<?=htmlspecialchars(app_url('gateway.php'))?>">Gateway</a><a href="<?=htmlspecialchars(app_url('settings.php'))?>">Settings</a><a href="<?=htmlspecialchars(app_url('logout.php'))?>">Logout</a></nav><main class="wrap"><h1><?=htmlspecialchars($title)?></h1><?php }
-function bottom(): void { ?></main><script defer src="/js/marketing-animations.js?v=20260829b"></script></body></html><?php }
+function bottom(): void { ?></main><script defer src="/js/marketing-animations.js?v=20260830a"></script></body></html><?php }
 function pageTop(string $title,string $unused=''): void { top($title); }
 function pageBottom(): void { bottom(); }

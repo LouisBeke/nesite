@@ -28,6 +28,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             throw new RuntimeException('Please enter a valid email address.');
         }
+        if (!fox_email_is_personal($email)) {
+            throw new RuntimeException(fox_personal_email_required_message());
+        }
         foreach ([
             'phone number' => $phone,
             'street' => $street,
@@ -143,7 +146,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <div class="field">
             <label>Email</label>
-            <input type="email" name="email" required value="<?= e($email) ?>">
+            <input type="email" name="email" autocomplete="email" required value="<?= e($email) ?>">
+            <small class="muted">Personal providers such as Gmail, Yahoo, Outlook, iCloud, and Proton are accepted. Using business email? <a class="link" href="mailto:info@foxnetwork.be?subject=FoxNetwork%20business%20account">Email us</a>.</small>
         </div>
 
         <div class="field">
@@ -200,6 +204,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <p><a class="link" href="/login.php">Already have an account? Sign in</a></p>
     </form>
 </div>
-<script defer src="/js/marketing-animations.js?v=20260829b"></script>
+<script defer src="/js/marketing-animations.js?v=20260830a"></script>
 </body>
 </html>
