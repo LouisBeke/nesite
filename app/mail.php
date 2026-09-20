@@ -1,6 +1,7 @@
 <?php
-function setting(string $key, $default=null){static $cache=[];$cacheKey='setting:'.$key;if(!array_key_exists($cacheKey,$cache)){if(function_exists('fox_setting_cache_get')){$cached=fox_setting_cache_get($cacheKey,30);if($cached!==null){$cache[$cacheKey]=$cached==='__NULL__'?$default:(string)$cached;return $cache[$cacheKey];}}try{$q=db()->prepare('SELECT setting_value FROM app_settings WHERE setting_key=?');$q->execute([$key]);$v=$q->fetchColumn();$cache[$cacheKey]=$v!==false?$v:$default;if(function_exists('fox_setting_cache_set'))fox_setting_cache_set($cacheKey,$cache[$cacheKey]===null?'__NULL__':$cache[$cacheKey],30);}catch(Throwable $e){$cache[$cacheKey]=$default;}}return $cache[$cacheKey];}
-function save_setting(string $key,string $value):void{$q=db()->prepare('INSERT INTO app_settings(setting_key,setting_value) VALUES(?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)');$q->execute([$key,$value]);if(function_exists('fox_setting_cache_set'))fox_setting_cache_set('setting:'.$key,$value,30);}
+function &setting_request_cache():array{static $cache=[];return $cache;}
+function setting(string $key, $default=null){$cache=&setting_request_cache();$cacheKey='setting:'.$key;if(!array_key_exists($cacheKey,$cache)){if(function_exists('fox_setting_cache_get')){$cached=fox_setting_cache_get($cacheKey,30);if($cached!==null){$cache[$cacheKey]=$cached==='__NULL__'?$default:(string)$cached;return $cache[$cacheKey];}}try{$q=db()->prepare('SELECT setting_value FROM app_settings WHERE setting_key=?');$q->execute([$key]);$v=$q->fetchColumn();$cache[$cacheKey]=$v!==false?$v:$default;if(function_exists('fox_setting_cache_set'))fox_setting_cache_set($cacheKey,$cache[$cacheKey]===null?'__NULL__':$cache[$cacheKey],30);}catch(Throwable $e){$cache[$cacheKey]=$default;}}return $cache[$cacheKey];}
+function save_setting(string $key,string $value):void{$q=db()->prepare('INSERT INTO app_settings(setting_key,setting_value) VALUES(?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)');$q->execute([$key,$value]);$cache=&setting_request_cache();$cache['setting:'.$key]=$value;if(function_exists('fox_setting_cache_set'))fox_setting_cache_set('setting:'.$key,$value,30);}
 
 function microsoft_mail_config():array{
     $config=cfg('microsoft');
@@ -21,7 +22,9 @@ function m365_token():string{
     $tenant=trim((string)($config['tenant_id']??''));
     $client=trim((string)($config['client_id']??''));
     $secret=(string)($config['client_secret']??'');
-    if($tenant===''||$client===''||$secret==='')throw new RuntimeException('Microsoft 365 is not configured.');
+    $missing=[];
+    foreach(['Tenant ID'=>$tenant,'Client ID'=>$client,'Client secret'=>$secret] as $label=>$value)if(trim($value)==='')$missing[]=$label;
+    if($missing)throw new RuntimeException('Microsoft 365 is not configured. Missing: '.implode(', ',$missing).'. Open Admin > Settings > Mail, enter the credentials, and select Save & test Microsoft 365.');
     $ch=curl_init('https://login.microsoftonline.com/'.rawurlencode($tenant).'/oauth2/v2.0/token');
     curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>20,CURLOPT_POSTFIELDS=>http_build_query(['client_id'=>$client,'client_secret'=>$secret,'scope'=>'https://graph.microsoft.com/.default','grant_type'=>'client_credentials']),CURLOPT_HTTPHEADER=>['Content-Type: application/x-www-form-urlencoded']]);
     $raw=curl_exec($ch);$code=(int)curl_getinfo($ch,CURLINFO_HTTP_CODE);$error=curl_error($ch);curl_close($ch);

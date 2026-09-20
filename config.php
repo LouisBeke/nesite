@@ -7,7 +7,7 @@ $env = static function (string $key, string $default = ''): string {
     return $value === false || $value === '' ? $default : (string)$value;
 };
 
-$config = is_file($localConfig) ? require $localConfig : [
+$config = [
     'app_name' => $env('FOX_APP_NAME', 'FoxNetwork'),
     'app_url' => $env('FOX_APP_URL', 'https://foxnetwork.be'),
     'db' => [
@@ -33,8 +33,12 @@ $config = is_file($localConfig) ? require $localConfig : [
     ],
 ];
 
-if (!is_array($config)) {
-    throw new RuntimeException('config.local.php must return a configuration array.');
+if (is_file($localConfig)) {
+    $local = require $localConfig;
+    if (!is_array($local)) {
+        throw new RuntimeException('config.local.php must return a configuration array.');
+    }
+    $config = array_replace_recursive($config, $local);
 }
 
 $secretConfig = __DIR__.'/config.secrets.php';

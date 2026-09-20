@@ -136,6 +136,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $probe = moneybird_sales_invoices('this_year', true);
             if (!$probe['ok']) throw new RuntimeException($probe['error']);
             $msg = 'Settings saved. Moneybird connected to "'.$known[$currentId].'" ('.$currentId.'); '.count($probe['invoices']).' sales invoice(s) found this year.';
+        } elseif ($settingsAction === 'test_m365') {
+            m365_test_connection();
+            $msg = 'Settings saved. Microsoft 365 connected successfully.';
         } elseif ($settingsAction === 'test_zoho_crm') {
             if (!$crmGrantExchanged) zoho_crm_access_token(true);
             $msg = 'Settings saved. Zoho CRM OAuth connection successful.';
@@ -415,6 +418,7 @@ admin_head($u, 'Settings', 'settings');
         <label>Mail from<input type="email" name="m365_mail_from" value="<?=e(setting('m365_mail_from','noreply@foxnetwork.be'))?>"></label>
         <label>Client secret<input type="password" name="m365_client_secret" placeholder="<?=setting('m365_client_secret','')!==''?'Configured — leave empty to keep':'Paste Azure secret value'?>" autocomplete="new-password"></label>
         <label class="config-clear-option"><input type="checkbox" name="clear_secret[]" value="m365_client_secret"> Clear Microsoft client secret</label>
+        <div class="fullfield"><button class="btn primary" type="submit" name="settings_action" value="test_m365">Save &amp; test Microsoft 365</button></div>
         <p class="muted fullfield" style="margin:0">Save the Microsoft 365 credentials here. The client secret is encrypted before it is stored in the database.</p>
         <div class="fullfield" style="border-top:1px solid #2b313a;margin-top:8px;padding-top:18px"><b>AI TICKET REPLY SUGGESTIONS</b></div>
         <label>AI suggestions<select name="openai_support_enabled"><option value="0" <?=setting('openai_support_enabled','0')==='0'?'selected':''?>>Disabled</option><option value="1" <?=setting('openai_support_enabled','0')==='1'?'selected':''?>>Enabled</option></select></label>
