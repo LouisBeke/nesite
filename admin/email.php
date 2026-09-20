@@ -9,11 +9,11 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     verify_csrf();
     try{
         $a=$_POST['action']??'';
-        if($a==='zoho_test'){
-            zoho_test_connection();
-            $msg='Zoho Mail connection successful.';
+        if($a==='mail_test'){
+            mail_test_connection();
+            $msg='Microsoft 365 connection successful.';
         }elseif($a==='test'){
-            send_custom_email($u['id'],trim($_POST['to']),'FoxNetwork email test','<h2>Email works</h2><p>This test email was sent successfully from your FoxNetwork Admin Center using Zoho Mail.</p>');
+            send_custom_email($u['id'],trim($_POST['to']),'FoxNetwork email test','<h2>Email works</h2><p>This test email was sent successfully from your FoxNetwork Admin Center using Microsoft 365.</p>');
             $msg='Test email sent.';
         }elseif($a==='custom'){
             $uid=(int)$_POST['user_id'];
@@ -59,11 +59,11 @@ admin_head($u,'Email & Notifications','email');
         </form>
     </section>
     <section class="card">
-        <div class="cardhead"><b>EMAIL TEST</b><span class="muted">ZOHO</span></div>
+        <div class="cardhead"><b>EMAIL TEST</b><span class="muted">MICROSOFT 365</span></div>
         <form method="post" style="margin-bottom:12px">
             <input type="hidden" name="csrf" value="<?=e(csrf())?>">
-            <input type="hidden" name="action" value="zoho_test">
-            <button class="btn" type="submit">Test Zoho Mail connection</button>
+            <input type="hidden" name="action" value="mail_test">
+            <button class="btn" type="submit">Test Microsoft 365 connection</button>
         </form>
         <form method="post" class="admin-form-grid">
             <input type="hidden" name="csrf" value="<?=e(csrf())?>">

@@ -203,6 +203,7 @@ if($migrationDue)try {
     if (function_exists('fox_v25_two_factor_security_migrate')) fox_v25_two_factor_security_migrate();
     if (function_exists('fox_v26_product_customer_limit_migrate')) fox_v26_product_customer_limit_migrate();
     if (function_exists('fox_v27_moneybird_sync_migrate')) fox_v27_moneybird_sync_migrate();
+    if (function_exists('fox_v28_m365_mail_migrate')) fox_v28_m365_mail_migrate();
     @touch($migrationMarker);
 } catch (Throwable $e) {
     error_log('FoxNetwork migrations skipped: '.$e->getMessage());

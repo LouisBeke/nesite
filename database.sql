@@ -231,8 +231,7 @@ ALTER TABLE invoices ADD COLUMN IF NOT EXISTS overdue_sent_at DATETIME NULL;
 INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES
 ('company_name','FoxNetwork'),('support_email','info@foxnetwork.be'),('ticket_notification_email','info@foxnetwork.be'),('billing_email','info@foxnetwork.be'),
 ('invoice_prefix','INV'),('currency','EUR'),('vat_rate','21'),('invoice_due_days','7'),('renewal_days_before','7'),
-('grace_days','3'),('auto_suspend','1'),('auto_unsuspend','1'),('mail_provider','zoho'),('smtp_host','smtppro.zoho.eu'),('smtp_port','587'),
-('smtp_security','tls'),('smtp_ehlo_domain','foxnetwork.be'),('smtp_username','info@foxnetwork.be'),('smtp_password',''),('smtp_from_email','info@foxnetwork.be'),('smtp_from_name','FoxNetwork'),
+('grace_days','3'),('auto_suspend','1'),('auto_unsuspend','1'),
 ('zoho_crm_enabled','0'),('zoho_crm_client_id',''),('zoho_crm_client_secret',''),('zoho_crm_refresh_token',''),('zoho_crm_access_token',''),('zoho_crm_access_token_expires_at','0'),('zoho_crm_scope_version','0'),
 ('zoho_crm_pipeline',''),('zoho_crm_deal_stage_open','Qualification'),('zoho_crm_deal_stage_won','Closed Won'),('zoho_crm_deal_stage_lost','Closed Lost'),
 ('zoho_crm_case_origin','Web'),('zoho_crm_case_status_open','New'),('zoho_crm_case_status_hold','On Hold'),('zoho_crm_case_status_closed','Closed'),

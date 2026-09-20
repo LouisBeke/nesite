@@ -12,7 +12,7 @@ $keys = [
     'moneybird_enabled','moneybird_administration_id','moneybird_sync_mode','moneybird_send_method','moneybird_tax_rate_id','moneybird_prices_incl_tax',
     'company_name','support_email','ticket_notification_email','billing_email','invoice_prefix','currency','vat_rate','invoice_due_days',
     'renewal_days_before','grace_days','auto_suspend','auto_unsuspend','cron_token',
-    'smtp_host','smtp_port','smtp_security','smtp_ehlo_domain','smtp_username','smtp_from_email','smtp_from_name','mail_provider',
+    'm365_tenant_id','m365_client_id','m365_mail_from',
     'zoho_crm_enabled','zoho_crm_client_id','zoho_crm_pipeline','zoho_crm_deal_stage_open','zoho_crm_deal_stage_won','zoho_crm_deal_stage_lost',
     'zoho_crm_case_origin','zoho_crm_case_status_open','zoho_crm_case_status_hold','zoho_crm_case_status_closed',
     'hosting_allow_startup_variable_edit','hosting_allow_custom_startup_command','hosting_allow_docker_image_selection','hosting_allow_extra_allocations',
@@ -55,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_POST['currency']=strtoupper(trim((string)$_POST['currency']));
             if(!preg_match('/^[A-Z]{3}$/',(string)$_POST['currency']))throw new RuntimeException('Currency must be a three-letter ISO code.');
         }
-        foreach(['support_email'=>'Support email','ticket_notification_email'=>'Ticket notification email','billing_email'=>'Billing email','smtp_username'=>'Zoho mailbox','smtp_from_email'=>'From email'] as $emailKey=>$emailLabel)if(array_key_exists($emailKey,$_POST)&&trim((string)$_POST[$emailKey])!==''&&!filter_var(trim((string)$_POST[$emailKey]),FILTER_VALIDATE_EMAIL))throw new RuntimeException($emailLabel.' must be a valid email address.');
+        foreach(['support_email'=>'Support email','ticket_notification_email'=>'Ticket notification email','billing_email'=>'Billing email','m365_mail_from'=>'Microsoft 365 sender'] as $emailKey=>$emailLabel)if(array_key_exists($emailKey,$_POST)&&trim((string)$_POST[$emailKey])!==''&&!filter_var(trim((string)$_POST[$emailKey]),FILTER_VALIDATE_EMAIL))throw new RuntimeException($emailLabel.' must be a valid email address.');
         if(isset($_POST['oxxa_domain_price'])&&(!is_numeric($_POST['oxxa_domain_price'])||(float)$_POST['oxxa_domain_price']<0))throw new RuntimeException('OXXA domain price must be zero or higher.');
         foreach(['oxxa_price_markup_percent','oxxa_price_fixed_fee','oxxa_price_minimum'] as $priceKey)if(isset($_POST[$priceKey])&&(!is_numeric($_POST[$priceKey])||(float)$_POST[$priceKey]<0))throw new RuntimeException('Automatic pricing values must be zero or higher.');
         if(isset($_POST['oxxa_price_cache_seconds'])&&(!ctype_digit((string)$_POST['oxxa_price_cache_seconds'])||(int)$_POST['oxxa_price_cache_seconds']<60))throw new RuntimeException('OXXA price cache must be at least 60 seconds.');
@@ -66,10 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 save_setting($k, (string)$_POST[$k]);
             }
         }
-        if (isset($_POST['smtp_password']) && trim((string)$_POST['smtp_password']) !== '') {
-            save_setting('smtp_password', 'enc:' . enc(trim((string)$_POST['smtp_password'])));
-        }
-        foreach (['zoho_crm_client_secret','zoho_crm_refresh_token','zoho_sso_client_secret','pterodactyl_application_key','pterodactyl_admin_client_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token','telnyx_api_key','openai_api_key','inbound_email_secret','moneybird_api_token'] as $secretKey) {
+        foreach (['m365_client_secret','zoho_crm_client_secret','zoho_crm_refresh_token','zoho_sso_client_secret','pterodactyl_application_key','pterodactyl_admin_client_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token','telnyx_api_key','openai_api_key','inbound_email_secret','moneybird_api_token'] as $secretKey) {
             if (isset($_POST[$secretKey]) && trim((string)$_POST[$secretKey]) !== '') {
                 if($secretKey==='inbound_email_secret'&&strlen(trim((string)$_POST[$secretKey]))<24)throw new RuntimeException('Inbound email secret must be at least 24 characters.');
                 save_setting($secretKey, 'enc:' . enc(trim((string)$_POST[$secretKey])));
@@ -77,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         $fallbackSecrets=['pterodactyl_application_key','mollie_api_key','pterodactyl_webhook_secret','linode_api_token'];
-        $clearableSecrets=array_merge($fallbackSecrets,['pterodactyl_admin_client_key','smtp_password','zoho_crm_client_secret','zoho_crm_refresh_token','zoho_sso_client_secret','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token','telnyx_api_key','openai_api_key','inbound_email_secret','moneybird_api_token']);
+        $clearableSecrets=array_merge($fallbackSecrets,['m365_client_secret','pterodactyl_admin_client_key','zoho_crm_client_secret','zoho_crm_refresh_token','zoho_sso_client_secret','soro_webhook_secret','oxxa_api_user','oxxa_api_password','cloudflare_api_token','telnyx_api_key','openai_api_key','inbound_email_secret','moneybird_api_token']);
         foreach((array)($_POST['clear_secret']??[]) as $secretKey){
             if(!in_array($secretKey,$clearableSecrets,true))continue;
             save_setting($secretKey,in_array($secretKey,$fallbackSecrets,true)?'__EMPTY__':'');
@@ -410,25 +407,15 @@ admin_head($u, 'Settings', 'settings');
 </section>
 
 <section class="card settings-card" style="margin-bottom:18px">
-    <div class="cardhead" id="mail"><b>ZOHO MAIL</b></div>
+    <div class="cardhead" id="mail"><b>MICROSOFT 365 MAIL</b></div>
     <div class="admin-form-grid">
-        <input type="hidden" name="mail_provider" value="zoho">
-        <label>SMTP host<input name="smtp_host" value="<?=e(setting('smtp_host','smtppro.zoho.eu'))?>"></label>
-        <label>SMTP port<input name="smtp_port" value="<?=e(setting('smtp_port','587'))?>"></label>
-        <label>EHLO domain<input name="smtp_ehlo_domain" value="<?=e(setting('smtp_ehlo_domain','foxnetwork.be'))?>" placeholder="foxnetwork.be"></label>
-        <label>SMTP security
-            <select name="smtp_security">
-                <option value="tls" <?=setting('smtp_security','tls')==='tls'?'selected':''?>>TLS</option>
-                <option value="ssl" <?=setting('smtp_security','tls')==='ssl'?'selected':''?>>SSL</option>
-                <option value="none" <?=setting('smtp_security','tls')==='none'?'selected':''?>>None</option>
-            </select>
-        </label>
         <label>Email engagement tracking<select name="email_tracking_enabled"><option value="1" <?=setting('email_tracking_enabled','1')==='1'?'selected':''?>>Enabled — opens and clicks</option><option value="0" <?=setting('email_tracking_enabled','1')==='0'?'selected':''?>>Disabled</option></select></label>
-        <label>Zoho mailbox<input type="email" name="smtp_username" value="<?=e(setting('smtp_username','info@foxnetwork.be'))?>"></label>
-        <label>Zoho app password<input type="password" name="smtp_password" value="" placeholder="Leave empty to keep current password"></label>
-        <label class="config-clear-option"><input type="checkbox" name="clear_secret[]" value="smtp_password"> Clear saved SMTP password</label>
-        <label>From email<input type="email" name="smtp_from_email" value="<?=e(setting('smtp_from_email','info@foxnetwork.be'))?>"></label>
-        <label>From name<input name="smtp_from_name" value="<?=e(setting('smtp_from_name','FoxNetwork'))?>"></label>
+        <label>Tenant ID<input name="m365_tenant_id" value="<?=e(setting('m365_tenant_id','f45fc1d0-4f55-4abc-9517-72916e085bc3'))?>"></label>
+        <label>Client ID<input name="m365_client_id" value="<?=e(setting('m365_client_id','8e61ac8e-851e-4ba6-b70c-a21f34803284'))?>"></label>
+        <label>Mail from<input type="email" name="m365_mail_from" value="<?=e(setting('m365_mail_from','noreply@foxnetwork.be'))?>"></label>
+        <label>Client secret<input type="password" name="m365_client_secret" placeholder="<?=setting('m365_client_secret','')!==''?'Configured — leave empty to keep':'Paste Azure secret value'?>" autocomplete="new-password"></label>
+        <label class="config-clear-option"><input type="checkbox" name="clear_secret[]" value="m365_client_secret"> Clear Microsoft client secret</label>
+        <p class="muted fullfield" style="margin:0">Save the Microsoft 365 credentials here. The client secret is encrypted before it is stored in the database.</p>
         <div class="fullfield" style="border-top:1px solid #2b313a;margin-top:8px;padding-top:18px"><b>AI TICKET REPLY SUGGESTIONS</b></div>
         <label>AI suggestions<select name="openai_support_enabled"><option value="0" <?=setting('openai_support_enabled','0')==='0'?'selected':''?>>Disabled</option><option value="1" <?=setting('openai_support_enabled','0')==='1'?'selected':''?>>Enabled</option></select></label>
         <label>AI provider<select name="ai_support_provider"><option value="ollama" <?=setting('ai_support_provider','openai')==='ollama'?'selected':''?>>Ollama (free, local)</option><option value="openai" <?=setting('ai_support_provider','openai')==='openai'?'selected':''?>>OpenAI API (paid)</option></select></label>
@@ -445,7 +432,6 @@ admin_head($u, 'Settings', 'settings');
         <label>Inbound webhook secret<input type="password" name="inbound_email_secret" minlength="24" placeholder="<?=$inboundSecretConfigured?'Configured — leave empty to keep':'At least 24 random characters'?>" autocomplete="new-password"></label>
         <label class="config-clear-option"><input type="checkbox" name="clear_secret[]" value="inbound_email_secret"> Clear inbound email secret</label>
         <div class="fullfield"><small class="muted">Webhook: <code><?=e(site_url('/api/inbound-email.php'))?></code><br>Forward JSON or form fields: <code>from</code>, <code>subject</code>, <code>text</code>, <code>message_id</code>. Send the secret in <code>X-Inbound-Email-Secret</code>. Subjects containing <code>#123</code> reply to that customer’s ticket; otherwise a new ticket is created.</small></div>
-        <p class="muted" style="grid-column:1/-1;margin:0">Use the exact SMTP host shown in Zoho Mail's Server Configuration. EU paid organization accounts commonly use smtppro.zoho.eu. Port 587 with TLS is recommended. The EHLO domain must be a complete domain such as foxnetwork.be.</p>
         <div class="fullfield" style="border-top:1px solid #2b313a;margin-top:8px;padding-top:18px"><b>TELNYX WHATSAPP</b></div>
         <label>Telnyx integration<select name="telnyx_enabled"><option value="0" <?=setting('telnyx_enabled','0')==='0'?'selected':''?>>Disabled</option><option value="1" <?=setting('telnyx_enabled','0')==='1'?'selected':''?>>Enabled</option></select></label>
         <label>Notification messages<select name="messaging_notifications_enabled"><option value="0" <?=setting('messaging_notifications_enabled','0')==='0'?'selected':''?>>Disabled</option><option value="1" <?=setting('messaging_notifications_enabled','0')==='1'?'selected':''?>>Enabled</option></select></label>

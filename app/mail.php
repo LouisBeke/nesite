@@ -2,76 +2,48 @@
 function setting(string $key, $default=null){static $cache=[];$cacheKey='setting:'.$key;if(!array_key_exists($cacheKey,$cache)){if(function_exists('fox_setting_cache_get')){$cached=fox_setting_cache_get($cacheKey,30);if($cached!==null){$cache[$cacheKey]=$cached==='__NULL__'?$default:(string)$cached;return $cache[$cacheKey];}}try{$q=db()->prepare('SELECT setting_value FROM app_settings WHERE setting_key=?');$q->execute([$key]);$v=$q->fetchColumn();$cache[$cacheKey]=$v!==false?$v:$default;if(function_exists('fox_setting_cache_set'))fox_setting_cache_set($cacheKey,$cache[$cacheKey]===null?'__NULL__':$cache[$cacheKey],30);}catch(Throwable $e){$cache[$cacheKey]=$default;}}return $cache[$cacheKey];}
 function save_setting(string $key,string $value):void{$q=db()->prepare('INSERT INTO app_settings(setting_key,setting_value) VALUES(?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)');$q->execute([$key,$value]);if(function_exists('fox_setting_cache_set'))fox_setting_cache_set('setting:'.$key,$value,30);}
 
-function smtp_read($fp):string{$out='';while(($line=fgets($fp,515))!==false){$out.=$line;if(strlen($line)<4||$line[3]===' ')break;}return $out;}
-function smtp_cmd($fp,string $cmd,array $ok):string{fwrite($fp,$cmd."\r\n");$r=smtp_read($fp);$c=(int)substr($r,0,3);if(!in_array($c,$ok,true))throw new RuntimeException(trim($r));return $r;}
-function smtp_password():string{$v=(string)setting('smtp_password','');if(str_starts_with($v,'enc:'))return (string)(dec(substr($v,4))??'');return $v;}
-function smtp_ehlo_domain():string{
-    $appHost=parse_url((string)cfg('app_url'),PHP_URL_HOST);
-    $candidates=[
-        (string)setting('smtp_ehlo_domain','foxnetwork.be'),
-        is_string($appHost)?$appHost:'',
-        (string)($_SERVER['SERVER_NAME']??''),
-        'foxnetwork.be',
-    ];
-    foreach($candidates as $candidate){
-        $candidate=strtolower(trim($candidate));
-        if($candidate===''||preg_match('/[\r\n]/',$candidate))continue;
-        $parsed=parse_url('//'.$candidate,PHP_URL_HOST);
-        if(is_string($parsed)&&$parsed!=='')$candidate=strtolower($parsed);
-        if(preg_match('/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i',$candidate))return $candidate;
+function microsoft_mail_config():array{
+    $config=cfg('microsoft');
+    if(!is_array($config))$config=[];
+    foreach(['tenant_id','client_id','mail_from'] as $key){
+        $stored=(string)setting('m365_'.$key,'');
+        if($stored!=='')$config[$key]=$stored;
     }
-    return 'foxnetwork.be';
+    $storedSecret=(string)setting('m365_client_secret','');
+    if($storedSecret!=='')$config['client_secret']=str_starts_with($storedSecret,'enc:')?(string)(dec(substr($storedSecret,4))??''):$storedSecret;
+    return $config;
 }
-function smtp_open_authenticated(){
-    $host=trim((string)setting('smtp_host','smtppro.zoho.eu'));
-    $port=(int)setting('smtp_port','587');
-    $sec=(string)setting('smtp_security','tls');
-    $user=trim((string)setting('smtp_username',''));
-    $pass=smtp_password();
-    if($host===''||$user===''||$pass==='')throw new RuntimeException('Zoho Mail SMTP is not configured in Admin > Settings.');
-    $target=($sec==='ssl'?'ssl://':'').$host;
-    $fp=@fsockopen($target,$port,$errno,$errstr,15);
-    if(!$fp)throw new RuntimeException("SMTP connection failed: $errstr ($errno)");
-    stream_set_timeout($fp,15);
-    $g=smtp_read($fp);
-    if((int)substr($g,0,3)!==220)throw new RuntimeException(trim($g));
-    $ehloDomain=smtp_ehlo_domain();
-    smtp_cmd($fp,'EHLO '.$ehloDomain,[250]);
-    if($sec==='tls'){
-        smtp_cmd($fp,'STARTTLS',[220]);
-        if(!stream_socket_enable_crypto($fp,true,STREAM_CRYPTO_METHOD_TLS_CLIENT))throw new RuntimeException('SMTP TLS negotiation failed.');
-        smtp_cmd($fp,'EHLO '.$ehloDomain,[250]);
-    }
-    smtp_cmd($fp,'AUTH LOGIN',[334]);
-    smtp_cmd($fp,base64_encode($user),[334]);
-    smtp_cmd($fp,base64_encode($pass),[235]);
-    return $fp;
+function mail_provider():string{return 'm365';}
+function m365_token():string{
+    static $token=null,$expires=0;
+    if($token!==null&&time()<$expires-60)return $token;
+    $config=microsoft_mail_config();
+    $tenant=trim((string)($config['tenant_id']??''));
+    $client=trim((string)($config['client_id']??''));
+    $secret=(string)($config['client_secret']??'');
+    if($tenant===''||$client===''||$secret==='')throw new RuntimeException('Microsoft 365 is not configured.');
+    $ch=curl_init('https://login.microsoftonline.com/'.rawurlencode($tenant).'/oauth2/v2.0/token');
+    curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>20,CURLOPT_POSTFIELDS=>http_build_query(['client_id'=>$client,'client_secret'=>$secret,'scope'=>'https://graph.microsoft.com/.default','grant_type'=>'client_credentials']),CURLOPT_HTTPHEADER=>['Content-Type: application/x-www-form-urlencoded']]);
+    $raw=curl_exec($ch);$code=(int)curl_getinfo($ch,CURLINFO_HTTP_CODE);$error=curl_error($ch);curl_close($ch);
+    if($raw===false)throw new RuntimeException('Microsoft token request failed: '.$error);
+    $response=json_decode($raw,true)?:[];
+    if($code<200||$code>=300||empty($response['access_token']))throw new RuntimeException('Microsoft token error: '.($response['error_description']??$response['error']??('HTTP '.$code)));
+    $token=(string)$response['access_token'];$expires=time()+(int)($response['expires_in']??3600);return $token;
 }
-function smtp_close($fp):void{try{smtp_cmd($fp,'QUIT',[221]);}catch(Throwable $e){}fclose($fp);}
-function smtp_test_connection():void{$fp=smtp_open_authenticated();smtp_close($fp);}
-function smtp_send(string $to,string $subject,string $html):void{
-    $from=trim((string)setting('smtp_from_email','info@foxnetwork.be'));
-    $fromName=(string)setting('smtp_from_name','FoxNetwork');
-    if($from==='')throw new RuntimeException('Zoho Mail sender address is not configured in Admin > Settings.');
-    $fp=smtp_open_authenticated();
-    try{
-        smtp_cmd($fp,'MAIL FROM:<'.$from.'>',[250]);
-        smtp_cmd($fp,'RCPT TO:<'.$to.'>',[250,251]);
-        smtp_cmd($fp,'DATA',[354]);
-        $headers=['From: '.$fromName.' <'.$from.'>','To: <'.$to.'>','Subject: =?UTF-8?B?'.base64_encode($subject).'?=','MIME-Version: 1.0','Content-Type: text/html; charset=UTF-8','Content-Transfer-Encoding: 8bit'];
-        $msg=implode("\r\n",$headers)."\r\n\r\n".$html;
-        $msg=preg_replace('/(?m)^\./','..',$msg);
-        fwrite($fp,$msg."\r\n.\r\n");
-        $r=smtp_read($fp);
-        if((int)substr($r,0,3)!==250)throw new RuntimeException(trim($r));
-    }finally{
-        smtp_close($fp);
-    }
+function m365_test_connection():void{m365_token();}
+function m365_send(string $to,string $subject,string $html):void{
+    $config=microsoft_mail_config();
+    $sender=trim((string)($config['mail_from']??''));
+    if($sender===''||!filter_var($sender,FILTER_VALIDATE_EMAIL))throw new RuntimeException('Microsoft 365 sender address is not configured.');
+    $payload=['message'=>['subject'=>$subject,'body'=>['contentType'=>'HTML','content'=>$html],'toRecipients'=>[['emailAddress'=>['address'=>$to]]]],'saveToSentItems'=>true];
+    $ch=curl_init('https://graph.microsoft.com/v1.0/users/'.rawurlencode($sender).'/sendMail');
+    curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_CUSTOMREQUEST=>'POST',CURLOPT_TIMEOUT=>25,CURLOPT_HTTPHEADER=>['Authorization: Bearer '.m365_token(),'Content-Type: application/json'],CURLOPT_POSTFIELDS=>json_encode($payload,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)]);
+    $raw=curl_exec($ch);$code=(int)curl_getinfo($ch,CURLINFO_HTTP_CODE);$error=curl_error($ch);curl_close($ch);
+    if($raw===false)throw new RuntimeException('Microsoft Graph sendMail failed: '.$error);
+    if($code<200||$code>=300){$response=json_decode($raw,true)?:[];throw new RuntimeException('Microsoft Graph HTTP '.$code.': '.($response['error']['message']??$raw));}
 }
-
-function mail_provider():string{return 'zoho';}
-function zoho_test_connection():void{smtp_test_connection();}
-function portal_mail_send(string $to,string $subject,string $html):void{smtp_send($to,$subject,$html);}
+function mail_test_connection():void{m365_test_connection();}
+function portal_mail_send(string $to,string $subject,string $html):void{m365_send($to,$subject,$html);}
 
 function email_template(string $key):?array{$q=db()->prepare('SELECT * FROM email_templates WHERE template_key=?');$q->execute([$key]);$r=$q->fetch();return $r?:null;}
 function render_tokens(string $text,array $vars):string{foreach($vars as $k=>$v)$text=str_replace('{{'.$k.'}}',(string)$v,$text);return $text;}

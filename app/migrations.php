@@ -536,46 +536,12 @@ function fox_v15f_migrate(): void {
 function fox_v15g_migrate(): void {
     static $ran=false; if($ran)return; $ran=true; $pdo=db();
     if (fox_migration_applied($pdo, 'v15g-zoho-mail')) return;
-
-    if (fox_table_exists($pdo, 'app_settings')) {
-        $q=$pdo->prepare("SELECT setting_value FROM app_settings WHERE setting_key='mail_provider' LIMIT 1");
-        $q->execute();
-        $oldProvider=(string)($q->fetchColumn()?:'');
-
-        $defaults=[
-            'mail_provider'=>'zoho',
-            'smtp_host'=>'smtppro.zoho.eu',
-            'smtp_port'=>'587',
-            'smtp_security'=>'tls',
-            'smtp_username'=>'info@foxnetwork.be',
-            'smtp_password'=>'',
-            'smtp_from_email'=>'info@foxnetwork.be',
-            'smtp_from_name'=>'FoxNetwork',
-        ];
-        $insert=$pdo->prepare('INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES(?,?)');
-        foreach($defaults as $key=>$value)$insert->execute([$key,$value]);
-
-        if($oldProvider==='m365'){
-            $update=$pdo->prepare('UPDATE app_settings SET setting_value=? WHERE setting_key=?');
-            foreach($defaults as $key=>$value)$update->execute([$value,$key]);
-        }else{
-            $pdo->prepare("UPDATE app_settings SET setting_value='zoho' WHERE setting_key='mail_provider'")->execute();
-        }
-
-        $pdo->exec("DELETE FROM app_settings WHERE setting_key IN ('m365_tenant_id','m365_client_id','m365_client_secret','m365_sender_email')");
-    }
-
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15g-zoho-mail']);
 }
 
 function fox_v15h_migrate(): void {
     static $ran=false; if($ran)return; $ran=true; $pdo=db();
     if (fox_migration_applied($pdo, 'v15h-smtp-ehlo-domain')) return;
-
-    if (fox_table_exists($pdo, 'app_settings')) {
-        $pdo->prepare("INSERT IGNORE INTO app_settings(setting_key,setting_value) VALUES('smtp_ehlo_domain','foxnetwork.be')")->execute();
-    }
-
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v15h-smtp-ehlo-domain']);
 }
 
@@ -935,4 +901,13 @@ function fox_v27_moneybird_sync_migrate(): void {
         $pdo->exec('ALTER TABLE users ADD COLUMN `moneybird_contact_id` VARCHAR(64) NULL');
     }
     $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v27-moneybird-sync']);
+}
+
+function fox_v28_m365_mail_migrate(): void {
+    static $ran=false;if($ran)return;$ran=true;$pdo=db();
+    if(fox_migration_applied($pdo,'v28-m365-mail'))return;
+    if(fox_table_exists($pdo,'app_settings')){
+        $pdo->exec("DELETE FROM app_settings WHERE setting_key IN ('mail_provider','smtp_host','smtp_port','smtp_security','smtp_ehlo_domain','smtp_username','smtp_password','smtp_from_email','smtp_from_name')");
+    }
+    $pdo->prepare('INSERT IGNORE INTO fox_schema_migrations(version) VALUES(?)')->execute(['v28-m365-mail']);
 }
